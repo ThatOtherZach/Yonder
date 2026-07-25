@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Yonder{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --accent: #3d9cf0;
+      --good: #3ecf8e;
+      --bad: #f07178;
+      --warn: #e6b450;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+      min-height: 100vh;
+    }
+    .topnav {
+      border-bottom: 1px solid var(--border);
+      background: rgba(26, 35, 50, 0.85);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .topnav-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+    .brand {
+      font-weight: 700;
+      color: var(--text);
+      text-decoration: none;
+      letter-spacing: -0.02em;
+    }
+    .brand span { color: var(--accent); }
+    .nav-links { display: flex; gap: 0.35rem; margin-left: auto; }
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      padding: 0.4rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    .nav-links a:hover { color: var(--text); background: rgba(61,156,240,0.08); }
+    .nav-links a.active { color: var(--text); background: rgba(61,156,240,0.14); }
+    header {
+      padding: 1.5rem 1.5rem 0.5rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    header h1 { margin: 0 0 0.25rem; font-size: 1.5rem; font-weight: 650; }
+    header p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+    main { max-width: 1100px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .card h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1.05rem;
+      font-weight: 650;
+    }
+    .card .sub {
+      margin: 0 0 1rem;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    input[type="text"], input[type="password"], input[type="date"], input[type="number"], select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.55rem 0.7rem;
+      font-size: 0.95rem;
+      width: 100%;
+      min-height: 2.5rem;
+      box-sizing: border-box;
+      font-family: inherit;
+    }
+    select {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238b9bb4' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+      padding-right: 2rem;
+      cursor: pointer;
+    }
+    input:focus, select:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    /* date inputs often taller on Windows — keep grid cells even */
+    input[type="date"] { color-scheme: dark; }
+    .check {
+      flex-direction: row;
+      align-items: center;
+      gap: 0.5rem;
+      text-transform: none;
+      font-size: 0.9rem;
+      color: var(--text);
+      letter-spacing: 0;
+    }
+    button, .btn {
+      background: var(--accent);
+      color: #041018;
+      border: none;
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+      font-weight: 650;
+      cursor: pointer;
+      font-size: 0.95rem;
+      text-decoration: none;
+      display: inline-block;
+    }
+    button:hover, .btn:hover { filter: brightness(1.08); }
+    button.secondary, .btn.secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button.danger {
+      background: transparent;
+      color: var(--bad);
+      border: 1px solid #5a2a30;
+    }
+    .pills { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem; }
+    .pill {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .pill.ok { border-color: #2a6b4f; color: var(--good); }
+    .pill.bad { border-color: #5a2a30; color: var(--bad); }
+    .pill.warn { border-color: #6b5520; color: var(--warn); }
+    .flash {
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      font-size: 0.92rem;
+    }
+    .flash.ok { color: var(--good); background: #132a22; border: 1px solid #2a6b4f; }
+    .flash.err { color: var(--bad); background: #2a1518; border: 1px solid #5a2a30; }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    .error { color: var(--bad); background: #2a1518; border: 1px solid #5a2a30; padding: 0.75rem 1rem; border-radius: 8px; }
+    /* Price schema: ~C$420 + ▲/▼ vs history */
+    .price-amt { font-variant-numeric: tabular-nums; }
+    .price-sign {
+      display: inline-block;
+      margin-left: 0.12em;
+      font-size: 0.72em;
+      font-weight: 800;
+      line-height: 1;
+      vertical-align: 0.12em;
+      letter-spacing: 0;
+    }
+    .price-sign.good { color: var(--good); }
+    .price-sign.bad { color: var(--bad); }
+    .price-sign.neutral { color: var(--muted); }
+    .price-with-sign { white-space: nowrap; }
+    footer { max-width: 1100px; margin: 0 auto; padding: 0 1.5rem 2rem; color: var(--muted); font-size: 0.8rem; }
+    a { color: var(--accent); }
+    code { font-family: ui-monospace, Consolas, monospace; font-size: 0.85em; }
+    /* —— long-running progress overlay —— */
+    body.fs-progress-active { overflow: hidden; }
+    #fs-progress-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(8, 12, 18, 0.82);
+      backdrop-filter: blur(8px);
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    #fs-progress-overlay.show { display: flex; }
+    .fs-progress-card {
+      width: min(440px, 100%);
+      background: linear-gradient(165deg, #1a2332 0%, #1e1a28 100%);
+      border: 1px solid #3d4a7a;
+      border-radius: 16px;
+      padding: 1.5rem 1.35rem 1.25rem;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+      text-align: center;
+    }
+    .fs-progress-emoji {
+      font-size: 2rem;
+      line-height: 1;
+      margin-bottom: 0.5rem;
+      animation: fs-bob 1.4s ease-in-out infinite;
+    }
+    @keyframes fs-bob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+    .fs-progress-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+    .fs-progress-stage {
+      font-size: 0.8rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 1rem;
+      min-height: 1.2em;
+    }
+    .fs-progress-track {
+      height: 12px;
+      border-radius: 99px;
+      background: #0f1419;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      position: relative;
+    }
+    .fs-progress-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, #3d9cf0, #7c5cff, #e6b450);
+      background-size: 200% 100%;
+      animation: fs-shimmer 2s linear infinite;
+      transition: width 0.25s ease-out;
+    }
+    @keyframes fs-shimmer {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+    .fs-progress-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 0.45rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .fs-progress-msg {
+      margin-top: 1.1rem;
+      font-size: 0.98rem;
+      color: #e8e4ff;
+      min-height: 2.6em;
+      line-height: 1.35;
+      font-weight: 500;
+    }
+    .fs-progress-msg.pop { animation: fs-pop 0.35s ease; }
+    @keyframes fs-pop {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fs-progress-hint {
+      margin-top: 0.75rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    {% block extra_css %}{% endblock %}
+  </style>
+  <script>
+    // Passport map for loading messages (names swap into fun templates)
+    window.FS_TRAVEL = {{ (travel_ctx or {"avoid": [], "visited": [], "avoid_names": [], "visited_names": []}) | tojson }};
+  </script>
+  <script src="/static/progress.js" defer></script>
+</head>
+<body>
+  <nav class="topnav">
+    <div class="topnav-inner">
+      <a class="brand" href="/">Yon<span>der</span></a>
+      <div class="nav-links">
+        <a href="/" class="{% if nav == 'search' %}active{% endif %}">Search</a>
+        <a href="/adventure" class="{% if nav == 'adventure' %}active{% endif %}">Adventure</a>
+        <a href="/saved" class="{% if nav == 'saved' %}active{% endif %}">
+          Saved{% if saved_count %} ({{ saved_count }}){% endif %}
+        </a>
+        <a href="/settings" class="{% if nav == 'settings' %}active{% endif %}">Settings</a>
+      </div>
+    </div>
+  </nav>
+  {% block body %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,467 @@
+{% extends "base.html" %}
+{% block title %}Yonder{% endblock %}
+{% block extra_css %}
+    form.search-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 0.75rem;
+      align-items: end;
+    }
+    .ask-form { display: flex; flex-direction: column; gap: 0.75rem; }
+    .ask-form textarea {
+      width: 100%;
+      min-height: 88px;
+      resize: vertical;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      font-size: 1rem;
+      font-family: inherit;
+      line-height: 1.4;
+    }
+    .ask-form textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    .ask-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+    button.btn-grok {
+      background: linear-gradient(135deg, #3d9cf0, #7c5cff) !important;
+      color: #fff !important;
+      border: none !important;
+      min-width: 160px;
+    }
+    button.btn-grok:disabled {
+      opacity: 0.75;
+      cursor: wait;
+    }
+    .examples { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .examples button {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-weight: 500;
+      font-size: 0.78rem;
+      padding: 0.3rem 0.6rem;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .examples button:hover { color: var(--text); border-color: var(--accent); }
+    .grok-card {
+      border-color: #3d4a7a;
+      background: linear-gradient(160deg, #1a2332 0%, #1a1f35 100%);
+    }
+    .grok-card h2 { display: flex; align-items: center; gap: 0.5rem; }
+    .grok-badge {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: 999px;
+      background: rgba(124, 92, 255, 0.25);
+      color: #c4b5fd;
+      border: 1px solid #5b4a9e;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+    .analysis-md { color: var(--text); font-size: 0.95rem; }
+    .analysis-md p { margin: 0 0 0.75rem; }
+    .analysis-md ul { margin: 0.35rem 0 0.75rem; padding-left: 1.2rem; color: var(--muted); }
+    .pick-row td { background: rgba(124, 92, 255, 0.12) !important; }
+    .pick-tag {
+      display: inline-block;
+      font-size: 0.68rem;
+      margin-left: 0.35rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      background: #7c5cff;
+      color: #fff;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+    .parsed-box {
+      font-size: 0.88rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      margin-top: 0.85rem;
+      padding-top: 0.75rem;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    tr:hover td { background: rgba(61, 156, 240, 0.06); }
+    .price { font-weight: 700; color: var(--good); white-space: nowrap; }
+    .provider { font-family: ui-monospace, Consolas, monospace; font-size: 0.82rem; color: var(--accent); }
+    .results-theme {
+      --theme-primary: #3d9cf0;
+      --theme-accent: #7ec8ff;
+      border-color: color-mix(in srgb, var(--theme-primary) 40%, var(--border));
+      background: var(--theme-gradient, var(--panel));
+      position: relative;
+      overflow: hidden;
+    }
+    .results-theme::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 4px;
+      background: linear-gradient(180deg, var(--theme-primary), var(--theme-accent));
+    }
+    .results-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.75rem;
+      padding: 0.45rem 0.65rem;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--theme-primary) 18%, transparent);
+      border: 1px solid color-mix(in srgb, var(--theme-primary) 35%, transparent);
+      font-size: 0.9rem;
+    }
+    .results-banner .flag { font-size: 1.6rem; line-height: 1; }
+    .results-banner .flag-img {
+      width: 32px;
+      height: 24px;
+      object-fit: cover;
+      border-radius: 3px;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.12), 0 2px 8px rgba(0,0,0,0.3);
+    }
+    tr.deal-great td.price { color: var(--good); }
+    tr.deal-high td.price { color: var(--warn); }
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin: 0.25rem 0 1rem;
+    }
+    .divider::before, .divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    #ask-loading {
+      display: none;
+      margin-top: 0.75rem;
+      padding: 0.85rem 1rem;
+      border-radius: 10px;
+      border: 1px solid #5b4a9e;
+      background: rgba(124, 92, 255, 0.12);
+      color: #ddd6fe;
+      font-size: 0.92rem;
+    }
+    #ask-loading.show { display: block; }
+    #ask-loading .spin {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border: 2px solid #7c5cff;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: -1px;
+      margin-right: 0.45rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #ask-client-error {
+      display: none;
+      margin-top: 0.75rem;
+      color: var(--bad);
+      background: #2a1518;
+      border: 1px solid #5a2a30;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+    }
+    #ask-client-error.show { display: block; }
+{% endblock %}
+{% block body %}
+  <header>
+    <h1>Search flights</h1>
+    <p>
+      Free-API <strong>signals</strong> (~prices) + your local history. Confirm on Google/Kayak before buying.
+      {% if grok_ready %}Ask Grok in plain English below.{% else %}<a href="/settings">Add Grok key</a> for NL search.{% endif %}
+    </p>
+  </header>
+  <main>
+    <div class="card grok-card">
+      <h2>Ask Grok <span class="grok-badge">xAI</span></h2>
+      <p class="sub">
+        Type a trip, then click <strong>Ask Grok &amp; scan</strong>. Takes ~20–60s (Grok + flight APIs).
+      </p>
+      <form id="ask-form" class="ask-form" action="/ask" method="post">
+        <textarea id="ask-text" name="ask" placeholder="Where do you want to go, and when?" required>{{ ask or '' }}</textarea>
+        <div class="ask-row">
+          <button type="submit" id="ask-submit" class="btn-grok">
+            Ask Grok &amp; scan
+          </button>
+          <label class="check">
+            <input type="checkbox" name="mock" value="true" id="ask-mock" {% if form.mock %}checked{% endif %} /> Include mock
+          </label>
+          <label class="check">
+            <input type="checkbox" name="use_grok" value="true" id="ask-analyze" {% if form.use_grok %}checked{% endif %} /> Analyze results
+          </label>
+          {% if not grok_ready %}
+            <span class="pill warn">Grok offline — set key in Settings</span>
+          {% else %}
+            <span class="pill ok">Grok ready</span>
+          {% endif %}
+        </div>
+        <div class="examples">
+          <button type="button" class="example-chip" data-q="Cheap one-way from YVR to NRT around September 15 2026">YVR → NRT Sept</button>
+          <button type="button" class="example-chip" data-q="Round trip Toronto to London first week of October 2026, 2 adults, economy">YYZ → LHR Oct</button>
+          <button type="button" class="example-chip" data-q="Nonstop flights Vancouver to Los Angeles next month, CAD">YVR → LAX nonstop</button>
+        </div>
+        <div id="ask-client-error"></div>
+      </form>
+      {% if parsed %}
+      <div class="parsed-box">
+        <strong style="color:var(--text)">Grok understood:</strong>
+        {{ place(parsed.origin) }} → {{ place(parsed.destination) }}
+        · depart {{ parsed.depart_date }}
+        {% if parsed.return_date %}· return {{ parsed.return_date }}{% endif %}
+        · {{ parsed.adults }} adult{{ 's' if parsed.adults != 1 else '' }}
+        · {{ parsed.cabin.value if parsed.cabin.value is defined else parsed.cabin }}
+        · {{ parsed.currency }}
+        {% if parsed.nonstop_only %}· nonstop{% endif %}
+        {% if parsed.intent_summary %}<br><em>{{ parsed.intent_summary }}</em>{% endif %}
+        {% if parsed.assumptions %}
+          <br>Assumptions: {{ parsed.assumptions | join('; ') }}
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="divider">or classic form</div>
+
+    <div class="card">
+      <form class="search-form" action="/search" method="get">
+        <label>Origin
+          <input name="origin" type="text" maxlength="3" required value="{{ form.origin }}" style="text-transform:uppercase" />
+        </label>
+        <label>Destination
+          <input name="destination" type="text" maxlength="3" required value="{{ form.destination }}" style="text-transform:uppercase" />
+        </label>
+        <label>Depart
+          <input name="depart" type="date" required value="{{ form.depart }}" />
+        </label>
+        <label>Return (optional)
+          <input name="return_date" type="date" value="{{ form.return_date }}" />
+        </label>
+        <label>Adults
+          <input name="adults" type="number" min="1" max="9" value="{{ form.adults }}" />
+        </label>
+        <label>Currency
+          <input name="currency" type="text" maxlength="3" value="{{ form.currency }}" style="text-transform:uppercase" />
+        </label>
+        <label class="check">
+          <input type="checkbox" name="nonstop" value="true" {% if form.nonstop %}checked{% endif %} /> Nonstop only
+        </label>
+        <label class="check">
+          <input type="checkbox" name="mock" value="true" {% if form.mock %}checked{% endif %} /> Include mock
+        </label>
+        <label class="check">
+          <input type="checkbox" name="use_grok" value="true" {% if form.use_grok %}checked{% endif %} /> Grok analyze
+        </label>
+        <button type="submit">Scan providers</button>
+      </form>
+      <div class="pills">
+        {% if providers %}
+          {% for p in providers %}
+            <span class="pill ok">{{ p }}</span>
+          {% endfor %}
+        {% else %}
+          <span class="pill warn">No live keys — <a href="/settings" style="color:inherit">Settings</a> or use mock</span>
+        {% endif %}
+        {% if grok_ready %}<span class="pill ok">grok</span>{% endif %}
+      </div>
+    </div>
+
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+
+    {% if analysis %}
+    <div class="card grok-card">
+      <h2>Grok's take <span class="grok-badge">analysis</span></h2>
+      {% if analysis.headline %}
+        <p style="margin:0 0 0.75rem;font-size:1.05rem;font-weight:600">{{ analysis.headline }}</p>
+      {% endif %}
+      {% if analysis.pick_index %}
+        <p class="muted" style="margin-top:0">Suggested row #{{ analysis.pick_index }}
+          {% if analysis.pick_reason %} — {{ analysis.pick_reason }}{% endif %}
+        </p>
+      {% endif %}
+      <div class="analysis-md">
+        {% if analysis.raw_markdown %}
+          {% for block in analysis.raw_markdown.split('\n\n') %}
+            {% if block.startswith('- ') or block.startswith('* ') %}
+              <ul>
+                {% for line in block.split('\n') %}
+                  {% if line.strip().startswith('- ') or line.strip().startswith('* ') %}
+                    <li>{{ line.strip()[2:] }}</li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            {% elif block.startswith('**') and block.endswith('**') and block.count('**') == 2 %}
+              <p><strong>{{ block.strip('*') }}</strong></p>
+            {% else %}
+              <p>{{ block | replace('**', '') }}</p>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if result %}
+      <div class="card results-theme" style="{{ dest_theme.theme_style if dest_theme else '' }}">
+        {% if dest_theme %}
+        <div class="results-banner">
+          {% if dest_theme.flag_img %}
+            <img class="flag-img" src="{{ dest_theme.flag_img }}" alt="{{ dest_theme.country or dest_theme.label }}" width="32" height="24" loading="lazy" />
+          {% else %}
+            <span class="flag">{{ dest_theme.flag }}</span>
+          {% endif %}
+          <div>
+            <strong>{{ dest_theme.label }} route</strong>
+            <span class="muted"> · {{ route(result.query.origin, result.query.destination) }}</span>
+          </div>
+        </div>
+        {% endif %}
+        <div class="pills" style="margin-top:0;margin-bottom:0.75rem">
+          {% for r in result.results %}
+            {% if r.ok %}
+              <span class="pill ok">{{ r.provider }} · {{ r.latency_ms }}ms · {{ r.offers|length }} offers</span>
+            {% else %}
+              <span class="pill bad">{{ r.provider }} · {{ r.error }}</span>
+            {% endif %}
+          {% endfor %}
+        </div>
+        {% if result.offers %}
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Price</th>
+                <th>Provider</th>
+                <th>Airlines</th>
+                <th>Stops</th>
+                <th>Duration</th>
+                <th>Book</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for o in result.offers[:40] %}
+              <tr class="{% if analysis and analysis.pick_index == loop.index %}pick-row{% endif %} {% if o.deal_label == 'great' %}deal-great{% elif o.deal_label == 'high' %}deal-high{% endif %}">
+                <td class="muted">{{ loop.index }}{% if analysis and analysis.pick_index == loop.index %}<span class="pick-tag">GROK</span>{% endif %}</td>
+                <td class="price">
+                  <span class="price-with-sign">
+                    <span class="price-amt">{{ o.display_price_base or o.display_price or ('~' ~ o.currency ~ ' ' ~ '%.0f'|format(o.price)) }}</span>{% if o.price_glyph %}<span class="price-sign {{ o.price_tone or 'neutral' }}" title="{% if o.price_tone == 'good' %}Under typical history{% elif o.price_tone == 'bad' %}Over typical history{% endif %}">{{ o.price_glyph }}</span>{% endif %}
+                  </span>
+                  {% if o.deal_label and o.deal_label != 'new' %}
+                    <div style="font-size:0.68rem;font-weight:650;color:{% if o.deal_label=='great' %}var(--good){% elif o.deal_label=='high' %}var(--bad){% else %}var(--muted){% endif %}">
+                      vs history · {{ o.deal_label }}{% if o.deal_score is not none %} · {{ o.deal_score }}{% endif %}
+                    </div>
+                  {% elif o.deal_label == 'new' %}
+                    <div style="font-size:0.68rem;color:var(--muted);font-weight:600">no history yet</div>
+                  {% endif %}
+                  {% if o.price_kind == 'sandbox' %}
+                    <div style="font-size:0.68rem;color:var(--warn);font-weight:600">SANDBOX</div>
+                  {% elif o.price_kind == 'mock' %}
+                    <div style="font-size:0.68rem;color:var(--muted);font-weight:600">DEMO</div>
+                  {% endif %}
+                </td>
+                <td class="provider">{{ o.provider }}</td>
+                <td>{{ o.airlines|join(', ') or '—' }}</td>
+                <td>{{ o.stops_out }}</td>
+                <td class="muted">
+                  {% if o.duration_out_minutes is not none %}
+                    {{ (o.duration_out_minutes // 60) }}h{{ '%02d'|format(o.duration_out_minutes % 60) }}m
+                  {% else %}—{% endif %}
+                </td>
+                <td style="white-space:nowrap;font-size:0.82rem">
+                  {% if o.google_flights_url %}
+                    <a href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Google Flights</a>
+                  {% endif %}
+                  {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
+                    <br><a href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }}</a>
+                  {% endif %}
+                </td>
+                <td class="muted">{{ o.notes or '' }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="muted">No offers returned from any provider.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+  </main>
+  <footer>
+    Grok parses intent + ranks offers · prices come from flight APIs, not invented by the model.
+  </footer>
+  <script>
+    (function () {
+      function boot() {
+        var form = document.getElementById("ask-form");
+        var ta = document.getElementById("ask-text");
+        var btn = document.getElementById("ask-submit");
+        var errBox = document.getElementById("ask-client-error");
+        var grokReady = {{ "true" if grok_ready else "false" }};
+        if (!form) return;
+
+        function showError(msg) {
+          errBox.textContent = msg;
+          errBox.classList.add("show");
+        }
+        function clearError() {
+          errBox.textContent = "";
+          errBox.classList.remove("show");
+        }
+
+        document.querySelectorAll(".example-chip").forEach(function (chip) {
+          chip.addEventListener("click", function () {
+            ta.value = chip.getAttribute("data-q") || "";
+            clearError();
+            if (typeof form.requestSubmit === "function") form.requestSubmit();
+            else form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+          });
+        });
+
+        form.addEventListener("submit", function (e) {
+          e.preventDefault();
+          clearError();
+          var q = (ta.value || "").trim();
+          if (!q) {
+            showError("Type a trip first (or click an example chip).");
+            ta.focus();
+            return;
+          }
+          if (!grokReady) {
+            showError("Grok key not loaded. Open Settings, paste XAI_API_KEY, Save, then hard-refresh (Ctrl+F5).");
+            return;
+          }
+          if (!window.YonderProgress) {
+            showError("Progress UI failed to load — hard-refresh (Ctrl+F5).");
+            return;
+          }
+          btn.disabled = true;
+          YonderProgress.submitWithProgress(form, {
+            mode: "search",
+            title: "Scanning with Grok…",
+            expectedMs: 50000,
+            timeoutMs: 180000,
+          }).finally(function () {
+            btn.disabled = false;
+            btn.textContent = "Ask Grok & scan";
+          });
+        });
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", function () { setTimeout(boot, 30); });
+      } else {
+        setTimeout(boot, 30);
+      }
+    })();
+  </script>
+{% endblock %}

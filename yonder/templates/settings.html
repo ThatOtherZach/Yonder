@@ -1,0 +1,759 @@
+{% extends "base.html" %}
+{% block title %}Settings · Yonder{% endblock %}
+{% block extra_css %}
+    .provider-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 0.25rem;
+    }
+    .provider-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      background: var(--bg);
+    }
+    .provider-card h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .provider-card p { margin: 0 0 0.5rem; color: var(--muted); font-size: 0.82rem; }
+    .provider-card a { font-size: 0.8rem; }
+    .field-grid {
+      display: grid;
+      gap: 1rem;
+    }
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.5rem;
+      align-items: end;
+    }
+    .field-row label { grid-column: 1 / -1; }
+    .field-row .input-wrap { grid-column: 1; }
+    .field-row .clear-wrap {
+      grid-column: 2;
+      padding-bottom: 0.15rem;
+    }
+    .help { font-size: 0.78rem; color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 400; margin-top: 0.2rem; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      display: inline-block;
+      background: var(--bad);
+    }
+    .status-dot.on { background: var(--good); }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-top: 1.25rem;
+      align-items: center;
+    }
+    .path-line {
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+      word-break: break-all;
+    }
+    .section-title {
+      margin: 1.5rem 0 0.75rem;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .hint-box {
+      border-left: 3px solid var(--accent);
+      padding: 0.5rem 0.75rem;
+      margin: 0 0 1rem;
+      background: rgba(61,156,240,0.06);
+      border-radius: 0 8px 8px 0;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    /* Dual-use world map: visited (green) · avoid (red) */
+    .country-map-wrap {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #0c1219;
+      overflow: hidden;
+      position: relative;
+    }
+    #country-map {
+      width: 100%;
+      height: min(420px, 55vh);
+      display: block;
+    }
+    #country-map path.country {
+      fill: #2a3548;
+      stroke: #0f1419;
+      stroke-width: 0.4px;
+      cursor: pointer;
+      transition: fill 0.12s ease;
+    }
+    #country-map path.country:hover {
+      fill: #4a6a94;
+      stroke: #8b9bb4;
+      stroke-width: 0.6px;
+    }
+    #country-map path.country.visited {
+      fill: #2a8f5c;
+    }
+    #country-map path.country.visited:hover {
+      fill: #3ecf8e;
+    }
+    #country-map path.country.avoid {
+      fill: #a33a42;
+    }
+    #country-map path.country.avoid:hover {
+      fill: #f07178;
+    }
+    .map-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.25rem;
+      align-items: center;
+      padding: 0.65rem 0.85rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .map-legend .swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      margin-right: 0.35rem;
+      vertical-align: -1px;
+    }
+    .map-legend .swatch.visited { background: #2a8f5c; }
+    .map-legend .swatch.avoid { background: #a33a42; }
+    .map-legend .swatch.none { background: #2a3548; border: 1px solid #3d4a5c; }
+    .map-tip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(15, 20, 25, 0.95);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.8rem;
+      padding: 0.3rem 0.55rem;
+      border-radius: 6px;
+      z-index: 5;
+      display: none;
+      white-space: nowrap;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+    }
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.5rem;
+      min-height: 1.5rem;
+    }
+    .chip {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .chip.visited { border-color: #2a6b4f; color: var(--good); }
+    .chip.avoid { border-color: #5a2a30; color: var(--bad); }
+    .chip:hover { filter: brightness(1.1); }
+    .map-status {
+      font-size: 0.85rem;
+      margin: 0.5rem 0 0;
+      color: var(--muted);
+    }
+    .map-status strong { color: var(--text); }
+{% endblock %}
+{% block body %}
+  <header>
+    <h1>Settings</h1>
+    <p>API keys stay on this machine in <code>.env</code> — never sent anywhere except the providers themselves.</p>
+  </header>
+  <main>
+    {% if flash %}
+      <div class="flash {{ flash.kind }}">{{ flash.message }}</div>
+    {% endif %}
+
+    <div class="card">
+      <h2>Provider status</h2>
+      <p class="sub">Keys present ≠ active. Router probes health first, then budgets. <button type="button" id="btn-probe" class="secondary" style="padding:0.3rem 0.6rem;font-size:0.8rem">Re-probe now</button></p>
+      <div class="provider-grid">
+        {% for p in view.providers %}
+        <div class="provider-card">
+          <h3>
+            {{ p.name }}
+            <span class="status-dot {% if p.ready %}on{% endif %}" title="{% if p.ready %}Key set{% else %}Missing keys{% endif %}"></span>
+          </h3>
+          <p>{{ p.blurb }}</p>
+          <span class="pill {% if p.ready %}ok{% else %}bad{% endif %}">{% if p.ready %}key set{% else %}needs keys{% endif %}</span>
+          <div style="margin-top:0.5rem"><a href="{{ p.signup }}" target="_blank" rel="noopener">Get free key ↗</a></div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Price history journal</h2>
+      <p class="sub">Every search (with API keys) is saved locally to <code>price_history.db</code> — your free historical dataset.</p>
+      <p style="margin:0;font-size:1.1rem"><strong>{{ history_count }}</strong> <span class="muted">samples logged</span></p>
+      <p class="muted" style="margin:0.5rem 0 0;font-size:0.85rem">CLI: <code>python -m yonder.cli history</code> · export: <code>… history --export</code></p>
+    </div>
+
+    <div class="card">
+      <h2>API budgets &amp; health</h2>
+      <p class="sub">Live remaining where APIs expose it (e.g. SerpAPI account). Inactive/empty keys are skipped automatically.</p>
+      <div id="budget-table">
+        <table style="width:100%;border-collapse:collapse;font-size:0.88rem">
+          <thead>
+            <tr style="color:var(--muted);text-align:left">
+              <th style="padding:0.4rem">Provider</th>
+              <th>Active</th>
+              <th>Quota</th>
+              <th>Session</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in budgets %}
+            <tr style="border-top:1px solid var(--border)">
+              <td style="padding:0.45rem 0.4rem;font-family:ui-monospace,Consolas,monospace">{{ b.name }}</td>
+              <td>
+                {% if b.usable %}<span class="pill ok">usable</span>
+                {% elif b.configured %}<span class="pill warn">{{ 'cooldown' if b.in_cooldown else 'down' }}</span>
+                {% else %}<span class="pill">no key</span>{% endif %}
+              </td>
+              <td class="muted">
+                {% if b.monthly_remaining is not none and b.monthly_limit is not none %}
+                  {{ b.monthly_remaining }} / {{ b.monthly_limit }} left
+                {% elif b.rpm_remaining is not none %}
+                  rpm {{ b.rpm_remaining }}{% if b.rpm_limit %}/{{ b.rpm_limit }}{% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="muted">{{ b.calls_this_session }}</td>
+              <td class="muted" style="max-width:220px">{{ b.last_error or b.notes or '' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="muted" style="padding:0.5rem">No budget data yet — click Re-probe or run a search.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <pre id="probe-out" class="muted" style="font-size:0.78rem;margin-top:0.75rem;white-space:pre-wrap"></pre>
+    </div>
+    <script>
+      document.getElementById("btn-probe")?.addEventListener("click", async function () {
+        var out = document.getElementById("probe-out");
+        out.textContent = "Probing…";
+        try {
+          var r = await fetch("/api/providers/probe", { method: "POST" });
+          var j = await r.json();
+          out.textContent = "Active: " + (j.active || []).join(", ") + "\\n" + JSON.stringify(j.budgets, null, 2);
+          location.reload();
+        } catch (e) {
+          out.textContent = String(e);
+        }
+      });
+    </script>
+
+    <div class="card">
+      <h2>Keys &amp; defaults</h2>
+      <p class="sub path-line">Saved to: {{ view.env_path }}</p>
+      <div class="hint-box">
+        Leave secret fields blank to keep the existing value. Check <strong>Clear</strong> to wipe a key.
+        Masked values show only the last 4 characters.
+      </div>
+
+      <form method="post" action="/settings" autocomplete="off">
+        <div class="section-title">Amadeus</div>
+        <div class="field-grid">
+          {% for f in view.fields if f.key.startswith('AMADEUS_') and f.key != 'AMADEUS_ENV' %}
+          <div class="field-row">
+            <label for="{{ f.key }}">{{ f.label }}
+              {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+              <span class="help">{{ f.help }}</span>
+            </label>
+            <div class="input-wrap">
+              <input
+                id="{{ f.key }}"
+                name="{{ f.key }}"
+                type="password"
+                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste key{% endif %}"
+                value=""
+                spellcheck="false"
+              />
+            </div>
+            <div class="clear-wrap">
+              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+            </div>
+          </div>
+          {% endfor %}
+          <label for="AMADEUS_ENV">Amadeus environment
+            <span class="help">test = sandbox sample data · production = live market (enable in Amadeus portal)</span>
+            <select id="AMADEUS_ENV" name="AMADEUS_ENV">
+              <option value="test" {% if view.amadeus_env == 'test' %}selected{% endif %}>test (sandbox)</option>
+              <option value="production" {% if view.amadeus_env == 'production' %}selected{% endif %}>production (live)</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="section-title">Travelpayouts</div>
+        <div class="field-grid">
+          {% for f in view.fields if f.key == 'TRAVELPAYOUTS_TOKEN' %}
+          <div class="field-row">
+            <label for="{{ f.key }}">{{ f.label }}
+              {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+              <span class="help">{{ f.help }}</span>
+            </label>
+            <div class="input-wrap">
+              <input id="{{ f.key }}" name="{{ f.key }}" type="password"
+                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste token{% endif %}"
+                value="" spellcheck="false" />
+            </div>
+            <div class="clear-wrap">
+              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="section-title">Duffel</div>
+        <div class="field-grid">
+          <p class="muted" style="margin:0 0 0.5rem;font-size:0.85rem">
+            Tokens starting with <code>duffel_test_</code> are <strong>sandbox</strong> — demo fares only.
+            Use a <strong>live</strong> token for real prices. Until then we prefer SerpAPI (Google Flights snapshots).
+          </p>
+          {% for f in view.fields if f.key == 'DUFFEL_ACCESS_TOKEN' %}
+          <div class="field-row">
+            <label for="{{ f.key }}">{{ f.label }}
+              {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+              <span class="help">{{ f.help }}</span>
+            </label>
+            <div class="input-wrap">
+              <input id="{{ f.key }}" name="{{ f.key }}" type="password"
+                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste token{% endif %}"
+                value="" spellcheck="false" />
+            </div>
+            <div class="clear-wrap">
+              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="section-title">SerpAPI (Google Flights)</div>
+        <div class="field-grid">
+          {% for f in view.fields if f.key == 'SERPAPI_KEY' %}
+          <div class="field-row">
+            <label for="{{ f.key }}">{{ f.label }}
+              {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+              <span class="help">{{ f.help }}</span>
+            </label>
+            <div class="input-wrap">
+              <input id="{{ f.key }}" name="{{ f.key }}" type="password"
+                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste key{% endif %}"
+                value="" spellcheck="false" />
+            </div>
+            <div class="clear-wrap">
+              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="section-title">AviationStack</div>
+        <div class="field-grid">
+          {% for f in view.fields if f.key == 'AVIATIONSTACK_KEY' %}
+          <div class="field-row">
+            <label for="{{ f.key }}">{{ f.label }}
+              {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+              <span class="help">{{ f.help }} · <a href="https://aviationstack.com/" target="_blank" rel="noopener">aviationstack.com</a></span>
+            </label>
+            <div class="input-wrap">
+              <input id="{{ f.key }}" name="{{ f.key }}" type="password"
+                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste access key{% endif %}"
+                value="" spellcheck="false" />
+            </div>
+            <div class="clear-wrap">
+              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="section-title">Grok (xAI) — natural language + analysis</div>
+        <div class="field-grid">
+          {% for f in view.fields if f.key == 'XAI_API_KEY' %}
+          <div class="field-row">
+            <label for="{{ f.key }}">{{ f.label }}
+              {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+              <span class="help">{{ f.help }} · <a href="https://console.x.ai/" target="_blank" rel="noopener">console.x.ai</a></span>
+            </label>
+            <div class="input-wrap">
+              <input id="{{ f.key }}" name="{{ f.key }}" type="password"
+                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste xAI API key{% endif %}"
+                value="" spellcheck="false" />
+            </div>
+            <div class="clear-wrap">
+              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+            </div>
+          </div>
+          {% endfor %}
+          <label for="XAI_MODEL">Grok model
+            <span class="help">Usually grok-4.5</span>
+            <input id="XAI_MODEL" name="XAI_MODEL" type="text"
+              value="{{ view.xai_model }}" style="max-width:220px" />
+          </label>
+        </div>
+
+        <div class="section-title">Defaults</div>
+        <div class="field-grid">
+          <label for="DEFAULT_CURRENCY">Default currency
+            <span class="help">Search + adventure display currency (we convert provider USD→this)</span>
+            <input id="DEFAULT_CURRENCY" name="DEFAULT_CURRENCY" type="text" maxlength="3"
+              value="{{ view.default_currency }}" style="text-transform:uppercase;max-width:120px" />
+          </label>
+          <div>
+            <label style="margin-bottom:0.45rem">Your expected day bag
+              <span class="help">
+                Plug in what you expect to spend per person/day (default currency).
+                These <strong>add up</strong> to your daily COL target; over-budget % is the OK band above that total.
+                Leave all zero to ignore COL ranking.
+              </span>
+            </label>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.65rem;align-items:end">
+              <label for="COL_HOTEL">Hotel / night
+                <span class="help">Decent 3★ / midscale</span>
+                <input id="COL_HOTEL" name="COL_HOTEL" type="number" min="0" max="2000" step="5"
+                  class="col-part" value="{{ view.col_hotel }}" />
+              </label>
+              <label for="COL_FOOD">Food &amp; drink
+                <span class="help">Meals + drinks for the day</span>
+                <input id="COL_FOOD" name="COL_FOOD" type="number" min="0" max="1000" step="5"
+                  class="col-part" value="{{ view.col_food }}" />
+              </label>
+              <label for="COL_TRANSIT">Local transit
+                <span class="help">Metro/bus if any (not taxis)</span>
+                <input id="COL_TRANSIT" name="COL_TRANSIT" type="number" min="0" max="500" step="1"
+                  class="col-part" value="{{ view.col_transit }}" />
+              </label>
+              <label for="COL_CULTURE">Culture (1–2)
+                <span class="help">Museum / temple / tour-ish</span>
+                <input id="COL_CULTURE" name="COL_CULTURE" type="number" min="0" max="500" step="1"
+                  class="col-part" value="{{ view.col_culture }}" />
+              </label>
+              <label for="COL_TOLERANCE_PCT">Over-budget %
+                <span class="help">OK band above the sum</span>
+                <input id="COL_TOLERANCE_PCT" name="COL_TOLERANCE_PCT" type="number" min="0" max="100" step="1"
+                  value="{{ view.col_tolerance_pct }}" />
+              </label>
+            </div>
+            <input type="hidden" name="COL_EXPECTED_DAILY" id="COL_EXPECTED_DAILY" value="{{ view.col_expected_daily }}" />
+            <p class="map-status" style="margin-top:0.55rem">
+              Daily target: <strong id="col-sum-display">0</strong>
+              · OK up to <strong id="col-ceil-display">0</strong>
+              <span class="muted" style="margin-left:0.35rem">(sum × (1 + %/100))</span>
+            </p>
+            <p class="muted" style="margin:0.35rem 0 0;font-size:0.8rem">
+              Adventure ranks stopovers against this bag: under ↑ · within band ≈ · over ↓.
+              Estimates are hotel+food+transit+culture for that country (FX’d to your currency).
+            </p>
+          </div>
+          <script>
+            (function () {
+              var parts = document.querySelectorAll(".col-part");
+              var pctEl = document.getElementById("COL_TOLERANCE_PCT");
+              var sumEl = document.getElementById("col-sum-display");
+              var ceilEl = document.getElementById("col-ceil-display");
+              var hidden = document.getElementById("COL_EXPECTED_DAILY");
+              function num(el) {
+                var v = parseFloat(el && el.value ? el.value : "0");
+                return isFinite(v) && v > 0 ? v : 0;
+              }
+              function sync() {
+                var sum = 0;
+                parts.forEach(function (el) { sum += num(el); });
+                var pct = num(pctEl);
+                var ceil = sum * (1 + pct / 100);
+                if (sumEl) sumEl.textContent = sum ? ("~" + Math.round(sum)) : "0 (off)";
+                if (ceilEl) ceilEl.textContent = sum ? ("~" + Math.round(ceil)) : "—";
+                if (hidden) hidden.value = sum ? String(Math.round(sum * 100) / 100) : "0";
+              }
+              parts.forEach(function (el) { el.addEventListener("input", sync); });
+              if (pctEl) pctEl.addEventListener("input", sync);
+              sync();
+            })();
+          </script>
+          <label for="PROVIDER_MODE">Provider routing
+            <span class="help">smart = probe which keys work, then pick by budget · scan_all = hit every configured key</span>
+            <select id="PROVIDER_MODE" name="PROVIDER_MODE">
+              <option value="smart" {% if view.provider_mode != 'scan_all' %}selected{% endif %}>smart (recommended)</option>
+              <option value="scan_all" {% if view.provider_mode == 'scan_all' %}selected{% endif %}>scan all configured</option>
+            </select>
+          </label>
+          <div>
+            <label style="margin-bottom:0.45rem">Travel map — visited &amp; avoid
+              <span class="help">
+                Click a country to cycle: <strong style="color:var(--good)">visited</strong> (green)
+                → <strong style="color:var(--bad)">avoid</strong> (red, max 10 for Adventure stopovers)
+                → clear. Borders from Natural Earth (standard map polygons). Save settings to persist.
+              </span>
+            </label>
+            <input type="hidden" name="AVOID_COUNTRIES" id="AVOID_COUNTRIES" value="{{ view.avoid_countries }}" />
+            <input type="hidden" name="VISITED_COUNTRIES" id="VISITED_COUNTRIES" value="{{ view.visited_countries }}" />
+
+            <div class="country-map-wrap">
+              <div id="map-tip" class="map-tip"></div>
+              <svg id="country-map" viewBox="0 0 960 480" role="img" aria-label="World map — click countries"></svg>
+              <div class="map-legend">
+                <span><span class="swatch none"></span>Unmarked</span>
+                <span><span class="swatch visited"></span>Visited (click once)</span>
+                <span><span class="swatch avoid"></span>Avoid (click again)</span>
+                <span class="muted">Click third time to clear</span>
+              </div>
+            </div>
+
+            <p class="map-status">
+              Visited: <strong id="visited-count">0</strong>
+              · Avoid: <strong id="avoid-count">0</strong>/10
+              <span id="map-warn" style="color:var(--warn);margin-left:0.5rem"></span>
+            </p>
+            <div class="chip-row" id="visited-chips" aria-label="Visited countries"></div>
+            <div class="chip-row" id="avoid-chips" aria-label="Avoid countries"></div>
+            <p class="muted" style="margin:0.45rem 0 0;font-size:0.78rem">
+              Tip: avoid list blocks Adventure stopovers. Visited is just your passport map — it doesn’t change fares.
+            </p>
+          </div>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+        <script>
+          (function () {
+            var AVOID_MAX = 10;
+            var avoidHidden = document.getElementById("AVOID_COUNTRIES");
+            var visitedHidden = document.getElementById("VISITED_COUNTRIES");
+            var visitedCountEl = document.getElementById("visited-count");
+            var avoidCountEl = document.getElementById("avoid-count");
+            var mapWarn = document.getElementById("map-warn");
+            var visitedChips = document.getElementById("visited-chips");
+            var avoidChips = document.getElementById("avoid-chips");
+            var tip = document.getElementById("map-tip");
+            var svg = d3.select("#country-map");
+            var wrap = document.querySelector(".country-map-wrap");
+
+            var NAME = {
+              {% for code, name in countries %}
+              "{{ code }}": {{ name|tojson }},
+              {% endfor %}
+            };
+
+            function parseList(s) {
+              return (s || "").split(/[,;]/).map(function (x) {
+                return x.trim().toUpperCase();
+              }).filter(function (x) { return x.length === 2; });
+            }
+
+            var visited = new Set(parseList(visitedHidden && visitedHidden.value));
+            var avoid = new Set(parseList(avoidHidden && avoidHidden.value));
+            // Avoid wins if both somehow set
+            avoid.forEach(function (c) { visited.delete(c); });
+
+            var pathsByCode = {};
+
+            function stateOf(code) {
+              if (avoid.has(code)) return "avoid";
+              if (visited.has(code)) return "visited";
+              return "none";
+            }
+
+            function paint(code) {
+              var nodes = pathsByCode[code] || [];
+              var st = stateOf(code);
+              nodes.forEach(function (el) {
+                el.classList.remove("visited", "avoid");
+                if (st === "visited") el.classList.add("visited");
+                if (st === "avoid") el.classList.add("avoid");
+              });
+            }
+
+            function paintAll() {
+              Object.keys(pathsByCode).forEach(paint);
+            }
+
+            function syncHidden() {
+              var v = Array.from(visited).sort();
+              var a = Array.from(avoid).sort();
+              if (visitedHidden) visitedHidden.value = v.join(",");
+              if (avoidHidden) avoidHidden.value = a.join(",");
+              if (visitedCountEl) visitedCountEl.textContent = String(v.length);
+              if (avoidCountEl) avoidCountEl.textContent = String(a.length);
+              if (mapWarn) {
+                mapWarn.textContent = a.length >= AVOID_MAX
+                  ? "Avoid list full — clear one before adding another"
+                  : "";
+              }
+              renderChips();
+            }
+
+            function chipLabel(code) {
+              return (NAME[code] || code) + " (" + code + ")";
+            }
+
+            function renderChips() {
+              function fill(el, set, cls) {
+                if (!el) return;
+                el.innerHTML = "";
+                Array.from(set).sort().forEach(function (code) {
+                  var b = document.createElement("button");
+                  b.type = "button";
+                  b.className = "chip " + cls;
+                  b.textContent = chipLabel(code);
+                  b.title = "Click to advance state";
+                  b.addEventListener("click", function () { cycle(code); });
+                  el.appendChild(b);
+                });
+                if (!set.size) {
+                  var s = document.createElement("span");
+                  s.className = "muted";
+                  s.style.fontSize = "0.8rem";
+                  s.textContent = cls === "visited" ? "No visited countries yet" : "No avoid countries";
+                  el.appendChild(s);
+                }
+              }
+              fill(visitedChips, visited, "visited");
+              fill(avoidChips, avoid, "avoid");
+            }
+
+            function cycle(code) {
+              if (!code || code.length !== 2) return;
+              var st = stateOf(code);
+              if (st === "none") {
+                visited.add(code);
+                avoid.delete(code);
+              } else if (st === "visited") {
+                if (avoid.size >= AVOID_MAX && !avoid.has(code)) {
+                  if (mapWarn) mapWarn.textContent = "Avoid list full (max " + AVOID_MAX + ")";
+                  return;
+                }
+                visited.delete(code);
+                avoid.add(code);
+              } else {
+                avoid.delete(code);
+                visited.delete(code);
+              }
+              paint(code);
+              syncHidden();
+            }
+
+            function showTip(evt, code) {
+              if (!tip || !wrap) return;
+              var st = stateOf(code);
+              var label = st === "visited" ? "visited" : st === "avoid" ? "avoid" : "unmarked";
+              tip.textContent = chipLabel(code) + " · " + label;
+              tip.style.display = "block";
+              var rect = wrap.getBoundingClientRect();
+              var x = evt.clientX - rect.left + 12;
+              var y = evt.clientY - rect.top + 12;
+              tip.style.left = Math.min(x, rect.width - 160) + "px";
+              tip.style.top = Math.min(y, rect.height - 40) + "px";
+            }
+
+            function hideTip() {
+              if (tip) tip.style.display = "none";
+            }
+
+            async function boot() {
+              try {
+                var topo = await d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json");
+                var isoMap = await d3.json("/static/iso_numeric_to_a2.json");
+                var countries = topojson.feature(topo, topo.objects.countries);
+                var projection = d3.geoNaturalEarth1()
+                  .fitExtent([[8, 12], [952, 468]], countries);
+                var path = d3.geoPath(projection);
+
+                svg.selectAll("*").remove();
+                // ocean / sphere
+                svg.append("path")
+                  .datum({ type: "Sphere" })
+                  .attr("d", path)
+                  .attr("fill", "#0c1219")
+                  .attr("stroke", "none");
+
+                // graticule light
+                svg.append("path")
+                  .datum(d3.geoGraticule10())
+                  .attr("d", path)
+                  .attr("fill", "none")
+                  .attr("stroke", "#1a2332")
+                  .attr("stroke-width", 0.4);
+
+                svg.selectAll("path.country")
+                  .data(countries.features)
+                  .join("path")
+                  .attr("class", "country")
+                  .attr("d", path)
+                  .attr("data-code", function (d) {
+                    var id = String(d.id);
+                    return isoMap[id] || isoMap[id.padStart(3, "0")] || "";
+                  })
+                  .each(function (d) {
+                    var id = String(d.id);
+                    var code = isoMap[id] || isoMap[id.padStart(3, "0")] || "";
+                    if (!code) return;
+                    if (!pathsByCode[code]) pathsByCode[code] = [];
+                    pathsByCode[code].push(this);
+                  })
+                  .on("click", function (event, d) {
+                    var id = String(d.id);
+                    var code = isoMap[id] || isoMap[id.padStart(3, "0")] || "";
+                    if (!code) return;
+                    cycle(code);
+                    showTip(event, code);
+                  })
+                  .on("mousemove", function (event, d) {
+                    var id = String(d.id);
+                    var code = isoMap[id] || isoMap[id.padStart(3, "0")] || "";
+                    if (code) showTip(event, code);
+                  })
+                  .on("mouseleave", hideTip);
+
+                paintAll();
+                syncHidden();
+              } catch (err) {
+                console.error(err);
+                if (mapWarn) mapWarn.textContent = "Map failed to load — check network for world-atlas CDN";
+              }
+            }
+
+            boot();
+          })();
+        </script>
+
+        <div class="actions">
+          <button type="submit">Save settings</button>
+          <a class="btn secondary" href="/">Back to search</a>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Quick start</h2>
+      <p class="sub" style="margin-bottom:0.5rem">Fastest path to real prices:</p>
+      <ol class="muted" style="margin:0;padding-left:1.2rem">
+        <li><a href="https://console.x.ai/" target="_blank" rel="noopener">xAI / Grok</a> — API key for “Ask Grok” natural-language search</li>
+        <li><a href="https://developers.amadeus.com/" target="_blank" rel="noopener">Amadeus</a> — free app → Client ID + Secret for live fares</li>
+        <li><a href="https://www.travelpayouts.com/" target="_blank" rel="noopener">Travelpayouts</a> — Profile → API token (instant)</li>
+        <li>Save, then on Search: type a trip in English → <strong>Ask Grok &amp; scan</strong></li>
+      </ol>
+    </div>
+  </main>
+  <footer>Personal use · keys never leave this machine except when calling each provider’s API.</footer>
+{% endblock %}
