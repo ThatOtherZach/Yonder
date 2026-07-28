@@ -1,0 +1,674 @@
+/* Yonder atlas — lounge field map, Escape (sky) / Detour (brass) */
+
+.ymap {
+  --ymap-ocean: #d9e6f2;
+  --ymap-ocean-deep: #c5d8ec;
+  --ymap-land: #efe8dc;
+  --ymap-land-hover: #e2d6c4;
+  --ymap-stroke: #c9bdaa;
+  --ymap-visited: #1a7a52;
+  --ymap-visited-soft: #eef8f2;
+  --ymap-visited-border: #9fd4b8;
+  --ymap-avoid: #b33a3a;
+  --ymap-avoid-soft: #fdf4f4;
+  --ymap-avoid-border: #efc0c0;
+  --ymap-grid: rgba(30, 77, 123, 0.1);
+  --ymap-accent: var(--sky-bright, #2a6fad);
+  --ymap-accent-deep: var(--sky, #1e4d7b);
+  --ymap-accent-mist: var(--sky-mist, #e4eef7);
+  --ymap-text: var(--ink, #141c28);
+  --ymap-muted: var(--muted, #6b7a8c);
+  --ymap-soft: var(--ink-soft, #3d4a5c);
+  position: relative;
+}
+
+/* Detour: warmer parchment chart */
+.ymap.theme-amber {
+  --ymap-ocean: #e8e0d0;
+  --ymap-ocean-deep: #d9cfba;
+  --ymap-land: #f3ead8;
+  --ymap-land-hover: #e6d7bc;
+  --ymap-stroke: #cbb896;
+  --ymap-visited: #1a7a52;
+  --ymap-visited-soft: #eef8f2;
+  --ymap-visited-border: #9fd4b8;
+  --ymap-avoid: #8a6508;
+  --ymap-avoid-soft: var(--brass-mist, #f3e8c8);
+  --ymap-avoid-border: #e5d19a;
+  --ymap-grid: rgba(184, 134, 11, 0.13);
+  --ymap-accent: var(--brass, #b8860b);
+  --ymap-accent-deep: var(--brass-deep, #8a6508);
+  --ymap-accent-mist: var(--brass-mist, #f3e8c8);
+}
+
+/* Outer card — place-book accent rail + lounge card */
+.card.ymap-card,
+.card.ymap-card.theme-phosphor,
+.card.ymap-card.theme-amber {
+  position: relative;
+  overflow: hidden;
+  border-color: var(--line, #d9d0c2) !important;
+  background: var(--white, #fffcf7) !important;
+  box-shadow: var(--shadow, 0 12px 32px rgba(20, 28, 40, 0.07)) !important;
+  padding: clamp(1.05rem, 2.8vw, 1.4rem) clamp(1.1rem, 3vw, 1.45rem) !important;
+  padding-left: clamp(1.25rem, 3.2vw, 1.55rem) !important;
+}
+
+.card.ymap-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--sky-bright, #2a6fad), var(--sky, #1e4d7b));
+  border-radius: 16px 0 0 16px;
+  pointer-events: none;
+}
+
+.card.ymap-card.theme-amber::before {
+  background: linear-gradient(180deg, #d4a017, var(--brass, #b8860b));
+}
+
+/* —— Header —— */
+.ymap-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  margin-bottom: 0.45rem;
+}
+
+.ymap-kicker-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ymap-accent-deep);
+}
+
+.ymap-badge {
+  font-family: var(--font, "Outfit", system-ui, sans-serif);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  color: var(--white, #fffcf7);
+  background: var(--ymap-accent-deep);
+  border: none;
+}
+
+.ymap.theme-amber .ymap-badge {
+  background: linear-gradient(135deg, #d4a017, var(--brass, #b8860b));
+  color: #1a1200;
+}
+
+.ymap-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.15rem;
+  margin-bottom: 0.95rem;
+}
+
+.ymap-head-text { min-width: 0; flex: 1; }
+
+.ymap-head h2 {
+  margin: 0;
+  font-family: var(--font-display, "Instrument Serif", Georgia, serif);
+  font-size: clamp(1.35rem, 3.5vw, 1.55rem);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--ymap-text);
+  line-height: 1.15;
+}
+
+.ymap-head .sub {
+  margin: 0.35rem 0 0;
+  color: var(--ymap-muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  max-width: 40rem;
+}
+
+/* Zoom tools — same pill cluster language as nav-links */
+.ymap-tools {
+  display: inline-flex;
+  gap: 0.15rem;
+  flex-shrink: 0;
+  padding: 0.2rem;
+  background: var(--paper, #f4efe6);
+  border: 1px solid var(--line, #d9d0c2);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(20, 28, 40, 0.05));
+}
+
+.ymap-tools button {
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--ymap-soft);
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.12s, color 0.12s;
+}
+
+.ymap-tools button:hover {
+  background: var(--white, #fffcf7);
+  color: var(--ymap-accent-deep);
+}
+
+.ymap-tools button:active {
+  transform: scale(0.96);
+}
+
+/* —— Map well —— */
+.ymap-frame {
+  position: relative;
+  width: 100%;
+  /* ~50% taller / nearer-square chart frame */
+  aspect-ratio: 0.85 / 1;
+  min-height: 420px;
+  max-height: min(780px, 78vh);
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1.5px solid var(--line, #d9d0c2);
+  background:
+    radial-gradient(ellipse 90% 70% at 50% 45%, transparent 40%, color-mix(in srgb, var(--ymap-ocean-deep) 45%, transparent) 100%),
+    linear-gradient(165deg, var(--ymap-ocean) 0%, var(--ymap-ocean-deep) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 1px 0 rgba(20, 28, 40, 0.03);
+  touch-action: none;
+}
+
+/* Ticket-corner registration marks */
+.ymap-frame::before,
+.ymap-frame::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  z-index: 2;
+  pointer-events: none;
+  border-color: color-mix(in srgb, var(--ymap-accent) 35%, transparent);
+  border-style: solid;
+  opacity: 0.7;
+}
+
+.ymap-frame::before {
+  top: 8px;
+  left: 8px;
+  border-width: 1.5px 0 0 1.5px;
+  border-radius: 2px 0 0 0;
+}
+
+.ymap-frame::after {
+  bottom: 8px;
+  right: 8px;
+  border-width: 0 1.5px 1.5px 0;
+  border-radius: 0 0 2px 0;
+}
+
+.ymap-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  touch-action: none;
+  outline: none;
+}
+
+.ymap-stage:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--ymap-accent) 45%, transparent);
+}
+
+.ymap svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ymap svg:active { cursor: grabbing; }
+
+.ymap path.country {
+  fill: var(--ymap-land);
+  stroke: var(--ymap-stroke);
+  stroke-width: 0.55px;
+  cursor: pointer;
+  transition: fill 0.15s ease, stroke 0.12s ease, filter 0.12s ease;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Land hover only when not visited / avoid / vibe-tinted */
+.ymap path.country:not(.visited):not(.avoid):not(.vibe-preview):hover {
+  fill: var(--ymap-land-hover);
+  stroke: var(--ymap-accent);
+  stroke-width: 0.95px;
+  filter: brightness(1.02);
+}
+
+.ymap path.country.visited {
+  fill: var(--ymap-visited);
+  stroke: color-mix(in srgb, var(--ymap-visited) 65%, #000);
+}
+
+.ymap path.country.visited:hover {
+  fill: color-mix(in srgb, var(--ymap-visited) 88%, #fff);
+  filter: brightness(1.04);
+}
+
+.ymap path.country.avoid {
+  fill: var(--ymap-avoid);
+  stroke: color-mix(in srgb, var(--ymap-avoid) 65%, #000);
+}
+
+.ymap path.country.avoid:hover {
+  fill: color-mix(in srgb, var(--ymap-avoid) 88%, #fff);
+  filter: brightness(1.04);
+}
+
+/* Vibe tint — presentation attr + var; never bleach on hover */
+.ymap path.country.vibe-preview {
+  fill: var(--vibe-fill, #7c3aed) !important;
+  stroke: color-mix(in srgb, var(--vibe-fill, #7c3aed) 45%, #000) !important;
+  stroke-width: 0.65px;
+  filter: none;
+}
+
+.ymap path.country.vibe-preview:hover {
+  fill: var(--vibe-fill, #7c3aed) !important;
+  stroke: color-mix(in srgb, var(--vibe-fill, #7c3aed) 55%, #000) !important;
+  filter: brightness(1.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ymap path.country { transition: none; }
+}
+
+/* legacy class names */
+.ymap path.country.active { fill: var(--ymap-visited); }
+.ymap path.country.other { fill: var(--ymap-avoid); }
+
+/* Tooltip — lounge dark chip */
+.ymap-tip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 9;
+  display: none;
+  font-family: var(--font, "Outfit", system-ui, sans-serif);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--white, #fffcf7);
+  background: var(--ink, #141c28);
+  border: none;
+  box-shadow: 0 10px 28px rgba(20, 28, 40, 0.22);
+  padding: 0.38rem 0.65rem;
+  border-radius: 8px;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+/* —— Below map: stats + stamps —— */
+.ymap-footer {
+  margin-top: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+/* Boarding-pass style stat tiles */
+.ymap-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+@media (max-width: 420px) {
+  .ymap-stats { grid-template-columns: 1fr 1fr; }
+  .ymap-stats .ymap-stat-sync { grid-column: 1 / -1; }
+}
+
+.ymap-stat {
+  padding: 0.55rem 0.7rem;
+  border-radius: 11px;
+  background: var(--paper, #f4efe6);
+  border: 1px solid var(--line, #d9d0c2);
+  min-width: 0;
+}
+
+.ymap-stat .k {
+  display: block;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ymap-muted);
+  margin-bottom: 0.15rem;
+}
+
+.ymap-stat .v {
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ymap-text);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.ymap-stat .v em {
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--ymap-muted);
+}
+
+.ymap-stat-sync .v {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ymap-muted);
+  min-height: 1.35em;
+}
+
+.ymap-save.saving { color: var(--ymap-accent) !important; }
+.ymap-save.saved { color: var(--ymap-visited) !important; }
+.ymap-save.err { color: var(--ymap-avoid) !important; }
+
+.ymap-warn {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--brass-deep, #8a6508);
+  font-weight: 600;
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+/* Legend row */
+.ymap-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.ymap-legend .leg-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--ymap-muted);
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  background: var(--paper, #f4efe6);
+  border: 1px solid var(--line, #d9d0c2);
+}
+
+.ymap-legend .leg-item.hint {
+  background: transparent;
+  border-style: dashed;
+  font-weight: 500;
+}
+
+.ymap-legend .swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.ymap-legend .swatch.none {
+  background: var(--ymap-land);
+  border: 1px solid var(--ymap-stroke);
+}
+
+.ymap-legend .swatch.visited { background: var(--ymap-visited); }
+.ymap-legend .swatch.avoid { background: var(--ymap-avoid); }
+
+/* Stamp drawers */
+.ymap-drawers {
+  display: grid;
+  gap: 0.7rem;
+}
+
+@media (min-width: 640px) {
+  .ymap-drawers {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.85rem;
+  }
+}
+
+.ymap-chip-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  background: var(--paper, #f4efe6);
+  border: 1px dashed var(--line-strong, #c4b8a6);
+  min-height: 4.5rem;
+}
+
+.ymap-chip-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ymap-muted);
+}
+
+.ymap-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-height: 0;
+}
+
+.ymap-chips .chip {
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.28rem 0.58rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--line, #d9d0c2);
+  cursor: pointer;
+  background: var(--white, #fffcf7);
+  color: var(--ymap-text);
+  font-family: inherit;
+  transition: border-color 0.12s, background 0.12s, transform 0.1s;
+  box-shadow: none;
+}
+
+.ymap-chips .chip.visited {
+  border-color: var(--ymap-visited-border);
+  color: var(--ymap-visited);
+  background: var(--ymap-visited-soft);
+  border-style: solid;
+}
+
+.ymap-chips .chip.avoid {
+  border-color: var(--ymap-avoid-border);
+  color: var(--ymap-avoid);
+  background: var(--ymap-avoid-soft);
+}
+
+.ymap-chips .chip:hover {
+  border-color: var(--ymap-accent);
+  transform: translateY(-1px);
+}
+
+.ymap-chips .muted,
+.ymap-chips .empty {
+  font-size: 0.8rem;
+  color: var(--ymap-muted);
+  font-weight: 500;
+}
+
+.ymap-foot {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ymap-muted);
+  line-height: 1.45;
+  padding-top: 0.15rem;
+  border-top: 1px solid var(--line, #d9d0c2);
+  padding-top: 0.75rem;
+}
+
+/* Hide legacy CRT-only classes if any remain */
+.ymap-crt-top,
+.ymap-chrome,
+.ymap-hint,
+.ymap-zoom,
+.ymap-status-row { display: none !important; }
+
+/* ═══ Compact (compose-card embed) ═══ */
+.ymap.ymap-compact {
+  margin: 0;
+}
+
+.ymap-compact-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.ymap-compact-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+  min-width: 0;
+}
+
+.ymap-compact-k {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ymap-accent-deep);
+}
+
+.ymap-compact-hint {
+  font-size: 0.78rem;
+  color: var(--ymap-muted);
+  font-weight: 500;
+}
+
+.ymap.ymap-compact .ymap-tools {
+  padding: 0.12rem;
+}
+
+.ymap.ymap-compact .ymap-tools button {
+  width: 1.95rem;
+  height: 1.95rem;
+  font-size: 0.95rem;
+}
+
+.ymap.ymap-compact .ymap-frame {
+  border-radius: 12px;
+  aspect-ratio: 0.85 / 1;
+  min-height: 390px;
+  max-height: min(660px, 72vh);
+}
+
+.ymap-compact-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.65rem;
+  margin-top: 0.55rem;
+  font-size: 0.84rem;
+  color: var(--ymap-muted);
+}
+
+.ymap-drawer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--line, #d9d0c2);
+  background: var(--paper, #f4efe6);
+  color: var(--ymap-text);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.ymap-drawer-toggle:hover {
+  border-color: var(--ymap-accent);
+  color: var(--ymap-accent-deep);
+  filter: none;
+}
+
+.ymap-drawer-toggle .ymap-counts strong {
+  font-variant-numeric: tabular-nums;
+  color: var(--ymap-text);
+}
+
+.ymap-drawer-toggle .ymap-counts em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--ymap-muted);
+  font-size: 0.9em;
+}
+
+.ymap-drawer-caret {
+  font-size: 0.7rem;
+  opacity: 0.7;
+  transition: transform 0.15s;
+}
+
+.ymap-drawer-toggle.is-open .ymap-drawer-caret {
+  transform: rotate(180deg);
+}
+
+.ymap.ymap-compact .ymap-save {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.ymap.ymap-compact .ymap-drawer {
+  margin-top: 0.55rem;
+}
+
+.ymap.ymap-compact .ymap-drawers {
+  gap: 0.5rem;
+}
+
+.ymap.ymap-compact .ymap-chip-block {
+  min-height: 0;
+  padding: 0.55rem 0.65rem;
+}
+
+/* Inside compose card: no double card chrome on map host */
+.compose-card .ymap.ymap-compact {
+  /* compose card owns the rail/border */
+}
+
+.compose-atlas {
+  margin: 0.85rem 0 0;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--line, #d9d0c2);
+}

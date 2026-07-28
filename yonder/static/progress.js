@@ -354,6 +354,14 @@
             throw new Error("Server error " + res.status + (t ? ": " + t.slice(0, 200) : ""));
           });
         }
+        // Prefer real navigation so URL/query (flash) and scripts load cleanly
+        if (res.redirected && res.url) {
+          progress.finish();
+          setTimeout(function () {
+            window.location.href = res.url;
+          }, 280);
+          return;
+        }
         return res.text().then(function (html) {
           progress.finish();
           setTimeout(function () {

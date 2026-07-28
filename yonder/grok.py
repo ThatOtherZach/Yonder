@@ -161,17 +161,18 @@ class GrokClient:
             )
 
         system = (
-            "You are a sharp, concise travel co-pilot helping someone pick among real flight price "
-            "snapshots from multiple APIs. Be practical, slightly opinionated, not salesy. "
+            "Travel co-pilot: Rick Steves practicality + Bourdain appetite + Thompson bite — "
+            "like three of them at a bar, one beer in. Short, sharp, never corporate. "
+            "Pick among REAL flight price snapshots only; do not invent fares. "
             "Prices may be cached/sandbox — say so if notes mention that. "
-            "Respond with STRICT JSON only (no fences):\n"
+            "STRICT JSON only (no fences):\n"
             "{"
             '"headline":"short verdict",'
             '"pick_index":1,'
             '"pick_reason":"why this row",'
             '"tradeoffs":["..."],'
             '"tips":["..."],'
-            '"raw_markdown":"2-4 short paragraphs of advice in markdown"'
+            '"raw_markdown":"2 short paragraphs max"'
             "}"
         )
         user = json.dumps(
@@ -218,6 +219,48 @@ class GrokClient:
             analysis.raw_markdown = "\n\n".join(parts)
         return analysis
 
+    async def place_brief(
+        self,
+        *,
+        iata: str | None = None,
+        country: str | None = None,
+        city: str | None = None,
+        role: str = "destination",
+    ) -> dict[str, Any]:
+        """Tiny culture card for Place Book. Keep tokens low."""
+        system = (
+            "You write micro travel notes for a modern airport-app encyclopedia. "
+            "Voice: Rick Steves practicality, Bourdain hunger, Hunter S. Thompson heat — "
+            "one beer with all three. No filler, no marketing. STRICT JSON only:\n"
+            '{"title":"Name","subtitle":"≤8 words","facts":["≤12 words","…"],'
+            '"culture":"1-2 sentences","food":"1 sentence","vibe":"1 sentence",'
+            '"caution":"optional 1 sentence or empty","era_note":"one cheeky closer ≤12 words"}'
+        )
+        user = json.dumps(
+            {
+                "role": role,
+                "iata": (iata or "").upper() or None,
+                "country_iso2": (country or "").upper() or None,
+                "city": city or None,
+                "max_facts": 3,
+            },
+            default=str,
+        )
+        text = await self._chat(system, user, temperature=0.45)
+        try:
+            return _extract_json(text)
+        except Exception:
+            return {
+                "title": city or iata or "Somewhere",
+                "subtitle": "Worth a look",
+                "facts": [],
+                "culture": text.strip()[:280] if text else "",
+                "food": "",
+                "vibe": "",
+                "caution": "",
+                "era_note": "Trust your gut; recheck the fare.",
+            }
+
     def to_search_query(self, trip: ParsedTrip, max_results: int = 25) -> SearchQuery:
         return SearchQuery(
             origin=trip.origin,
@@ -245,28 +288,38 @@ class GrokClient:
         """
         today = today or date.today()
         avoid = form.get("avoid_countries") or []
+        visited = form.get("visited_countries") or []
         system = (
-            "You are a flight API translator + adventure detour planner. "
-            "Turn messy human travel text into CLEAN structured data for flight APIs, "
-            "and propose intentional MULTI-DAY stopover cities (not 90-min layovers). "
+            "You are a flight API translator + adventure trip planner. "
+            "Turn messy human travel text into CLEAN structured data for flight APIs. "
             "Return STRICT JSON only (no markdown):\n"
             "{"
-            '"origin":"YYZ","destination":"YVR","depart_date":"YYYY-MM-DD",'
+            '"trip_kind":"detour|getaway",'
+            '"origin":"YVR","destination":"YVR",'
+            '"depart_date":"YYYY-MM-DD",'
             '"arrive_by":null,"adults":1,"currency":"CAD","cabin":"economy",'
             '"min_stop_days":3,"max_stop_days":5,"vibe":"adventure",'
             '"intent_summary":"one line",'
-            '"candidates":[{"iata":"ZRH","city":"Zurich","country":"CH",'
-            '"stay_days":4,"why":"...","vibe_tags":["alps"]}]'
+            '"candidates":[{"iata":"PDX","city":"Portland","country":"US",'
+            '"stay_days":3,"why":"...","vibe_tags":["city","cheap"]}]'
             "}\n"
-            "Rules:\n"
-            "- IATA 3-letter codes only for airports\n"
-            "- Prefer form fields when provided; fill gaps from the free-text prompt\n"
+            "trip_kind rules (IMPORTANT):\n"
+            "- getaway: user wants OUT OF a home base for a few days with NO named second city "
+            "(e.g. 'get out of Vancouver', 'somewhere I haven't been', 'cheap escape', "
+            "'not really anywhere specific'). Set origin AND destination to the SAME home IATA "
+            "(round-trip home→X→home). candidates are DESTINATIONS (the X places), not mid-route stops.\n"
+            "- detour: user named two cities (A to B) and wants multi-day stopovers en route. "
+            "origin≠destination. candidates are mid-route stops.\n"
+            "Other rules:\n"
+            "- IATA 3-letter codes only\n"
+            "- Prefer form fields when provided; fill gaps from free-text\n"
             "- Resolve relative dates from today\n"
-            "- currency MUST match form/default (e.g. CAD not USD unless asked)\n"
-            "- NEVER propose stopovers in avoid_countries (ISO2 list)\n"
-            "- Never use origin/destination as stopovers\n"
-            "- Exactly max_candidates creative but bookable detours\n"
-            "- Mix hub / food / nature when vibe allows\n"
+            "- currency MUST match form/default\n"
+            "- NEVER propose places in avoid_countries (ISO2)\n"
+            "- If user says they haven't been / new places: NEVER propose visited_countries (ISO2)\n"
+            "- Never use home/origin as a candidate\n"
+            "- Exactly max_candidates creative but bookable places\n"
+            "- For cheap/low-hassle getaways prefer short-haul or easy hub cities\n"
             "- country = ISO2 for each candidate"
         )
         user = json.dumps(
@@ -274,6 +327,7 @@ class GrokClient:
                 "today": today.isoformat(),
                 "default_currency": default_currency,
                 "avoid_countries": avoid,
+                "visited_countries": visited,
                 "max_candidates": form.get("max_candidates", 5),
                 "form": {
                     "origin": form.get("origin"),
@@ -286,6 +340,10 @@ class GrokClient:
                     "vibe": form.get("vibe"),
                 },
                 "user_prompt": prompt.strip(),
+                "hint": (
+                    "If only a home city is named (e.g. Vancouver) and destination is open, "
+                    "use trip_kind=getaway with origin=destination=that city's main airport."
+                ),
             },
             default=str,
         )
@@ -300,10 +358,33 @@ class GrokClient:
             currency = str(form["currency"]).upper()
 
         try:
-            origin = str(payload.get("origin") or form.get("origin") or "YYZ").upper()
+            origin = str(payload.get("origin") or form.get("origin") or "").upper()
             destination = str(
-                payload.get("destination") or form.get("destination") or "YVR"
+                payload.get("destination") or form.get("destination") or ""
             ).upper()
+            trip_kind = str(payload.get("trip_kind") or "detour").lower().strip()
+            # Heuristic: open-ended escape from one named home city
+            if not origin:
+                origin = _guess_home_iata(prompt) or "YVR"
+            if trip_kind in ("getaway", "round_trip", "roundtrip", "escape", "from_home"):
+                if not destination or destination == origin:
+                    destination = origin
+                else:
+                    # Model put a sample dest — still treat as getaway home base
+                    destination = origin
+            elif not destination:
+                # Incomplete O/D: if prompt only anchors home, fall into getaway
+                home = _guess_home_iata(prompt)
+                if home and (not origin or origin == home):
+                    origin = home
+                    destination = home
+                    trip_kind = "getaway"
+                else:
+                    destination = origin or "YVR"
+                    origin = origin or destination
+            if origin == destination:
+                trip_kind = "getaway"
+
             depart_raw = payload.get("depart_date") or form.get("depart")
             req = AdventureRequest(
                 origin=origin,
@@ -335,6 +416,9 @@ class GrokClient:
                 vibe=str(form.get("vibe") or payload.get("vibe") or "adventure"),
                 prompt=prompt.strip(),
                 avoid_countries=list(avoid),
+                visited_countries=list(visited),
+                trip_kind=trip_kind,
+                include_direct=trip_kind != "getaway",
             )
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(f"Invalid adventure translate: {exc}") from exc
@@ -345,13 +429,22 @@ class GrokClient:
         raw = payload.get("candidates") or []
         ideas: list[StopoverIdea] = []
         avoid_set = {a.upper() for a in avoid}
+        visited_set = {v.upper() for v in visited}
+        home = {req.origin.upper(), req.destination.upper()}
         for row in raw:
             try:
                 code = str(row.get("iata") or "").upper()
-                if len(code) != 3 or code in (req.origin, req.destination):
+                if len(code) != 3 or code in home:
                     continue
                 cc = str(row.get("country") or "").upper() or None
                 if cc and cc in avoid_set:
+                    continue
+                if (
+                    req.trip_kind == "getaway"
+                    and visited_set
+                    and cc
+                    and cc in visited_set
+                ):
                     continue
                 stay = int(row.get("stay_days") or req.min_stop_days)
                 stay = max(req.min_stop_days, min(req.max_stop_days, stay))
@@ -533,6 +626,43 @@ class GrokClient:
             default=str,
         )
         return (await self._chat(system, user, temperature=0.5)).strip()
+
+
+# Cheap city→IATA hints for open-ended getaways (no extra Grok tokens)
+_HOME_CITY_IATA: list[tuple[str, str]] = [
+    ("vancouver", "YVR"),
+    ("toronto", "YYZ"),
+    ("montreal", "YUL"),
+    ("calgary", "YYC"),
+    ("ottawa", "YOW"),
+    ("edmonton", "YEG"),
+    ("winnipeg", "YWG"),
+    ("victoria", "YYJ"),
+    ("seattle", "SEA"),
+    ("portland", "PDX"),
+    ("los angeles", "LAX"),
+    ("san francisco", "SFO"),
+    ("new york", "JFK"),
+    ("nyc", "JFK"),
+    ("london", "LHR"),
+    ("paris", "CDG"),
+]
+
+
+def _guess_home_iata(prompt: str) -> str | None:
+    """Best-effort home airport from free text (get out of Vancouver → YVR)."""
+    p = (prompt or "").lower()
+    # Prefer phrases like "out of Vancouver" / "from Vancouver"
+    for city, iata in _HOME_CITY_IATA:
+        if re.search(
+            rf"\b(?:out of|from|leave|leaving|escape|based in|live in|in)\s+{re.escape(city)}\b",
+            p,
+        ):
+            return iata
+    for city, iata in _HOME_CITY_IATA:
+        if re.search(rf"\b{re.escape(city)}\b", p):
+            return iata
+    return None
 
 
 def _extract_json(text: str) -> dict[str, Any]:

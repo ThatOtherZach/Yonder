@@ -1,8 +1,24 @@
 # Yonder
 
-**Go yonder.** A vibey personal travel planner — multi-provider flight fares, adventure stopovers, saved itineraries, and deal history. Built for explorers who want signals, not sales pitches.
+**Go yonder.** A vibey personal travel planner — multi-provider flight signals, mandatory trip vibes, passport map stamps, Detour stopovers, boarding-pass results, place notes, and deal history.
 
 Not a booking engine. Not for commercial resale. Scan free/cheap pricing APIs in parallel, compare, then book where you trust.
+
+## Modes
+
+| Mode | What it does |
+|------|----------------|
+| **Escape** | Plain-English point A→B. Grok parses the trip, providers return fare signals, Grok ranks a pick, optional field note on the destination. |
+| **Detour** | Multi-day stopovers or open getaways (“get out of town”). Two tickets, one story — price signals first; confirm before you buy. |
+
+Both modes share the same compose UI:
+
+1. **Prompt** — free text  
+2. **Vibe slider** (required) — rainbow hue bar → named vibe (Neon, Food, Chaos, …); random vibe on each fresh page load  
+3. **Go button** — sits beside the text box and tints to the current vibe color  
+4. **Passport map** — click countries: unmarked → visited → avoid (max 10 avoid). Autosaves. Open countries tint with the active vibe  
+
+Results use **boarding-pass** cards (shared styling on Escape, Detour, and Saved).
 
 ## How pricing works (honest)
 
@@ -49,9 +65,11 @@ pip install -e .
 # Demo with zero keys
 python -m yonder.cli search YVR NRT 2026-09-15 --mock
 
-# Or local web UI
+# Local web UI (Escape + Detour)
 python -m yonder.cli serve
 # → http://127.0.0.1:8787
+# → http://127.0.0.1:8787/?mode=escape
+# → http://127.0.0.1:8787/?mode=detour
 ```
 
 ## Add real providers
@@ -98,9 +116,47 @@ Use `AMADEUS_ENV=production` only after you enable production in the Amadeus por
 3. Optional: `XAI_MODEL=grok-4.5`
 
 Grok does **not** invent fares. It:
-1. Parses plain English → origin/dest/dates
+
+1. Parses plain English → origin/dest/dates (and honors **Trip vibe: …** from the mandatory vibe slider)
 2. Runs your real providers
 3. Writes a short pick + tradeoffs over the merged results
+
+On Detour, Grok can invent stopover candidates; pricing still comes from providers (or Test Data when `TESTING=true`).
+
+## Web UI
+
+| Path | Purpose |
+|------|---------|
+| `/` or `/?mode=escape` | Escape — NL flight hunt |
+| `/?mode=detour` | Detour — stopovers / getaways |
+| `/saved` | Saved boarding passes |
+| `/settings` | API keys, visited/avoid defaults, Test Data flag |
+| `GET /adventure` | Redirects to `/?mode=detour` |
+| `POST /ask` | Escape search |
+| `POST /adventure` | Detour planning |
+| `POST /api/travel-map` | Autosave visited/avoid from the passport map |
+
+### Compose field (shared Escape / Detour)
+
+- One card: **textarea** + vibe-colored **Go** button on the right  
+- Under the text: **rainbow hue slider** + vibe **name** row (where a hex field would be)  
+- Vibe is **required**; a random vibe is chosen on each cold load (preserved after submit if the form re-renders with that value)  
+- Detour also needs **depart** date (below the map); stop-day knobs live under **More options**
+
+### Passport map
+
+- Zoom / pan (wheel, +/−, ↺)  
+- Click cycle: **open → visited → avoid → clear**  
+- Avoid list capped at **10**  
+- While a vibe is set, **open** countries tint to the vibe color; visited/avoid paints stay green/red  
+
+### Testing
+
+```env
+TESTING=true
+```
+
+Shows **Test Data** checkboxes on Escape/Detour so you can demo without live keys.
 
 ## CLI
 
@@ -116,31 +172,49 @@ python -m yonder.cli search YVR NRT 2026-09-15 -r 2026-09-28 --currency CAD --no
 
 # Only specific providers
 python -m yonder.cli search YYZ CDG 2026-11-05 --only amadeus,travelpayouts
+
+# Local server
+python -m yonder.cli serve --host 127.0.0.1 --port 8787
 ```
 
 ## HTTP API (local)
 
 ```
-GET /api/providers
-GET /api/search?origin=YVR&destination=NRT&depart=2026-09-15&return_date=2026-09-28&currency=CAD&mock=true
+GET  /api/providers
+GET  /api/search?origin=YVR&destination=NRT&depart=2026-09-15&return_date=2026-09-28&currency=CAD&mock=true
+POST /api/travel-map   # JSON { "visited": ["CA","JP"], "avoid": ["RU"] }
+POST /api/saved        # save itinerary
 ```
 
 ## Architecture
 
 ```
 yonder/
-  types.py          # SearchQuery, FlightOffer (normalized)
-  engine.py         # parallel fan-out + merge/sort
-  adventure.py      # stopover / multi-leg ideas
+  types.py              # SearchQuery, FlightOffer (normalized)
+  engine.py             # parallel fan-out + merge/sort
+  adventure.py          # Detour stopover / getaway planning
+  encyclopedia.py       # short place briefs (field notes)
+  grok.py               # NL parse, analysis, detour invent
+  web.py                # FastAPI UI + JSON
+  cli.py                # Typer CLI (`yonder`)
+  static/
+    country_map.js      # passport map (d3 + topojson)
+    country_map.css
+    vibe_slider.js      # mandatory hue vibe control
+    progress.js         # search progress overlay
+    iso_numeric_to_a2.json
+  templates/
+    base.html           # lounge chrome, boarding-pass CSS
+    index.html          # Escape + Detour compose + results
+    saved.html
+    settings.html
   providers/
-    base.py         # adapter interface
+    base.py             # adapter interface
     amadeus.py
     travelpayouts.py
     duffel.py
     serpapi_google.py
     mock.py
-  cli.py            # Typer CLI (`yonder`)
-  web.py            # FastAPI UI + JSON
 ```
 
 Every provider implements:
@@ -151,16 +225,22 @@ async def search(query: SearchQuery) -> list[FlightOffer]
 
 Add a new source by dropping a file in `providers/` and registering it in `providers/__init__.py`.
 
+## Local data files (gitignored)
+
+| File | Purpose |
+|------|---------|
+| `price_history.db` | Fare signal history / deal labels |
+| `saved_itineraries.db` | Saved trips |
+| `daily_costs_cache.db` | Cost-of-stay cache |
+| `.env` | Your keys (never commit) |
+
 ## What “complete” would look like later
 
-If you want to grow this past personal scanning:
-
-1. **SQLite cache** of historical prices per route/date
-2. **Price alerts** (email/Telegram when under threshold)
-3. **Flexible date matrix** (±3 days / whole month)
-4. **Airport metro groups** (YVR/SEA, NYC area, etc.)
-5. **Partner deep-links** for booking (Travelpayouts marker, etc.)
-6. More adapters if you get partner access (Skyscanner, Kiwi)
+1. **Price alerts** (email/Telegram when under threshold)  
+2. **Flexible date matrix** (±3 days / whole month)  
+3. **Airport metro groups** (YVR/SEA, NYC area, etc.)  
+4. **Partner deep-links** for booking (Travelpayouts marker, etc.)  
+5. More adapters if you get partner access (Skyscanner, Kiwi)  
 
 ## Legal / ethics
 
@@ -168,6 +248,7 @@ If you want to grow this past personal scanning:
 - Prefer official APIs over scraping.
 - Personal use only unless you have commercial agreements.
 - Prices are snapshots — always re-check on the provider before booking.
+- Stopovers = **two tickets**. Signals aren’t tickets.
 
 ## License
 

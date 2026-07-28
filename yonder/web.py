@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -71,30 +71,47 @@ def _base_ctx(settings=None) -> dict:
     return {
         "providers": settings.configured_providers(),
         "grok_ready": settings.grok_ready(),
+        "testing": bool(settings.testing),
         "countries": COUNTRIES,
         "avoid_defaults": avoid_codes,
         "visited_defaults": visited_codes,
         "budgets": budgets_snapshot(settings),
         "history_count": count_samples(),
         "saved_count": count_saved(),
-        # For progress.js fun lines (names only — no secrets)
+        # For progress.js fun lines + CRT maps (names only — no secrets)
         "travel_ctx": {
             "avoid": avoid_codes,
             "visited": visited_codes,
             "avoid_names": [country_label(c) for c in avoid_codes],
             "visited_names": [country_label(c) for c in visited_codes],
+            "country_names": {code: name for code, name in COUNTRIES},
         },
     }
+
+
+def _home_mode(raw: str | None) -> str:
+    """UI modes: escape (point-to-point hunt) | detour (multi-leg / getaway).
+
+    Accepts legacy query values: flights, search, adventures, adventure, adv.
+    """
+    m = (raw or "escape").strip().lower()
+    if m in ("detour", "detours", "adventures", "adventure", "adv"):
+        return "detour"
+    # escape, flights, search, go, …
+    return "escape"
 
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
     settings = reload_settings()
+    mode = _home_mode(request.query_params.get("mode"))
+    adv_form = _adventure_form_defaults(settings)
     return templates.TemplateResponse(
         request,
         "index.html",
         {
-            "nav": "search",
+            "nav": "home",
+            "mode": mode,
             **_base_ctx(settings),
             "result": None,
             "error": None,
@@ -102,7 +119,12 @@ async def home(request: Request) -> HTMLResponse:
             "parsed": None,
             "analysis": None,
             "dest_theme": None,
-            "form": {
+            "place_book": None,
+            "place_books": {},
+            "trip_meta": None,
+            "form": adv_form
+            if mode == "detour"
+            else {
                 "origin": "YVR",
                 "destination": "NRT",
                 "depart": "",
@@ -110,8 +132,8 @@ async def home(request: Request) -> HTMLResponse:
                 "adults": 1,
                 "currency": settings.default_currency,
                 "nonstop": False,
-                "mock": not bool(settings.configured_providers()),
-                "use_grok": True,
+                "mock": bool(settings.testing)
+                and not bool(settings.configured_providers()),
             },
         },
     )
@@ -208,18 +230,27 @@ async def ask_grok(request: Request) -> HTMLResponse:
     if request.method == "GET":
         ask = str(request.query_params.get("ask") or "").strip()
         mock = str(request.query_params.get("mock") or "") in ("true", "on", "1")
-        use_grok = str(request.query_params.get("use_grok") or "true") in (
-            "true",
-            "on",
-            "1",
-        )
+        currency_pref = str(
+            request.query_params.get("currency") or settings.default_currency or "CAD"
+        ).strip().upper()[:3]
+        vibe = str(request.query_params.get("vibe") or "").strip().lower()
     else:
         form_data = await request.form()
         ask = str(form_data.get("ask") or "").strip()
         mock = str(form_data.get("mock") or "") in ("true", "on", "1")
-        use_grok = str(form_data.get("use_grok") or "true") in ("true", "on", "1")
+        currency_pref = str(
+            form_data.get("currency") or settings.default_currency or "CAD"
+        ).strip().upper()[:3]
+        vibe = str(form_data.get("vibe") or "").strip().lower()
 
-    # default mock if no providers
+    if not currency_pref.isalpha() or len(currency_pref) != 3:
+        currency_pref = (settings.default_currency or "CAD").upper()[:3]
+    if not vibe or len(vibe) > 32 or not vibe.replace("-", "").replace("_", "").isalnum():
+        vibe = "adventure"
+
+    # Test Data (mock) only when TESTING=true; always allow mock if no live keys
+    if not settings.testing:
+        mock = False
     if not settings.configured_providers():
         mock = True
 
@@ -229,11 +260,13 @@ async def ask_grok(request: Request) -> HTMLResponse:
         "depart": "",
         "return_date": "",
         "adults": 1,
-        "currency": settings.default_currency,
+        "currency": currency_pref,
         "nonstop": False,
         "mock": mock,
-        "use_grok": use_grok,
+        "vibe": vibe,
     }
+    # Vibe is mandatory — always fold into Grok prompt
+    ask_for_grok = f"{ask}\n\nTrip vibe: {vibe}."
 
     if not ask:
         # GET /ask with no query → bounce home
@@ -243,7 +276,8 @@ async def ask_grok(request: Request) -> HTMLResponse:
             request,
             "index.html",
             {
-                "nav": "search",
+                "nav": "home",
+                "mode": "escape",
                 **_base_ctx(settings),
                 "result": None,
                 "error": "Type a trip in plain English first.",
@@ -251,6 +285,8 @@ async def ask_grok(request: Request) -> HTMLResponse:
                 "parsed": None,
                 "analysis": None,
                 "form": empty_form,
+                "place_book": None,
+                "place_books": {},
             },
             status_code=400,
         )
@@ -260,7 +296,8 @@ async def ask_grok(request: Request) -> HTMLResponse:
             request,
             "index.html",
             {
-                "nav": "search",
+                "nav": "home",
+                "mode": "escape",
                 **_base_ctx(settings),
                 "result": None,
                 "error": "Grok needs an xAI API key. Add XAI_API_KEY in Settings → console.x.ai, then Save.",
@@ -268,6 +305,8 @@ async def ask_grok(request: Request) -> HTMLResponse:
                 "parsed": None,
                 "analysis": None,
                 "form": empty_form,
+                "place_book": None,
+                "place_books": {},
             },
             status_code=400,
         )
@@ -275,19 +314,40 @@ async def ask_grok(request: Request) -> HTMLResponse:
     try:
         async with GrokClient(settings) as grok:
             trip = await grok.parse_natural_language(
-                ask,
-                default_currency=settings.default_currency,
+                ask_for_grok,
+                default_currency=currency_pref,
             )
+            # UI currency picker wins over anything Grok inferred
+            trip = trip.model_copy(update={"currency": currency_pref})
             query = grok.to_search_query(trip)
+            query = query.model_copy(update={"currency": currency_pref})
             include_mock = mock or not settings.configured_providers()
             result = await search_flights(
                 query, settings=settings, include_mock=include_mock
             )
+            # Always analyze when Grok is ready and we have offers
             analysis = None
-            if use_grok and result.offers:
+            if result.offers:
                 analysis = await grok.analyze_results(
-                    prompt=ask, query=query, result=result
+                    prompt=ask_for_grok, query=query, result=result
                 )
+
+        place_book = None
+        try:
+            from yonder.countries import country_for_iata
+            from yonder.encyclopedia import get_place_brief
+
+            place_book_obj = await get_place_brief(
+                settings,
+                iata=query.destination,
+                country=country_for_iata(query.destination),
+                city=None,
+                role="destination",
+            )
+            if place_book_obj:
+                place_book = place_book_obj.to_dict()
+        except Exception:
+            place_book = None
 
         form = {
             "origin": query.origin,
@@ -295,16 +355,17 @@ async def ask_grok(request: Request) -> HTMLResponse:
             "depart": query.depart_date.isoformat(),
             "return_date": query.return_date.isoformat() if query.return_date else "",
             "adults": query.adults,
-            "currency": query.currency,
+            "currency": currency_pref,
             "nonstop": query.nonstop_only,
             "mock": mock,
-            "use_grok": use_grok,
+            "vibe": vibe,
         }
         return templates.TemplateResponse(
             request,
             "index.html",
             {
-                "nav": "search",
+                "nav": "home",
+                "mode": "escape",
                 **_base_ctx(settings),
                 "result": result,
                 "error": None,
@@ -313,6 +374,8 @@ async def ask_grok(request: Request) -> HTMLResponse:
                 "analysis": analysis,
                 "form": form,
                 "dest_theme": _dest_theme(query.destination),
+                "place_book": place_book,
+                "place_books": {},
             },
         )
     except Exception as exc:  # noqa: BLE001
@@ -320,7 +383,8 @@ async def ask_grok(request: Request) -> HTMLResponse:
             request,
             "index.html",
             {
-                "nav": "search",
+                "nav": "home",
+                "mode": "escape",
                 **_base_ctx(settings),
                 "result": None,
                 "error": f"Grok search failed: {exc}",
@@ -329,6 +393,8 @@ async def ask_grok(request: Request) -> HTMLResponse:
                 "analysis": None,
                 "form": empty_form,
                 "dest_theme": None,
+                "place_book": None,
+                "place_books": {},
             },
             status_code=400,
         )
@@ -349,26 +415,16 @@ def _adventure_form_defaults(settings) -> dict:
         "max_candidates": 5,
         "currency": settings.default_currency or "CAD",
         "vibe": "adventure",
-        "mock": not bool(settings.configured_providers()),
+        "mock": bool(settings.testing)
+        and not bool(settings.configured_providers()),
         "use_grok": True,
         "grok_story": False,
     }
 
 
 @app.get("/adventure", response_class=HTMLResponse)
-async def adventure_home(request: Request) -> HTMLResponse:
-    settings = reload_settings()
-    return templates.TemplateResponse(
-        request,
-        "adventure.html",
-        {
-            "nav": "adventure",
-            **_base_ctx(settings),
-            "result": None,
-            "error": None,
-            "form": _adventure_form_defaults(settings),
-        },
-    )
+async def adventure_home(request: Request) -> RedirectResponse:
+    return RedirectResponse(url="/?mode=detour", status_code=302)
 
 
 @app.post("/adventure", response_class=HTMLResponse)
@@ -385,11 +441,16 @@ async def adventure_run(request: Request) -> HTMLResponse:
     depart = _s("depart", defaults["depart"])
     arrive_by = _s("arrive_by")
     currency = (settings.default_currency or "CAD").upper()
-    vibe = _s("vibe", "adventure")
+    vibe = _s("vibe", "adventure").lower()
+    if not vibe or len(vibe) > 32 or not vibe.replace("-", "").replace("_", "").isalnum():
+        vibe = "adventure"
     mock = str(form_data.get("mock") or "") in ("true", "on", "1")
+    if not settings.testing:
+        mock = False
     use_grok = str(form_data.get("use_grok") or "") in ("true", "on", "1")
     grok_story = str(form_data.get("grok_story") or "") in ("true", "on", "1")
     avoid = settings.avoid_country_list()
+    visited = settings.visited_country_list()
     try:
         min_stop = int(_s("min_stop_days", "3"))
         max_stop = int(_s("max_stop_days", "5"))
@@ -426,7 +487,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
         ideas: list = []
         req: AdventureRequest | None = None
 
-        # ONE Grok call: cities from description + detour list
+        # ONE Grok call: cities from description + detour/getaway list
         if use_grok and settings.grok_ready():
             async with GrokClient(settings) as grok:
                 try:
@@ -443,10 +504,14 @@ async def adventure_run(request: Request) -> HTMLResponse:
                             "currency": currency,
                             "vibe": vibe,
                             "avoid_countries": avoid,
+                            "visited_countries": visited,
                         },
                         default_currency=currency,
                     )
                     # Form dates / knobs win; O/D stay from Grok description
+                    trip_kind = (req.trip_kind or "detour").lower()
+                    if req.origin == req.destination:
+                        trip_kind = "getaway"
                     req = req.model_copy(
                         update={
                             "depart_date": date.fromisoformat(depart),
@@ -458,8 +523,11 @@ async def adventure_run(request: Request) -> HTMLResponse:
                             "max_stop_days": max_stop,
                             "max_candidates": max_cand,
                             "avoid_countries": avoid,
+                            "visited_countries": visited,
                             "vibe": vibe or req.vibe,
                             "prompt": prompt,
+                            "trip_kind": trip_kind,
+                            "include_direct": trip_kind != "getaway",
                         }
                     )
                 except Exception as exc:  # noqa: BLE001
@@ -475,11 +543,15 @@ async def adventure_run(request: Request) -> HTMLResponse:
         assert req is not None
         if len(req.origin) != 3 or len(req.destination) != 3:
             raise ValueError(
-                "Couldn’t resolve airports from the description — try naming cities clearly "
-                "(e.g. “Toronto to Vancouver”)."
+                "Couldn’t resolve airports from the description — try naming a home city "
+                "(e.g. “get out of Vancouver for a few days”) or a route "
+                "(“Toronto to Vancouver”)."
             )
+        # Same O/D is valid getaway: home → somewhere new → home
         if req.origin == req.destination:
-            raise ValueError("Origin and destination look the same — rephrase the trip.")
+            req = req.model_copy(
+                update={"trip_kind": "getaway", "include_direct": False}
+            )
 
         if not ideas:
             ideas = seed_ideas(req)
@@ -525,29 +597,56 @@ async def adventure_run(request: Request) -> HTMLResponse:
             "origin": result.request.origin,
             "destination": result.request.destination,
         }
+        place_books: dict = {}
+        try:
+            from yonder.encyclopedia import briefs_for_stops
+
+            stops = [
+                (it.stop_iata, it.theme_country, it.stop_city)
+                for it in result.itineraries
+                if it.stop_iata
+            ]
+            place_books = await briefs_for_stops(settings, stops, max_n=4)
+        except Exception:
+            place_books = {}
+
         return templates.TemplateResponse(
             request,
-            "adventure.html",
+            "index.html",
             {
-                "nav": "adventure",
+                "nav": "home",
+                "mode": "detour",
                 **_base_ctx(settings),
                 "result": result,
                 "error": None,
                 "form": form,
                 "trip_meta": trip_meta,
+                "place_book": None,
+                "place_books": place_books,
+                "ask": "",
+                "parsed": None,
+                "analysis": None,
+                "dest_theme": None,
             },
         )
     except Exception as exc:  # noqa: BLE001
         return templates.TemplateResponse(
             request,
-            "adventure.html",
+            "index.html",
             {
-                "nav": "adventure",
+                "nav": "home",
+                "mode": "detour",
                 **_base_ctx(settings),
                 "result": None,
                 "error": str(exc),
                 "form": form,
                 "trip_meta": None,
+                "place_book": None,
+                "place_books": {},
+                "ask": "",
+                "parsed": None,
+                "analysis": None,
+                "dest_theme": None,
             },
             status_code=400,
         )
@@ -641,6 +740,8 @@ async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
 
     form_data = await request.form()
     mock = str(form_data.get("mock") or "") in ("true", "on", "1")
+    if not settings.testing:
+        mock = False
     if not settings.configured_providers():
         mock = True
 
@@ -651,7 +752,7 @@ async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
             cabin = CabinClass(cabin_raw)
         except ValueError:
             cabin = CabinClass.ECONOMY
-        refreshed = await reprice_itinerary(
+        refreshed, rmeta = await reprice_itinerary(
             it,
             adults=item.adults,
             currency=item.currency,
@@ -659,13 +760,35 @@ async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
             settings=settings,
             include_mock=mock,
         )
+        trip_meta = {
+            **(item.trip_meta or {}),
+            "last_refresh_status": rmeta.get("status"),
+            "last_refresh_message": rmeta.get("message"),
+            "last_refresh_delta": rmeta.get("delta"),
+            "last_refresh_provider": rmeta.get("provider"),
+            "prev_total_before_refresh": rmeta.get("prev_total"),
+        }
         update_from_itinerary(
             saved_id,
             refreshed.model_dump(mode="json"),
-            trip_meta=item.trip_meta,
+            trip_meta=trip_meta,
         )
+        status = rmeta.get("status") or "failed"
+        if status == "failed":
+            msg = rmeta.get("message") or "Could not refresh fares"
+            return RedirectResponse(
+                url="/saved?err=" + quote(msg),
+                status_code=302,
+            )
+        # Keep flash short; notes on the card hold detail if needed
+        if status == "live":
+            flash = "Fares refreshed"
+        elif status == "mixed":
+            flash = "Fares partially refreshed — kept last known where live failed"
+        else:
+            flash = "Live check failed — kept last known fares"
         return RedirectResponse(
-            url="/saved?flash=" + quote("Fares refreshed (snapshot updated)"),
+            url="/saved?flash=" + quote(flash),
             status_code=302,
         )
     except Exception as exc:  # noqa: BLE001
@@ -684,6 +807,52 @@ async def saved_delete(request: Request, saved_id: str) -> HTMLResponse:
         )
     return RedirectResponse(
         url="/saved?err=" + quote("Not found"), status_code=302
+    )
+
+
+@app.post("/api/travel-map")
+async def api_travel_map(request: Request) -> JSONResponse:
+    """Autosave visited / avoid country lists from the CRT maps on Search & Adventure."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "invalid JSON"}, status_code=400)
+
+    s = get_settings()
+    if "avoid" in body:
+        avoid = normalize_avoid_list(body.get("avoid") or [])
+    else:
+        avoid = list(s.avoid_country_list())
+
+    if "visited" in body:
+        visited = normalize_country_list(body.get("visited") or [], max_n=250)
+    else:
+        visited = list(s.visited_country_list())
+
+    avoid_set = set(avoid)
+    visited = [c for c in visited if c not in avoid_set]
+
+    updates = {
+        "AVOID_COUNTRIES": ",".join(avoid),
+        "VISITED_COUNTRIES": ",".join(visited),
+    }
+    # write_env treats "" as "keep existing" for secrets — force clear empty lists
+    clear_keys = {k for k, v in updates.items() if not v}
+
+    try:
+        write_env(updates, clear_keys=clear_keys)
+        reload_settings()
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "avoid": avoid,
+            "visited": visited,
+            "avoid_names": [country_label(c) for c in avoid],
+            "visited_names": [country_label(c) for c in visited],
+        }
     )
 
 
@@ -797,6 +966,12 @@ async def settings_save(request: Request) -> RedirectResponse:
     if updates.get("PROVIDER_MODE"):
         mode = updates["PROVIDER_MODE"].lower().strip()
         updates["PROVIDER_MODE"] = "scan_all" if mode == "scan_all" else "smart"
+
+    if "TESTING" in updates:
+        val = str(updates["TESTING"]).strip().lower()
+        updates["TESTING"] = (
+            "true" if val in ("1", "true", "yes", "on") else "false"
+        )
 
     try:
         path = write_env(updates, clear_keys=clear_keys)

@@ -75,106 +75,52 @@
       font-size: 0.88rem;
       color: var(--muted);
     }
-    /* Dual-use world map: visited (green) · avoid (red) */
-    .country-map-wrap {
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: #0c1219;
-      overflow: hidden;
-      position: relative;
-    }
-    #country-map {
-      width: 100%;
-      height: min(420px, 55vh);
-      display: block;
-    }
-    #country-map path.country {
-      fill: #2a3548;
-      stroke: #0f1419;
-      stroke-width: 0.4px;
-      cursor: pointer;
-      transition: fill 0.12s ease;
-    }
-    #country-map path.country:hover {
-      fill: #4a6a94;
-      stroke: #8b9bb4;
-      stroke-width: 0.6px;
-    }
-    #country-map path.country.visited {
-      fill: #2a8f5c;
-    }
-    #country-map path.country.visited:hover {
-      fill: #3ecf8e;
-    }
-    #country-map path.country.avoid {
-      fill: #a33a42;
-    }
-    #country-map path.country.avoid:hover {
-      fill: #f07178;
-    }
-    .map-legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem 1.25rem;
-      align-items: center;
-      padding: 0.65rem 0.85rem;
-      border-top: 1px solid var(--border);
-      font-size: 0.82rem;
-      color: var(--muted);
-    }
-    .map-legend .swatch {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      border-radius: 3px;
-      margin-right: 0.35rem;
-      vertical-align: -1px;
-    }
-    .map-legend .swatch.visited { background: #2a8f5c; }
-    .map-legend .swatch.avoid { background: #a33a42; }
-    .map-legend .swatch.none { background: #2a3548; border: 1px solid #3d4a5c; }
-    .map-tip {
-      position: absolute;
-      pointer-events: none;
-      background: rgba(15, 20, 25, 0.95);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-size: 0.8rem;
-      padding: 0.3rem 0.55rem;
-      border-radius: 6px;
-      z-index: 5;
-      display: none;
-      white-space: nowrap;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
-    }
-    .chip-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.35rem;
-      margin-top: 0.5rem;
-      min-height: 1.5rem;
-    }
-    .chip {
-      font-size: 0.75rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      cursor: pointer;
-      background: var(--bg);
-      color: var(--text);
-    }
-    .chip.visited { border-color: #2a6b4f; color: var(--good); }
-    .chip.avoid { border-color: #5a2a30; color: var(--bad); }
-    .chip:hover { filter: brightness(1.1); }
     .map-status {
       font-size: 0.85rem;
       margin: 0.5rem 0 0;
       color: var(--muted);
     }
     .map-status strong { color: var(--text); }
+    .travel-map-summary {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.9rem 1rem;
+      background:
+        linear-gradient(165deg, rgba(94, 234, 212, 0.06) 0%, transparent 45%),
+        var(--bg);
+    }
+    .travel-map-summary .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-top: 0.4rem;
+      min-height: 1.4rem;
+    }
+    .travel-map-summary .chip {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+    }
+    .travel-map-summary .chip.visited {
+      border-color: #2a6b4f;
+      color: var(--good);
+    }
+    .travel-map-summary .chip.avoid {
+      border-color: #6b5520;
+      color: var(--warn);
+    }
+    .travel-map-summary .map-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
 {% endblock %}
 {% block body %}
-  <header>
+  <header class="page-head">
     <h1>Settings</h1>
     <p>API keys stay on this machine in <code>.env</code> — never sent anywhere except the providers themselves.</p>
   </header>
@@ -463,7 +409,7 @@
               <span class="muted" style="margin-left:0.35rem">(sum × (1 + %/100))</span>
             </p>
             <p class="muted" style="margin:0.35rem 0 0;font-size:0.8rem">
-              Adventure ranks stopovers against this bag: under ↑ · within band ≈ · over ↓.
+              Detour ranks stopovers against this bag: under ↑ · within band ≈ · over ↓.
               Estimates are hotel+food+transit+culture for that country (FX’d to your currency).
             </p>
           </div>
@@ -499,243 +445,46 @@
               <option value="scan_all" {% if view.provider_mode == 'scan_all' %}selected{% endif %}>scan all configured</option>
             </select>
           </label>
+          <label for="TESTING">Testing mode
+            <span class="help">When on, Escape/Detour show a <strong>Test Data</strong> checkbox (fake demo fares). Off = live signals only.</span>
+            <select id="TESTING" name="TESTING">
+              <option value="false" {% if not view.testing %}selected{% endif %}>false (live only)</option>
+              <option value="true" {% if view.testing %}selected{% endif %}>true (allow Test Data)</option>
+            </select>
+          </label>
           <div>
-            <label style="margin-bottom:0.45rem">Travel map — visited &amp; avoid
+            <label style="margin-bottom:0.45rem">Travel map
               <span class="help">
-                Click a country to cycle: <strong style="color:var(--good)">visited</strong> (green)
-                → <strong style="color:var(--bad)">avoid</strong> (red, max 10 for Adventure stopovers)
-                → clear. Borders from Natural Earth (standard map polygons). Save settings to persist.
+                Full interactive map (visited → avoid → clear) lives on
+                <strong>Escape</strong> and <strong>Detour</strong> — zoomable atlas, autosaves here.
               </span>
             </label>
-            <input type="hidden" name="AVOID_COUNTRIES" id="AVOID_COUNTRIES" value="{{ view.avoid_countries }}" />
-            <input type="hidden" name="VISITED_COUNTRIES" id="VISITED_COUNTRIES" value="{{ view.visited_countries }}" />
-
-            <div class="country-map-wrap">
-              <div id="map-tip" class="map-tip"></div>
-              <svg id="country-map" viewBox="0 0 960 480" role="img" aria-label="World map — click countries"></svg>
-              <div class="map-legend">
-                <span><span class="swatch none"></span>Unmarked</span>
-                <span><span class="swatch visited"></span>Visited (click once)</span>
-                <span><span class="swatch avoid"></span>Avoid (click again)</span>
-                <span class="muted">Click third time to clear</span>
+            <div class="travel-map-summary">
+              <p class="map-status" style="margin:0">
+                Visited: <strong>{{ (visited_defaults or [])|length }}</strong>
+                · Avoid: <strong>{{ (avoid_defaults or [])|length }}</strong>/10
+              </p>
+              <div class="chip-row" aria-label="Visited countries">
+                {% for code in visited_defaults or [] %}
+                  <span class="chip visited">{{ code }}</span>
+                {% else %}
+                  <span class="muted" style="font-size:0.8rem">No stamps yet</span>
+                {% endfor %}
+              </div>
+              <div class="chip-row" aria-label="Avoid countries">
+                {% for code in avoid_defaults or [] %}
+                  <span class="chip avoid">{{ code }}</span>
+                {% else %}
+                  <span class="muted" style="font-size:0.8rem">No avoid countries</span>
+                {% endfor %}
+              </div>
+              <div class="map-links">
+                <a class="btn secondary" href="/?mode=escape" style="padding:0.4rem 0.75rem;font-size:0.85rem">Open Escape</a>
+                <a class="btn secondary" href="/?mode=detour" style="padding:0.4rem 0.75rem;font-size:0.85rem">Open Detour</a>
               </div>
             </div>
-
-            <p class="map-status">
-              Visited: <strong id="visited-count">0</strong>
-              · Avoid: <strong id="avoid-count">0</strong>/10
-              <span id="map-warn" style="color:var(--warn);margin-left:0.5rem"></span>
-            </p>
-            <div class="chip-row" id="visited-chips" aria-label="Visited countries"></div>
-            <div class="chip-row" id="avoid-chips" aria-label="Avoid countries"></div>
-            <p class="muted" style="margin:0.45rem 0 0;font-size:0.78rem">
-              Tip: avoid list blocks Adventure stopovers. Visited is just your passport map — it doesn’t change fares.
-            </p>
           </div>
         </div>
-        <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
-        <script>
-          (function () {
-            var AVOID_MAX = 10;
-            var avoidHidden = document.getElementById("AVOID_COUNTRIES");
-            var visitedHidden = document.getElementById("VISITED_COUNTRIES");
-            var visitedCountEl = document.getElementById("visited-count");
-            var avoidCountEl = document.getElementById("avoid-count");
-            var mapWarn = document.getElementById("map-warn");
-            var visitedChips = document.getElementById("visited-chips");
-            var avoidChips = document.getElementById("avoid-chips");
-            var tip = document.getElementById("map-tip");
-            var svg = d3.select("#country-map");
-            var wrap = document.querySelector(".country-map-wrap");
-
-            var NAME = {
-              {% for code, name in countries %}
-              "{{ code }}": {{ name|tojson }},
-              {% endfor %}
-            };
-
-            function parseList(s) {
-              return (s || "").split(/[,;]/).map(function (x) {
-                return x.trim().toUpperCase();
-              }).filter(function (x) { return x.length === 2; });
-            }
-
-            var visited = new Set(parseList(visitedHidden && visitedHidden.value));
-            var avoid = new Set(parseList(avoidHidden && avoidHidden.value));
-            // Avoid wins if both somehow set
-            avoid.forEach(function (c) { visited.delete(c); });
-
-            var pathsByCode = {};
-
-            function stateOf(code) {
-              if (avoid.has(code)) return "avoid";
-              if (visited.has(code)) return "visited";
-              return "none";
-            }
-
-            function paint(code) {
-              var nodes = pathsByCode[code] || [];
-              var st = stateOf(code);
-              nodes.forEach(function (el) {
-                el.classList.remove("visited", "avoid");
-                if (st === "visited") el.classList.add("visited");
-                if (st === "avoid") el.classList.add("avoid");
-              });
-            }
-
-            function paintAll() {
-              Object.keys(pathsByCode).forEach(paint);
-            }
-
-            function syncHidden() {
-              var v = Array.from(visited).sort();
-              var a = Array.from(avoid).sort();
-              if (visitedHidden) visitedHidden.value = v.join(",");
-              if (avoidHidden) avoidHidden.value = a.join(",");
-              if (visitedCountEl) visitedCountEl.textContent = String(v.length);
-              if (avoidCountEl) avoidCountEl.textContent = String(a.length);
-              if (mapWarn) {
-                mapWarn.textContent = a.length >= AVOID_MAX
-                  ? "Avoid list full — clear one before adding another"
-                  : "";
-              }
-              renderChips();
-            }
-
-            function chipLabel(code) {
-              return (NAME[code] || code) + " (" + code + ")";
-            }
-
-            function renderChips() {
-              function fill(el, set, cls) {
-                if (!el) return;
-                el.innerHTML = "";
-                Array.from(set).sort().forEach(function (code) {
-                  var b = document.createElement("button");
-                  b.type = "button";
-                  b.className = "chip " + cls;
-                  b.textContent = chipLabel(code);
-                  b.title = "Click to advance state";
-                  b.addEventListener("click", function () { cycle(code); });
-                  el.appendChild(b);
-                });
-                if (!set.size) {
-                  var s = document.createElement("span");
-                  s.className = "muted";
-                  s.style.fontSize = "0.8rem";
-                  s.textContent = cls === "visited" ? "No visited countries yet" : "No avoid countries";
-                  el.appendChild(s);
-                }
-              }
-              fill(visitedChips, visited, "visited");
-              fill(avoidChips, avoid, "avoid");
-            }
-
-            function cycle(code) {
-              if (!code || code.length !== 2) return;
-              var st = stateOf(code);
-              if (st === "none") {
-                visited.add(code);
-                avoid.delete(code);
-              } else if (st === "visited") {
-                if (avoid.size >= AVOID_MAX && !avoid.has(code)) {
-                  if (mapWarn) mapWarn.textContent = "Avoid list full (max " + AVOID_MAX + ")";
-                  return;
-                }
-                visited.delete(code);
-                avoid.add(code);
-              } else {
-                avoid.delete(code);
-                visited.delete(code);
-              }
-              paint(code);
-              syncHidden();
-            }
-
-            function showTip(evt, code) {
-              if (!tip || !wrap) return;
-              var st = stateOf(code);
-              var label = st === "visited" ? "visited" : st === "avoid" ? "avoid" : "unmarked";
-              tip.textContent = chipLabel(code) + " · " + label;
-              tip.style.display = "block";
-              var rect = wrap.getBoundingClientRect();
-              var x = evt.clientX - rect.left + 12;
-              var y = evt.clientY - rect.top + 12;
-              tip.style.left = Math.min(x, rect.width - 160) + "px";
-              tip.style.top = Math.min(y, rect.height - 40) + "px";
-            }
-
-            function hideTip() {
-              if (tip) tip.style.display = "none";
-            }
-
-            async function boot() {
-              try {
-                var topo = await d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json");
-                var isoMap = await d3.json("/static/iso_numeric_to_a2.json");
-                var countries = topojson.feature(topo, topo.objects.countries);
-                var projection = d3.geoNaturalEarth1()
-                  .fitExtent([[8, 12], [952, 468]], countries);
-                var path = d3.geoPath(projection);
-
-                svg.selectAll("*").remove();
-                // ocean / sphere
-                svg.append("path")
-                  .datum({ type: "Sphere" })
-                  .attr("d", path)
-                  .attr("fill", "#0c1219")
-                  .attr("stroke", "none");
-
-                // graticule light
-                svg.append("path")
-                  .datum(d3.geoGraticule10())
-                  .attr("d", path)
-                  .attr("fill", "none")
-                  .attr("stroke", "#1a2332")
-                  .attr("stroke-width", 0.4);
-
-                svg.selectAll("path.country")
-                  .data(countries.features)
-                  .join("path")
-                  .attr("class", "country")
-                  .attr("d", path)
-                  .attr("data-code", function (d) {
-                    var id = String(d.id);
-                    return isoMap[id] || isoMap[id.padStart(3, "0")] || "";
-                  })
-                  .each(function (d) {
-                    var id = String(d.id);
-                    var code = isoMap[id] || isoMap[id.padStart(3, "0")] || "";
-                    if (!code) return;
-                    if (!pathsByCode[code]) pathsByCode[code] = [];
-                    pathsByCode[code].push(this);
-                  })
-                  .on("click", function (event, d) {
-                    var id = String(d.id);
-                    var code = isoMap[id] || isoMap[id.padStart(3, "0")] || "";
-                    if (!code) return;
-                    cycle(code);
-                    showTip(event, code);
-                  })
-                  .on("mousemove", function (event, d) {
-                    var id = String(d.id);
-                    var code = isoMap[id] || isoMap[id.padStart(3, "0")] || "";
-                    if (code) showTip(event, code);
-                  })
-                  .on("mouseleave", hideTip);
-
-                paintAll();
-                syncHidden();
-              } catch (err) {
-                console.error(err);
-                if (mapWarn) mapWarn.textContent = "Map failed to load — check network for world-atlas CDN";
-              }
-            }
-
-            boot();
-          })();
-        </script>
 
         <div class="actions">
           <button type="submit">Save settings</button>

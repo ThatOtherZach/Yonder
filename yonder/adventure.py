@@ -13,6 +13,8 @@ from yonder.countries import (
     format_route,
     is_avoided_iata,
     normalize_avoid_list,
+    normalize_country_list,
+    country_for_iata,
 )
 from yonder.currency import convert_offer
 from yonder.engine import search_flights
@@ -37,6 +39,7 @@ def _apply_theme(it: AdventureItinerary) -> AdventureItinerary:
         t = theme_for_country(it.theme_country)
         t["country"] = it.theme_country
     else:
+        # getaway destinations use the same stopover theme palette
         t = theme_for_iata(it.stop_iata, kind="stopover")
     return it.model_copy(
         update={
@@ -91,6 +94,9 @@ class AdventureRequest(BaseModel):
     prompt: str = ""
     include_direct: bool = True
     avoid_countries: list[str] = Field(default_factory=list)  # ISO2, max 10
+    # detour = A → stop → B · getaway = home → X → home (open destination)
+    trip_kind: str = "detour"
+    visited_countries: list[str] = Field(default_factory=list)  # ISO2 passport map
 
 
 class StopoverIdea(BaseModel):
@@ -396,10 +402,22 @@ def filter_ideas(
     return out
 
 
+def _is_getaway(req: AdventureRequest) -> bool:
+    kind = (req.trip_kind or "").lower().strip()
+    if kind in ("getaway", "round_trip", "roundtrip", "escape", "from_home"):
+        return True
+    return req.origin.upper() == req.destination.upper()
+
+
 def seed_ideas(req: AdventureRequest) -> list[StopoverIdea]:
     origin = req.origin.upper()
     dest = req.destination.upper()
     avoid = normalize_avoid_list(req.avoid_countries)
+    visited = {
+        c.upper()
+        for c in normalize_country_list(req.visited_countries or [], max_n=250)
+    }
+    getaway = _is_getaway(req)
     stay = max(
         req.min_stop_days,
         min(req.max_stop_days, (req.min_stop_days + req.max_stop_days) // 2),
@@ -407,13 +425,20 @@ def seed_ideas(req: AdventureRequest) -> list[StopoverIdea]:
     ideas: list[StopoverIdea] = []
     for row in SEED_STOPOVERS:
         code = row["iata"]
-        if code in (origin, dest):
+        if code == origin or (not getaway and code == dest):
             continue
+        if getaway and code == dest and dest == origin:
+            pass  # home is already excluded via origin
         cc = (row.get("country") or "").upper()
         if cc and cc in avoid:
             continue
         if is_avoided_iata(code, avoid):
             continue
+        # Getaways: respect passport map ("not anywhere I've been")
+        if getaway and visited:
+            stop_cc = cc or (country_for_iata(code) or "")
+            if stop_cc and stop_cc.upper() in visited:
+                continue
         ideas.append(
             StopoverIdea(
                 iata=code,
@@ -441,18 +466,42 @@ async def plan_adventure(
     include_mock: bool = False,
 ) -> AdventureResult:
     settings = settings or get_settings()
+    trip_kind = (req.trip_kind or "detour").lower().strip()
+    if req.origin.upper() == req.destination.upper():
+        trip_kind = "getaway"
     req = req.model_copy(
         update={
             "origin": req.origin.upper(),
             "destination": req.destination.upper(),
             "currency": req.currency.upper(),
             "avoid_countries": normalize_avoid_list(req.avoid_countries),
+            "visited_countries": normalize_country_list(
+                req.visited_countries or [], max_n=250
+            ),
+            "trip_kind": trip_kind,
+            # No meaningful A→A direct baseline for getaways
+            "include_direct": False if trip_kind == "getaway" else req.include_direct,
         }
     )
     ideas = filter_ideas(ideas, req)
+    # Extra filter for getaway: drop visited countries even if Grok suggested them
+    if _is_getaway(req) and req.visited_countries:
+        visited = {c.upper() for c in req.visited_countries}
+        filtered: list[StopoverIdea] = []
+        for idea in ideas:
+            cc = (idea.country or country_for_iata(idea.iata) or "").upper()
+            if cc and cc in visited:
+                continue
+            filtered.append(idea)
+        ideas = filtered
     errors: list[str] = []
     itineraries: list[AdventureItinerary] = []
     direct_price: float | None = None
+    if _is_getaway(req):
+        errors.append(
+            "Getaway mode: home base → new place → home "
+            f"({req.origin} round-trip). Candidates are destinations, not mid-route stops."
+        )
 
     async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as http:
         # Enrich stopovers with AviationStack airport metadata (free-tier friendly)
@@ -610,11 +659,20 @@ async def plan_adventure(
                     fallback_chain=fallback_chain,
                 ),
             )
-            notes = [
-                f"{stay}-day intentional stop in {format_place(idea.iata, idea.city)}",
-                "Two separate one-way tickets — self-transfer risk",
-                f"Priced via {pricing_name or 'providers'} in {req.currency}",
-            ]
+            getaway = _is_getaway(req)
+            if getaway:
+                notes = [
+                    f"{stay}-day getaway in {format_place(idea.iata, idea.city)}",
+                    f"Round-trip signal: {req.origin} → stop → {req.origin}",
+                    "Two separate one-way tickets — confirm on Google before buying",
+                    f"Priced via {pricing_name or 'providers'} in {req.currency}",
+                ]
+            else:
+                notes = [
+                    f"{stay}-day intentional stop in {format_place(idea.iata, idea.city)}",
+                    "Two separate one-way tickets — self-transfer risk",
+                    f"Priced via {pricing_name or 'providers'} in {req.currency}",
+                ]
             ground_fields: dict = {}
             col_delta = 0.0
             try:
@@ -655,14 +713,20 @@ async def plan_adventure(
             )
             if leg1.error or leg2.error:
                 err_bits = [x for x in (leg1.error, leg2.error) if x]
+                title = (
+                    f"{format_place(req.origin)} ↺ "
+                    f"{format_place(idea.iata, idea.city)} ({stay}d getaway)"
+                    if getaway
+                    else (
+                        f"{format_place(req.origin)} → "
+                        f"{format_place(idea.iata, idea.city)} ({stay}d) → "
+                        f"{format_place(req.destination)}"
+                    )
+                )
                 return _apply_theme(
                     AdventureItinerary(
-                        kind="stopover",
-                        title=(
-                            f"{format_place(req.origin)} → "
-                            f"{format_place(idea.iata, idea.city)} ({stay}d) → "
-                            f"{format_place(req.destination)}"
-                        ),
+                        kind="getaway" if getaway else "stopover",
+                        title=title,
                         total_price=None,
                         currency=req.currency,
                         stop_city=idea.city,
@@ -713,14 +777,20 @@ async def plan_adventure(
                     f"All-in signal {all_in} (flights + ground est.)"
                 )
 
+            title = (
+                f"{format_place(req.origin)} ↺ "
+                f"{format_place(idea.iata, idea.city)} ({stay}d getaway)"
+                if getaway
+                else (
+                    f"{format_place(req.origin)} → "
+                    f"{format_place(idea.iata, idea.city)} ({stay} nights) → "
+                    f"{format_place(req.destination)}"
+                )
+            )
             return _apply_theme(
                 AdventureItinerary(
-                    kind="stopover",
-                    title=(
-                        f"{format_place(req.origin)} → "
-                        f"{format_place(idea.iata, idea.city)} ({stay} nights) → "
-                        f"{format_place(req.destination)}"
-                    ),
+                    kind="getaway" if getaway else "stopover",
+                    title=title,
                     total_price=round(total, 2),
                     currency=cur,
                     stop_city=idea.city,
@@ -782,17 +852,33 @@ async def reprice_itinerary(
     cabin: CabinClass = CabinClass.ECONOMY,
     settings: Settings | None = None,
     include_mock: bool = False,
-) -> AdventureItinerary:
-    """Re-fetch fares for each leg of a saved itinerary (snapshot → fresh signal)."""
+) -> tuple[AdventureItinerary, dict[str, Any]]:
+    """Re-fetch fares for each leg. Never wipe a good snapshot.
+
+    Per leg: use live offer when available; otherwise keep the previous offer
+    and mark that leg as fallback. Returns (itinerary, refresh_meta).
+    """
     settings = settings or get_settings()
     cur = (currency or itinerary.currency or settings.default_currency or "CAD").upper()
-    # Minimal request shell so _price_leg can use adults/currency/cabin
+    prev_total = itinerary.total_price
+    meta: dict[str, Any] = {
+        "ok": False,
+        "status": "failed",  # live | mixed | snapshot | failed
+        "provider": None,
+        "prev_total": prev_total,
+        "new_total": None,
+        "delta": None,
+        "live_legs": 0,
+        "fallback_legs": 0,
+        "message": "",
+    }
+
     if not itinerary.legs:
-        return itinerary.model_copy(
-            update={
-                "notes": list(itinerary.notes)
-                + ["Refresh failed: no legs on this itinerary"]
-            }
+        notes = list(itinerary.notes) + ["Refresh failed: no legs on this itinerary"]
+        meta["message"] = "No legs to reprice"
+        return (
+            itinerary.model_copy(update={"notes": notes}),
+            meta,
         )
 
     first = itinerary.legs[0]
@@ -804,12 +890,18 @@ async def reprice_itinerary(
         adults=max(1, min(9, adults)),
         currency=cur,
         cabin=cabin,
+        trip_kind="getaway" if first.from_iata == last.to_iata else "detour",
     )
 
-    async with httpx.AsyncClient(timeout=90.0) as http:
+    async with httpx.AsyncClient(timeout=90.0, follow_redirects=True) as http:
         only = await pick_pricing_provider(settings, http, include_mock)
         fallback_chain = list(only or [])
-        priced_legs: list[PricedLeg] = []
+        pricing_name = only[0] if only else None
+        meta["provider"] = pricing_name
+        merged_legs: list[PricedLeg] = []
+        live_n = 0
+        fallback_n = 0
+
         for leg in itinerary.legs:
             pl = await _price_leg(
                 leg.from_iata,
@@ -822,7 +914,39 @@ async def reprice_itinerary(
                 http=http,
                 fallback_chain=fallback_chain,
             )
-            priced_legs.append(pl)
+            if pl.offer:
+                live_n += 1
+                merged_legs.append(pl)
+            elif leg.offer:
+                # Keep last-known fare for this leg
+                fallback_n += 1
+                gurl = (
+                    pl.google_flights_url
+                    or leg.google_flights_url
+                    or google_flights_url(
+                        leg.from_iata,
+                        leg.to_iata,
+                        leg.depart_date,
+                        currency=cur,
+                        adults=req.adults,
+                    )
+                )
+                err = pl.error or "no live offer"
+                merged_legs.append(
+                    leg.model_copy(
+                        update={
+                            "error": f"live failed ({err[:120]}) — showing last known",
+                            "google_flights_url": gurl,
+                            "booking_url": leg.booking_url or gurl,
+                        }
+                    )
+                )
+            else:
+                fallback_n += 1
+                merged_legs.append(pl)
+
+    meta["live_legs"] = live_n
+    meta["fallback_legs"] = fallback_n
 
     notes = [
         n
@@ -830,42 +954,91 @@ async def reprice_itinerary(
         if not n.startswith("Fare refreshed")
         and not n.startswith("Refresh incomplete")
         and not n.startswith("Priced via")
+        and not n.startswith("Last known")
+        and not n.startswith("Price check")
     ]
-    pricing_name = only[0] if only else "providers"
-    notes.insert(0, f"Fare refreshed via {pricing_name} in {cur}")
+    prov = pricing_name or "providers"
 
-    if any(pl.error and not pl.offer for pl in priced_legs):
-        err_bits = [pl.error for pl in priced_legs if pl.error]
-        notes.append("Refresh incomplete: " + "; ".join(err_bits)[:240])
-        multi_url = itinerary.google_flights_url
-        if len(priced_legs) >= 2:
-            multi_url = google_flights_multi(
-                [(pl.from_iata, pl.to_iata, pl.depart_date) for pl in priced_legs],
-                currency=cur,
-            ) or multi_url
-        return _apply_theme(
-            itinerary.model_copy(
-                update={
-                    "legs": priced_legs,
-                    "total_price": None,
-                    "display_price": None,
-                    "currency": cur,
-                    "notes": notes,
-                    "google_flights_url": multi_url,
-                    "booking_url": multi_url,
-                }
-            )
-        )
-
-    total = sum(float(pl.offer.price) for pl in priced_legs if pl.offer)
+    priced = [pl for pl in merged_legs if pl.offer]
     multi_url = itinerary.google_flights_url
-    if len(priced_legs) >= 2:
-        multi_url = google_flights_multi(
-            [(pl.from_iata, pl.to_iata, pl.depart_date) for pl in priced_legs],
-            currency=cur,
+    if len(merged_legs) >= 2:
+        multi_url = (
+            google_flights_multi(
+                [(pl.from_iata, pl.to_iata, pl.depart_date) for pl in merged_legs],
+                currency=cur,
+            )
+            or multi_url
         )
-    elif priced_legs and priced_legs[0].google_flights_url:
-        multi_url = priced_legs[0].google_flights_url
+    elif merged_legs and merged_legs[0].google_flights_url:
+        multi_url = merged_legs[0].google_flights_url
+
+    if not priced:
+        notes.insert(
+            0,
+            f"Price check failed via {prov} — kept empty; try again or open Google Flights",
+        )
+        meta["status"] = "failed"
+        meta["message"] = "No live fares; no snapshot to fall back to"
+        meta["ok"] = False
+        return (
+            _apply_theme(
+                itinerary.model_copy(
+                    update={
+                        "legs": merged_legs,
+                        "notes": notes,
+                        "google_flights_url": multi_url,
+                        "booking_url": multi_url or itinerary.booking_url,
+                    }
+                )
+            ),
+            meta,
+        )
+
+    total = round(sum(float(pl.offer.price) for pl in priced if pl.offer), 2)
+    meta["new_total"] = total
+    if prev_total is not None:
+        meta["delta"] = round(total - float(prev_total), 2)
+
+    if live_n == len(merged_legs) and fallback_n == 0:
+        meta["status"] = "live"
+        meta["ok"] = True
+        notes.insert(0, f"Fare refreshed via {prov} in {cur} (all legs live)")
+        if meta["delta"] is None:
+            meta["message"] = f"Live {format_approx(total, cur)}"
+        elif meta["delta"] == 0:
+            meta["message"] = f"Live {format_approx(total, cur)} · unchanged"
+        elif meta["delta"] < 0:
+            meta["message"] = (
+                f"Live {format_approx(total, cur)} · "
+                f"down {format_approx(abs(meta['delta']), cur)}"
+            )
+        else:
+            meta["message"] = (
+                f"Live {format_approx(total, cur)} · "
+                f"up {format_approx(meta['delta'], cur)}"
+            )
+    elif live_n > 0:
+        meta["status"] = "mixed"
+        meta["ok"] = True
+        notes.insert(
+            0,
+            f"Partial refresh via {prov}: {live_n} live leg(s), "
+            f"{fallback_n} last-known — total mixes both",
+        )
+        meta["message"] = (
+            f"Mixed {format_approx(total, cur)} "
+            f"({live_n} live / {fallback_n} snapshot)"
+        )
+    else:
+        # All legs fell back to previous offers
+        meta["status"] = "snapshot"
+        meta["ok"] = True
+        notes.insert(
+            0,
+            f"Live check via {prov} failed — showing last-known fares "
+            f"({format_approx(total, cur)})",
+        )
+        meta["message"] = f"Last known {format_approx(total, cur)} (live failed)"
 
     all_in_display = itinerary.all_in_display
     if itinerary.ground_total is not None:
@@ -874,25 +1047,27 @@ async def reprice_itinerary(
             f"(flights + ground est.)"
         )
 
-    prev = itinerary.total_price
-    vs_delta = (total - prev) if prev is not None else None
+    vs_delta = meta["delta"]
     tot_pd = price_display(total, cur, vs_delta=vs_delta)
 
-    return _apply_theme(
-        itinerary.model_copy(
-            update={
-                "legs": priced_legs,
-                "total_price": round(total, 2),
-                "display_price": tot_pd.full,
-                "display_price_base": tot_pd.base,
-                "price_sign": tot_pd.sign or None,
-                "price_glyph": tot_pd.glyph or None,
-                "price_tone": tot_pd.tone,
-                "currency": cur,
-                "notes": notes,
-                "google_flights_url": multi_url,
-                "booking_url": multi_url or itinerary.booking_url,
-                "all_in_display": all_in_display,
-            }
-        )
+    return (
+        _apply_theme(
+            itinerary.model_copy(
+                update={
+                    "legs": merged_legs,
+                    "total_price": total,
+                    "display_price": tot_pd.full,
+                    "display_price_base": tot_pd.base,
+                    "price_sign": tot_pd.sign or None,
+                    "price_glyph": tot_pd.glyph or None,
+                    "price_tone": tot_pd.tone,
+                    "currency": cur,
+                    "notes": notes,
+                    "google_flights_url": multi_url,
+                    "booking_url": multi_url or itinerary.booking_url,
+                    "all_in_display": all_in_display,
+                }
+            )
+        ),
+        meta,
     )

@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     col_tolerance_pct: float = 25.0
     # scan_all | smart (default smart uses quota router)
     provider_mode: str = "smart"
+    # When true, Search/Adventure may show "Test Data" (mock fares)
+    testing: bool = False
 
     @property
     def amadeus_base(self) -> str:

@@ -115,17 +115,55 @@ class SavedItinerary:
         )
 
     @property
+    def price_age_hours(self) -> float | None:
+        if self.priced_at is None:
+            return None
+        return max(0.0, (time.time() - self.priced_at) / 3600)
+
+    @property
+    def price_freshness(self) -> str:
+        """fresh | aging | stale | unknown — for UI badge color."""
+        h = self.price_age_hours
+        if h is None:
+            return "unknown"
+        if h < 6:
+            return "fresh"
+        if h < 48:
+            return "aging"
+        return "stale"
+
+    @property
     def price_stale_label(self) -> str:
         """Human age of the snapshot fare."""
         if self.priced_at is None:
             return "no fare yet"
-        age_h = (time.time() - self.priced_at) / 3600
-        if age_h < 1:
+        age_h = self.price_age_hours or 0.0
+        if age_h < 0.2:
             return "just now"
+        if age_h < 1:
+            return f"~{max(1, int(age_h * 60))}m ago"
         if age_h < 48:
             return f"~{int(age_h)}h ago"
         days = int(age_h / 24)
         return f"~{days}d ago"
+
+    @property
+    def last_refresh_status(self) -> str | None:
+        return (self.trip_meta or {}).get("last_refresh_status")
+
+    @property
+    def last_refresh_message(self) -> str | None:
+        return (self.trip_meta or {}).get("last_refresh_message")
+
+    @property
+    def last_refresh_delta(self) -> float | None:
+        d = (self.trip_meta or {}).get("last_refresh_delta")
+        if d is None:
+            return None
+        try:
+            return float(d)
+        except (TypeError, ValueError):
+            return None
 
 
 def _row_to_saved(row: sqlite3.Row) -> SavedItinerary:
@@ -223,8 +261,13 @@ def save_itinerary(
     # Keep prior saved_at / priced_at when updating after refresh
     existing = get(sid) if replace_id else None
     saved_at = existing.saved_at if existing else now
+    refresh_status = str(meta.get("last_refresh_status") or "")
     if replace_id and total is not None:
-        priced_at = now
+        # Pure snapshot fallback = still "out of date" — don't reset freshness clock
+        if refresh_status == "snapshot" and existing and existing.priced_at is not None:
+            priced_at = existing.priced_at
+        else:
+            priced_at = now  # live or mixed: we learned something new
     elif existing and total is None:
         priced_at = existing.priced_at
 

@@ -29,7 +29,7 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
     (
         "VISITED_COUNTRIES",
         "Visited countries (ISO2)",
-        "Personal passport map — green on Settings world map",
+        "Personal passport map — edit on Search CRT map",
         False,
     ),
     (
@@ -72,6 +72,12 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
         "PROVIDER_MODE",
         "Provider routing mode",
         "smart = probe active + budget routing · scan_all = hit every key",
+        False,
+    ),
+    (
+        "TESTING",
+        "Testing mode",
+        "true = show Test Data (mock fares) on Escape/Detour · false = live only",
         False,
     ),
 ]
@@ -199,6 +205,7 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
                 "AVOID_COUNTRIES",
                 "VISITED_COUNTRIES",
                 "PROVIDER_MODE",
+                "TESTING",
             ],
         ),
     ]
@@ -286,4 +293,6 @@ def settings_view() -> dict:
         "col_expected_daily": env.get("COL_EXPECTED_DAILY") or "0",
         "col_tolerance_pct": env.get("COL_TOLERANCE_PCT") or "25",
         "provider_mode": (env.get("PROVIDER_MODE") or "smart").lower(),
+        "testing": str(env.get("TESTING") or "false").strip().lower()
+        in ("1", "true", "yes", "on"),
     }
