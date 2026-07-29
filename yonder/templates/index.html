@@ -884,13 +884,15 @@
               required
               placeholder="Cheap to Japan in September… or get me out of town, somewhere new, good food…"
             >{{ det_text or esc_text }}</textarea>
-            <button type="submit" id="explore-submit" class="btn-vibe-go">Go</button>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:0.3rem;flex-shrink:0;">
+              <button type="submit" id="explore-submit" class="btn-vibe-go">Go</button>
+              {% if testing %}
+              <label class="check" title="Fake demo fares" style="font-size:0.72rem;display:inline-flex;align-items:center;gap:0.28rem;color:var(--muted);white-space:nowrap;cursor:pointer;">
+                <input type="checkbox" name="mock" value="true" id="explore-mock" {% if form is defined and form.mock %}checked{% endif %} style="margin:0;cursor:pointer;" /> Test Data
+              </label>
+              {% endif %}
+            </div>
           </div>
-          {% if testing %}
-          <label class="check" title="Fake demo fares" style="font-size:0.78rem;display:inline-flex;align-items:center;gap:0.3rem;color:var(--muted);padding:0.1rem 0.55rem 0.35rem;">
-            <input type="checkbox" name="mock" value="true" id="explore-mock" {% if form is defined and form.mock %}checked{% endif %} /> Test Data
-          </label>
-          {% endif %}
           <div
             data-vibe-slider
             data-input-id="explore-vibe"
