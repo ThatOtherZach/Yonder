@@ -485,6 +485,26 @@
       font-size: 1.05rem;
       color: var(--brass-deep);
     }
+    /* COL sits inside field notes — same pb-block language */
+    .place-book .pb-block.pb-col p {
+      font-variant-numeric: tabular-nums;
+    }
+    .place-book .pb-block.pb-col.col-under p { color: var(--good, #1a7f4b); }
+    .place-book .pb-block.pb-col.col-over p { color: var(--bad, #b42318); }
+    .place-book .pb-block.pb-col.pb-col-allin p {
+      font-weight: 700;
+      font-size: 1rem;
+    }
+    .place-book .pb-col-divider {
+      grid-column: 1 / -1;
+      height: 0;
+      margin: 0.15rem 0;
+      border: none;
+      border-top: 1px dashed var(--line);
+    }
+    .place-book .pb-story-body.is-loading .pb-loading-msg {
+      margin: 0.35rem 0 0.5rem;
+    }
 
     /* —— Boarding passes (shared: flights / adventures / saved) —— */
     .pass-stack {
@@ -892,6 +912,33 @@
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    .fs-progress-skip {
+      margin-top: 1rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 7.5rem;
+      padding: 0.55rem 1.25rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--paper-2, #f4f1ea);
+      color: var(--ink);
+      font-weight: 700;
+      font-size: 0.92rem;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+    }
+    .fs-progress-skip:hover:not(:disabled) {
+      border-color: var(--sky-bright, var(--brass, #c9a227));
+      background: var(--white);
+      transform: translateY(-1px);
+    }
+    .fs-progress-skip:disabled {
+      opacity: 0.7;
+      cursor: wait;
+    }
+    .fs-progress-skip[hidden] { display: none !important; }
     .fs-progress-hint {
       margin-top: 0.65rem;
       font-size: 0.78rem;
@@ -905,9 +952,9 @@
 
     {% block extra_css %}{% endblock %}
   </style>
-  <link rel="stylesheet" href="/static/country_map.css?v=15" />
+  <link rel="stylesheet" href="/static/country_map.css?v=16" />
   <script>
-    window.FS_TRAVEL = {{ (travel_ctx or {"avoid": [], "visited": [], "avoid_names": [], "visited_names": [], "country_names": {}}) | tojson }};
+    window.FS_TRAVEL = {{ (travel_ctx or {"avoid": [], "visited": [], "avoid_names": [], "visited_names": [], "country_names": {}, "primary_iata": {}, "home_iata": "JFK", "home_iata_setting": "", "home_iata_fallback": "JFK"}) | tojson }};
   </script>
   <script src="/static/progress.js" defer></script>
   {% block extra_head %}{% endblock %}

@@ -20,11 +20,14 @@ from yonder.adventure import (
 from yonder.config import get_settings, reload_settings
 from yonder.countries import (
     COUNTRIES,
+    COUNTRY_PRIMARY_IATA,
+    country_for_currency,
     country_label,
     format_place,
     format_route,
     normalize_avoid_list,
     normalize_country_list,
+    primary_iata_for_country,
 )
 from yonder.engine import search_flights
 from yonder.grok import GrokClient
@@ -145,11 +148,28 @@ def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
         # For progress.js fun lines + CRT maps (names only — no secrets)
         "travel_ctx": {
             "avoid": avoid_codes,
+            # visited is stamp order: first country = home when HOME_IATA is blank
             "visited": visited_codes,
             "avoid_names": [country_label(c) for c in avoid_codes],
             "visited_names": [country_label(c) for c in visited_codes],
             "country_names": {code: name for code, name in COUNTRIES},
+            "home_iata": settings.resolve_home_iata(),
+            "home_iata_setting": (settings.home_iata or "").strip().upper(),
+            "home_iata_fallback": (
+                primary_iata_for_country(
+                    country_for_currency(settings.default_currency)
+                )
+                or "JFK"
+            ),
+            "primary_iata": dict(COUNTRY_PRIMARY_IATA),
+            "search_aim_seconds": settings.search_timing()[0],
+            "search_max_seconds": settings.search_timing()[1],
+            "detour_min_stop_days": settings.detour_stop_defaults()[0],
+            "detour_max_stop_days": settings.detour_stop_defaults()[1],
         },
+        "stop_min_days": settings.detour_stop_defaults()[0],
+        "stop_max_days": settings.detour_stop_defaults()[1],
+        "home_resolved": settings.resolve_home_iata(),
     }
 
 
@@ -460,7 +480,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
     try:
         avoid = settings.avoid_country_list()
         visited = settings.visited_country_list()
-        budget = float(getattr(settings, "search_budget_seconds", 30.0) or 30.0)
+        aim, _skip = settings.search_timing()
         home_iata = settings.resolve_home_iata()
 
         async def _escape_run():
@@ -493,17 +513,13 @@ async def ask_grok(request: Request) -> HTMLResponse:
                     query,
                     settings=settings,
                     include_mock=include_mock,
-                    timeout=min(12.0, budget * 0.45),
+                    timeout=min(18.0, max(8.0, aim * 0.5)),
                     max_providers=1,
                 )
             return trip, query, result
 
-        try:
-            trip, query, result = await asyncio.wait_for(_escape_run(), timeout=budget)
-        except asyncio.TimeoutError as exc:
-            raise ValueError(
-                "Escape hit the 30s limit. Try a clearer city/date, Test Data, or fewer API hops."
-            ) from exc
+        # Soft aim only — no hard kill (Skip is on the unified /explore path)
+        trip, query, result = await _escape_run()
 
         analysis = None
         # Place notes: cache only (no live Grok on the hot path)
@@ -608,6 +624,649 @@ def _adventure_form_defaults(settings) -> dict:
     }
 
 
+@app.post("/explore", response_class=HTMLResponse)
+async def explore_run(request: Request) -> HTMLResponse:
+    """Unified Go — intent gate → pure Escape, pure Detour, or mixed stack.
+
+    Durable writes only happen later via ★ Save (not here).
+    """
+    import time as _time
+
+    from yonder.intent import decide_shape, mix_candidate_cap
+    from yonder.saved import seed_cities_from_saves, similar_saves
+    from yonder.grok import _guess_home_iata
+    from datetime import timedelta
+
+    settings = reload_settings()
+    form_data = await request.form()
+
+    def _s(key: str, fallback: str = "") -> str:
+        v = form_data.get(key)
+        return str(v).strip() if v is not None and str(v).strip() else fallback
+
+    # Accept ask or prompt (compose field name switches with mode)
+    prompt = _s("prompt") or _s("ask")
+    vibe = _s("vibe", "adventure").lower()
+    if not vibe or len(vibe) > 32 or not vibe.replace("-", "").replace("_", "").isalnum():
+        vibe = "adventure"
+    force = _s("force_mode") or _s("mode")  # optional soft force from UI
+    if force in ("escape", "detour", "mix"):
+        pass
+    else:
+        force = None
+    mock = str(form_data.get("mock") or "") in ("true", "on", "1")
+    if not settings.testing:
+        mock = False
+    if not settings.configured_providers():
+        mock = True
+
+    currency = (settings.default_currency or "USD").upper()
+    if not currency.isalpha() or len(currency) != 3:
+        currency = "USD"
+    avoid = settings.avoid_country_list()
+    visited = settings.visited_country_list()
+    min_stop, max_stop, max_cand_settings = settings.detour_stop_defaults()
+    # Results criteria bar can override stop window + origin for re-runs
+    try:
+        ms = int(str(form_data.get("min_stop_days") or min_stop).strip() or min_stop)
+        min_stop = max(1, min(21, ms))
+    except (TypeError, ValueError):
+        pass
+    try:
+        xs = int(str(form_data.get("max_stop_days") or max_stop).strip() or max_stop)
+        max_stop = max(min_stop, min(30, xs))
+    except (TypeError, ValueError):
+        pass
+    aim, skip_after = settings.search_timing()
+    soft_deadline = _time.monotonic() + max(5.0, aim - 0.5)
+    search_id = _s("search_id")[:80]
+    chip_id = _s("chip_id")[:80]
+    chip_source = _s("chip_source")[:32] or "prompt"
+    click_id = _s("click_id")[:64]
+    seed_iatas_raw = _s("seed_iatas")
+    home_iata = settings.resolve_home_iata()
+    origin_override = _s("origin").upper()
+    if len(origin_override) == 3 and origin_override.isalpha():
+        home_iata = origin_override
+    defaults = _adventure_form_defaults(settings)
+    depart = _s("depart", defaults["depart"])
+    if not depart:
+        depart = (date.today() + timedelta(days=45)).isoformat()
+
+    from yonder.attribution import log_event, new_click_id
+    from yonder.search_cancel import clear as clear_search_cancel
+    from yonder.search_cancel import is_cancelled
+
+    if not click_id:
+        click_id = new_click_id()
+
+    def _soft_remaining() -> float:
+        """Seconds left in soft aim; after aim, still generous so work can finish."""
+        if search_id and is_cancelled(search_id):
+            return 0.0
+        left = soft_deadline - _time.monotonic()
+        if left > 0:
+            return left
+        # Past soft aim and not skipped — keep going
+        return 120.0
+
+    # Chip / form seed IATAs (product flywheel — skip cold invent when strong)
+    chip_seeds: list[dict] = []
+    for part in seed_iatas_raw.replace(";", ",").split(","):
+        code = part.strip().upper()
+        if len(code) == 3 and code.isalpha():
+            chip_seeds.append(
+                {
+                    "iata": code,
+                    "city": code,
+                    "kind": "chip_seed",
+                    "why": "from suggestion chip",
+                }
+            )
+
+    empty_esc = {
+        "origin": home_iata,
+        "destination": "",
+        "depart": depart,
+        "return_date": "",
+        "adults": 1,
+        "currency": currency,
+        "nonstop": False,
+        "mock": mock,
+        "vibe": vibe,
+    }
+    det_form = {
+        **defaults,
+        "prompt": prompt,
+        "depart": depart,
+        "currency": currency,
+        "vibe": vibe,
+        "mock": mock,
+        "origin": home_iata,
+    }
+
+    if not prompt:
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            _compose_page_ctx(
+                settings,
+                mode="escape",
+                error="Type a trip in plain English first.",
+                escape_override={"ask": "", "form": empty_esc},
+            ),
+            status_code=400,
+        )
+
+    decision = decide_shape(prompt, force=force)
+    max_cand = mix_candidate_cap(decision.shape, max_cand_settings)
+    notes: list[str] = [
+        f"Intent: {decision.shape} ({decision.confidence:.0%}) — {decision.rationale}"
+    ]
+
+    escape_override: dict = {"ask": prompt, "form": empty_esc, "result": None}
+    detour_override: dict = {"form": det_form, "result": None}
+    errors: list[str] = []
+    active_mode = "detour" if decision.shape == "detour" else "escape"
+
+    # Funnel: chip/prompt → search (affiliate path starts here)
+    try:
+        log_event(
+            "explore_start",
+            click_id=click_id,
+            chip_id=chip_id or None,
+            chip_source=chip_source,
+            vibe=vibe,
+            origin=home_iata,
+            search_id=search_id or None,
+            meta={"force": force, "shape": decision.shape},
+        )
+    except Exception:
+        pass
+
+    # Similar past Saves → seed invent (Save-only preference learning)
+    sim = similar_saves(prompt, origin=home_iata, vibe=vibe, limit=6)
+    seed_hints = seed_cities_from_saves(sim)
+    # Chip seeds first (explicit user interest / re-run of a Save)
+    if chip_seeds:
+        seen = {h["iata"] for h in chip_seeds}
+        for h in seed_hints:
+            if h["iata"] not in seen:
+                chip_seeds.append(h)
+                seen.add(h["iata"])
+        seed_hints = chip_seeds
+        notes.append(f"Chip seeds: {', '.join(h['iata'] for h in chip_seeds[:4])}")
+        # Strong seeds → price fewer cold invent candidates (faster path)
+        max_cand = min(max_cand, 3)
+    elif seed_hints:
+        notes.append(f"Seeded from {len(seed_hints)} prior Save(s)")
+
+    # Attribution bag stamped onto trip_meta for ★ Save + outbound links
+    attr_meta = {
+        "click_id": click_id,
+        "chip_id": chip_id or None,
+        "chip_source": chip_source,
+        "search_id": search_id or None,
+    }
+
+    async def _do_escape() -> None:
+        nonlocal escape_override, active_mode
+        if search_id and is_cancelled(search_id):
+            errors.append("Escape skipped — user hit Skip")
+            return
+        if not settings.grok_ready() and not mock:
+            errors.append("Escape skipped — add XAI_API_KEY or enable Test Data")
+            return
+        remaining = _soft_remaining()
+        if remaining <= 0 and search_id and is_cancelled(search_id):
+            errors.append("Escape skipped — user hit Skip")
+            return
+        ask_for_grok = f"{prompt}\n\nTrip vibe: {vibe}."
+        async with GrokClient(settings) as grok:
+            trip = await grok.parse_natural_language(
+                ask_for_grok,
+                default_currency=currency,
+                default_origin=home_iata,
+                avoid_countries=avoid,
+                visited_countries=visited,
+            )
+            if search_id and is_cancelled(search_id):
+                errors.append("Escape skipped mid-parse — user hit Skip")
+                return
+            # Dataset/suggestion pills can stale-write "From JFK:" when client home
+            # was wrong; never let that override resolved home on chip-driven runs.
+            chip_driven = (
+                (chip_source or "").lower() in ("dataset", "template", "save", "chip")
+                or (chip_id or "").startswith("ds:")
+            )
+            if (
+                chip_driven
+                and home_iata
+                and len(home_iata) == 3
+                and (trip.origin or "").upper() != home_iata.upper()
+            ):
+                notes.append(
+                    f"Origin corrected {trip.origin}→{home_iata} (home wins over chip text)"
+                )
+                trip = trip.model_copy(update={"origin": home_iata.upper()})
+            trip = trip.model_copy(
+                update={"currency": currency, "adults": 1, "cabin": CabinClass.ECONOMY}
+            )
+            query = grok.to_search_query(trip)
+            query = query.model_copy(
+                update={"currency": currency, "adults": 1, "cabin": CabinClass.ECONOMY}
+            )
+            fare_timeout = min(18.0, max(5.0, remaining * 0.5 if remaining < 100 else 14.0))
+            result = await search_flights(
+                query,
+                settings=settings,
+                include_mock=mock,
+                timeout=fare_timeout,
+                max_providers=1,
+            )
+        # When mixing, keep up to 3 cheapest; pure escape stays 1 from engine
+        if decision.shape == "mix" and result.offers:
+            # engine already returns 1; widen slightly by re-search not needed
+            pass
+        form = {
+            "origin": query.origin,
+            "destination": query.destination,
+            "depart": query.depart_date.isoformat(),
+            "return_date": query.return_date.isoformat() if query.return_date else "",
+            "adults": 1,
+            "currency": currency,
+            "nonstop": query.nonstop_only,
+            "mock": mock,
+            "vibe": vibe,
+            "vibe_color": vibe_theme(vibe)["color"],
+        }
+        dest_theme = _dest_theme(query.destination)
+        place_book = None
+        try:
+            from yonder.countries import country_for_iata
+            from yonder.encyclopedia import get_cached, cache_key, get_place_brief
+
+            dest_cc = country_for_iata(query.destination)
+            key = cache_key(query.destination, dest_cc, None)
+            hit = get_cached(key) if key else None
+            if hit:
+                place_book = {
+                    **hit,
+                    "iata": query.destination,
+                    "country": dest_cc,
+                    "from_cache": True,
+                }
+            # Phase B: live field note if user didn't Skip
+            elif not (search_id and is_cancelled(search_id)) and settings.grok_ready():
+                brief = await get_place_brief(
+                    settings,
+                    iata=query.destination,
+                    country=dest_cc,
+                    city=None,
+                    role="destination",
+                    user_prompt=prompt,
+                    trip_vibe=vibe,
+                )
+                if brief:
+                    place_book = brief.to_dict()
+        except Exception:
+            place_book = None
+        escape_override = {
+            "ask": prompt,
+            "form": form,
+            "result": result,
+            "parsed": trip,
+            "analysis": None,
+            "dest_theme": dest_theme,
+            "place_book": place_book,
+            "attribution": attr_meta,
+            "trip_meta": {
+                **attr_meta,
+                "prompt": prompt,
+                "vibe": vibe,
+                "origin": query.origin,
+                "destination": query.destination,
+            },
+        }
+        save_last(
+            "escape",
+            {
+                "ask": prompt,
+                "form": form,
+                "result": result,
+                "parsed": trip,
+                "analysis": None,
+                "dest_theme": dest_theme,
+                "place_book": place_book,
+                "attribution": attr_meta,
+            },
+        )
+        active_mode = "escape"
+
+    async def _do_detour() -> None:
+        nonlocal detour_override, active_mode
+        if search_id and is_cancelled(search_id):
+            errors.append("Detour skipped — user hit Skip")
+            return
+        remaining = _soft_remaining()
+        ideas: list = []
+        req: AdventureRequest | None = None
+
+        def _local_getaway_fallback(reason: str = "") -> tuple:
+            home = _guess_home_iata(prompt) or home_iata
+            local_req = AdventureRequest(
+                origin=home,
+                destination=home,
+                depart_date=date.fromisoformat(depart),
+                arrive_by=None,
+                adults=1,
+                currency=currency,
+                cabin=CabinClass.ECONOMY,
+                min_stop_days=min_stop,
+                max_stop_days=max_stop,
+                max_candidates=max_cand,
+                vibe=vibe,
+                prompt=prompt,
+                avoid_countries=avoid,
+                visited_countries=visited,
+                trip_kind="getaway",
+                include_direct=False,
+            )
+            local_ideas = seed_ideas(local_req)
+            # Prefer prior Save cities when seeds empty or for boosting
+            if seed_hints:
+                from yonder.adventure import StopoverIdea
+
+                for h in seed_hints:
+                    code = h["iata"]
+                    if any(i.iata == code for i in local_ideas):
+                        continue
+                    local_ideas.insert(
+                        0,
+                        StopoverIdea(
+                            iata=code,
+                            city=h.get("city") or code,
+                            stay_days=max(min_stop, min(max_stop, 4)),
+                            why=h.get("why") or "from prior Save",
+                            vibe_tags=[vibe] if vibe else [],
+                            source="save_seed",
+                        ),
+                    )
+            if not local_ideas:
+                msg = "No unvisited getaway cities left after passport map."
+                if reason:
+                    msg = f"{msg} ({reason})"
+                raise ValueError(msg)
+            return local_req, local_ideas[:max_cand]
+
+        # Fast path: chip/Save/refresh seeds already strong → skip cold Grok invent
+        use_fast_seeds = bool(chip_seeds) and chip_source in (
+            "save",
+            "chip",
+            "template",
+            "dataset",
+            "refresh",
+        )
+        if use_fast_seeds and chip_seeds:
+            try:
+                req, ideas = _local_getaway_fallback("chip seeds")
+                notes.append("Fast path: invent from Save/chip seeds")
+            except Exception as exc:  # noqa: BLE001
+                req, ideas = None, []
+                errors.append(f"Chip seed fallback: {exc}")
+                use_fast_seeds = False
+
+        if not use_fast_seeds and settings.grok_ready():
+            try:
+                # Soft invent cap; past aim still allow a full parse attempt
+                invent_timeout = min(22.0, max(8.0, remaining * 0.5 if remaining < 100 else 18.0))
+                if seed_hints:
+                    invent_timeout = min(invent_timeout, 12.0)
+                async with GrokClient(settings) as grok:
+                    req, ideas = await asyncio.wait_for(
+                        grok.translate_adventure(
+                            prompt=prompt,
+                            form={
+                                "origin": home_iata,
+                                "destination": "",
+                                "depart": depart,
+                                "arrive_by": "",
+                                "min_stop_days": min_stop,
+                                "max_stop_days": max_stop,
+                                "max_candidates": max_cand,
+                                "currency": currency,
+                                "vibe": vibe,
+                                "avoid_countries": avoid,
+                                "visited_countries": visited,
+                            },
+                            default_currency=currency,
+                        ),
+                        timeout=invent_timeout,
+                    )
+                if search_id and is_cancelled(search_id):
+                    errors.append("Detour invent finished after Skip — packaging what we can")
+                trip_kind = (req.trip_kind or "detour").lower()
+                if req.origin == req.destination:
+                    trip_kind = "getaway"
+                req = req.model_copy(
+                    update={
+                        "depart_date": date.fromisoformat(depart),
+                        "currency": currency,
+                        "min_stop_days": min_stop,
+                        "max_stop_days": max_stop,
+                        "max_candidates": max_cand,
+                        "avoid_countries": avoid,
+                        "visited_countries": visited,
+                        "vibe": vibe,
+                        "prompt": prompt,
+                        "trip_kind": trip_kind,
+                        "include_direct": False,
+                        "adults": 1,
+                        "cabin": CabinClass.ECONOMY,
+                    }
+                )
+                if not ideas:
+                    ideas = seed_ideas(req)
+            except Exception as exc:  # noqa: BLE001
+                req, ideas = _local_getaway_fallback(str(exc)[:120])
+        elif not use_fast_seeds:
+            req, ideas = _local_getaway_fallback("Grok offline")
+
+        # Always prepend Save/chip seeds (flywheel)
+        if req is not None and seed_hints:
+            from yonder.adventure import StopoverIdea
+
+            if not ideas:
+                ideas = seed_ideas(req)
+            for h in reversed(seed_hints):
+                code = h["iata"]
+                if any(i.iata == code for i in ideas):
+                    continue
+                ideas.insert(
+                    0,
+                    StopoverIdea(
+                        iata=code,
+                        city=h.get("city") or code,
+                        stay_days=max(min_stop, min(max_stop, 4)),
+                        why=h.get("why") or "from prior Save",
+                        vibe_tags=[vibe] if vibe else [],
+                        source=h.get("kind") or "save_seed",
+                    ),
+                )
+
+        assert req is not None
+        if search_id and is_cancelled(search_id) and not ideas:
+            errors.append("Detour cancelled before pricing")
+            return
+        # No hard outer timeout — plan_adventure honors Skip via cancel_id
+        result = await plan_adventure(
+            req,
+            ideas,
+            settings=settings,
+            include_mock=mock,
+            cancel_id=search_id or None,
+        )
+        # Stamp vibe on itineraries
+        vt = vibe_theme(vibe)
+        try:
+            stamped = []
+            for it in result.itineraries:
+                stamped.append(
+                    it.model_copy(
+                        update={
+                            "theme_primary": vt["color"],
+                            "theme_accent": vt["deep"],
+                            "theme_label": vt["label"],
+                        }
+                    )
+                )
+            result = result.model_copy(update={"itineraries": stamped})
+        except Exception:
+            pass
+        trip_meta = {
+            "prompt": prompt,
+            "trip_prompt": prompt,
+            "vibe": vibe,
+            "vibe_color": vt["color"],
+            "origin": result.request.origin,
+            "destination": result.request.destination,
+            "visited": visited,
+            "avoid": avoid,
+            "intent": decision.shape,
+            "intent_rationale": decision.rationale,
+            **attr_meta,
+        }
+        form = {
+            **det_form,
+            "prompt": prompt,
+            "origin": result.request.origin,
+            "destination": result.request.destination,
+            "depart": depart,
+            "vibe": vibe,
+            "vibe_color": vt["color"],
+            "mock": mock,
+            "min_stop_days": min_stop,
+            "max_stop_days": max_stop,
+        }
+        # Field notes: cache always; live Grok only if user didn't Skip
+        place_books: dict = {}
+        try:
+            from yonder.encyclopedia import briefs_for_stops, stops_from_itineraries
+
+            stops = stops_from_itineraries(result.itineraries, limit=5)
+            skipped = bool(search_id and is_cancelled(search_id))
+            place_books = await briefs_for_stops(
+                settings,
+                stops,
+                max_n=0 if skipped else 3,
+                cache_only=skipped,
+                cancel_id=search_id or None,
+                user_prompt=prompt,
+                trip_vibe=vibe,
+            )
+            if place_books and not skipped:
+                notes.append(f"Field notes for {len(place_books)} stop(s)")
+            elif skipped and place_books:
+                notes.append("Field notes from cache (Skip — more may load in UI)")
+        except Exception as pb_exc:  # noqa: BLE001
+            place_books = {}
+            errors.append(f"Field notes: {str(pb_exc)[:80]}")
+
+        detour_override = {
+            "form": form,
+            "result": result,
+            "trip_meta": trip_meta,
+            "place_books": place_books,
+            "attribution": attr_meta,
+        }
+        save_last(
+            "detour",
+            {
+                "form": form,
+                "result": result,
+                "trip_meta": trip_meta,
+                "place_books": place_books,
+            },
+        )
+        if decision.shape != "mix":
+            active_mode = "detour"
+
+    try:
+        if decision.shape in ("escape", "mix"):
+            try:
+                await _do_escape()
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"Escape: {exc}")
+        if decision.shape in ("detour", "mix"):
+            try:
+                await _do_detour()
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"Detour: {exc}")
+
+        has_esc = bool(escape_override.get("result"))
+        has_det = bool(detour_override.get("result"))
+        if not has_esc and not has_det:
+            raise ValueError(
+                "; ".join(errors) if errors else "Nothing priced — try again or Test Data."
+            )
+
+        # Prefer showing the side that has data; mix defaults to escape panel first
+        if decision.shape == "mix":
+            active_mode = "escape" if has_esc else "detour"
+        elif decision.shape == "detour":
+            active_mode = "detour"
+        else:
+            active_mode = "escape"
+
+        if search_id and is_cancelled(search_id):
+            notes.append("Completed early (Skip)")
+
+        err_msg = None
+        if errors:
+            err_msg = " · ".join(notes + errors)
+        else:
+            err_msg = " · ".join(notes) if notes else None
+
+        ctx = _compose_page_ctx(
+            settings,
+            mode=active_mode,
+            error=None if has_esc or has_det else err_msg,
+            escape_override=escape_override if has_esc or escape_override.get("ask") else None,
+            detour_override=detour_override if has_det or detour_override.get("form") else None,
+            lock_vibe=True,
+        )
+        # Always attach both sides when present
+        if has_esc:
+            base_esc = ctx.get("escape_panel") if isinstance(ctx.get("escape_panel"), dict) else {}
+            ctx["escape_panel"] = {**base_esc, **escape_override}
+        if has_det:
+            base_det = ctx.get("detour_panel") if isinstance(ctx.get("detour_panel"), dict) else {}
+            ctx["detour_panel"] = {**base_det, **detour_override}
+        ctx["intent_shape"] = decision.shape
+        ctx["intent_rationale"] = decision.rationale
+        ctx["result_filter"] = "all"
+        if err_msg and (has_esc or has_det):
+            ctx["intent_note"] = err_msg
+        return templates.TemplateResponse(request, "index.html", ctx)
+    except Exception as exc:  # noqa: BLE001
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            _compose_page_ctx(
+                settings,
+                mode="escape",
+                error=str(exc),
+                escape_override={"ask": prompt, "form": empty_esc},
+                detour_override={"form": det_form},
+                lock_vibe=True,
+            ),
+            status_code=400,
+        )
+    finally:
+        if search_id:
+            clear_search_cancel(search_id)
+
+
 @app.get("/adventure", response_class=HTMLResponse)
 async def adventure_home(request: Request) -> RedirectResponse:
     return RedirectResponse(url="/?mode=detour", status_code=302)
@@ -668,7 +1327,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
 
         ideas: list = []
         req: AdventureRequest | None = None
-        budget = float(getattr(settings, "search_budget_seconds", 30.0) or 30.0)
+        aim, _skip = settings.search_timing()
 
         # ONE Grok call: cities from description + detour/getaway list.
         # On failure, fall back to passport map + local home-city guess (seed ideas).
@@ -711,8 +1370,8 @@ async def adventure_run(request: Request) -> HTMLResponse:
         if use_grok and settings.grok_ready():
             async with GrokClient(settings) as grok:
                 try:
-                    # Cap invent so a slow model still leaves time for fares + seed fallback
-                    invent_timeout = min(18.0, max(8.0, budget * 0.55))
+                    # Soft invent cap; no hard kill on the full plan
+                    invent_timeout = min(22.0, max(8.0, aim * 0.55))
                     home_iata = settings.resolve_home_iata()
                     req, ideas = await asyncio.wait_for(
                         grok.translate_adventure(
@@ -796,17 +1455,11 @@ async def adventure_run(request: Request) -> HTMLResponse:
                 "Unstamp some visited countries or try a different vibe."
             )
 
-        # Force include_direct off for speed (baseline is optional noise under 30s)
+        # Force include_direct off for speed (baseline is optional noise under soft aim)
         req = req.model_copy(update={"include_direct": False})
-        try:
-            result = await asyncio.wait_for(
-                plan_adventure(req, ideas, settings=settings, include_mock=mock),
-                timeout=budget,
-            )
-        except asyncio.TimeoutError as exc:
-            raise ValueError(
-                "Detour hit the 30s limit. Lower options in Settings (max 3) or use Test Data."
-            ) from exc
+        result = await plan_adventure(
+            req, ideas, settings=settings, include_mock=mock
+        )
 
         form.update(
             {
@@ -1020,28 +1673,79 @@ async def saved_list_page(
 
 @app.post("/api/saved")
 async def api_save_itinerary(request: Request):
-    """Save an adventure itinerary snapshot (JSON body)."""
+    """Save Escape or Detour snapshot (JSON body). Only durable write = explicit ★ Save."""
     from fastapi.responses import JSONResponse
+
+    from yonder.saved import escape_offer_to_itinerary
 
     try:
         body = await request.json()
     except Exception:
         return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
 
-    itinerary = body.get("itinerary") or body
+    trip_meta = body.get("trip_meta") if isinstance(body.get("trip_meta"), dict) else {}
+    for k in (
+        "adults",
+        "currency",
+        "cabin",
+        "vibe",
+        "prompt",
+        "trip_prompt",
+        "origin",
+        "destination",
+        "visited",
+        "avoid",
+        "click_id",
+        "chip_id",
+        "chip_source",
+        "search_id",
+    ):
+        if k in body and k not in trip_meta:
+            trip_meta[k] = body[k]
+    # Normalize prompt field
+    if trip_meta.get("trip_prompt") and not trip_meta.get("prompt"):
+        trip_meta["prompt"] = trip_meta["trip_prompt"]
+
+    itinerary = body.get("itinerary")
+    # Escape cards: { kind: "escape", query, offer, ask }
+    if not itinerary and body.get("kind") == "escape" and body.get("offer") and body.get("query"):
+        itinerary = escape_offer_to_itinerary(
+            query=body["query"] if isinstance(body["query"], dict) else {},
+            offer=body["offer"] if isinstance(body["offer"], dict) else {},
+            ask=str(body.get("ask") or trip_meta.get("prompt") or ""),
+            vibe=trip_meta.get("vibe"),
+        )
+    if not itinerary:
+        itinerary = body if isinstance(body, dict) else None
     if not isinstance(itinerary, dict) or not itinerary.get("title"):
         return JSONResponse(
             {"ok": False, "error": "Missing itinerary payload"}, status_code=400
         )
-    trip_meta = body.get("trip_meta") if isinstance(body.get("trip_meta"), dict) else {}
-    # Allow trip_meta at top level fields too
-    for k in ("adults", "currency", "cabin", "vibe", "prompt", "origin", "destination"):
-        if k in body and k not in trip_meta:
-            trip_meta[k] = body[k]
+    # Stamp passport context into trip_meta when provided
+    settings = reload_settings()
+    trip_meta.setdefault("visited", settings.visited_country_list())
+    trip_meta.setdefault("avoid", settings.avoid_country_list())
     try:
         saved = save_itinerary(itinerary, trip_meta=trip_meta)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    # Funnel: Save is the strong preference label + affiliate path quality signal
+    try:
+        from yonder.attribution import log_event
+
+        log_event(
+            "save",
+            click_id=str(trip_meta.get("click_id") or "") or None,
+            chip_id=str(trip_meta.get("chip_id") or "") or None,
+            chip_source=str(trip_meta.get("chip_source") or "") or None,
+            vibe=str(trip_meta.get("vibe") or "") or None,
+            origin=str(trip_meta.get("origin") or saved.origin or "") or None,
+            search_id=str(trip_meta.get("search_id") or "") or None,
+            saved_id=saved.id,
+            dest=str(saved.stop_iata or saved.destination or "") or None,
+        )
+    except Exception:
+        pass
     return JSONResponse(
         {
             "ok": True,
@@ -1132,6 +1836,156 @@ async def saved_delete(request: Request, saved_id: str) -> HTMLResponse:
     return RedirectResponse(
         url="/saved?err=" + quote("Not found"), status_code=302
     )
+
+
+@app.post("/api/results-clear")
+async def api_results_clear() -> JSONResponse:
+    """Clear last Escape + Detour result snapshots (UI Clear filter)."""
+    from yonder.last_search import clear_last
+
+    try:
+        clear_last(None)
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/search-cancel")
+async def api_search_cancel(request: Request) -> JSONResponse:
+    """Client Skip — mark a running /explore search so it wraps up with partials."""
+    from yonder.search_cancel import request_cancel
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    sid = ""
+    if isinstance(body, dict):
+        sid = str(body.get("search_id") or body.get("id") or "").strip()
+    if not sid:
+        return JSONResponse({"ok": False, "error": "missing search_id"}, status_code=400)
+    ok = request_cancel(sid)
+    return JSONResponse({"ok": ok, "search_id": sid})
+
+
+@app.get("/api/place-brief")
+async def api_place_brief(
+    iata: str = Query(..., min_length=3, max_length=3),
+    country: str = Query(""),
+    city: str = Query(""),
+    role: str = Query("stopover"),
+    prompt: str = Query(""),
+    vibe: str = Query(""),
+) -> JSONResponse:
+    """Stream-in field note for one stop (cache-first, live Grok on miss).
+
+    Same structure always; prompt + vibe only tint the prose to match the user.
+    """
+    from yonder.encyclopedia import get_place_brief
+
+    settings = reload_settings()
+    code = (iata or "").strip().upper()
+    if len(code) != 3 or not code.isalpha():
+        return JSONResponse({"ok": False, "error": "bad iata"}, status_code=400)
+    try:
+        brief = await get_place_brief(
+            settings,
+            iata=code,
+            country=(country or "").strip().upper() or None,
+            city=(city or "").strip() or None,
+            role=(role or "stopover")[:24],
+            user_prompt=(prompt or "").strip()[:400] or None,
+            trip_vibe=(vibe or "").strip().lower()[:32] or None,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)[:120]}, status_code=500)
+    if not brief:
+        return JSONResponse({"ok": False, "error": "no brief", "iata": code})
+    return JSONResponse({"ok": True, "iata": code, "brief": brief.to_dict()})
+
+
+@app.get("/api/suggest")
+async def api_suggest(
+    vibe: str = Query(""),
+    origin: str | None = None,
+) -> JSONResponse:
+    """Dataset-completion chip ranking from ★ Saves (vibe + map context).
+
+    Pills themselves are built client-side to fill missing prompt slots.
+    Saves only re-rank which completions to surface and supply soft dest seeds.
+    """
+    from yonder.saved import ranking_from_saves
+
+    settings = reload_settings()
+    home = (origin or "").strip().upper() or settings.resolve_home_iata()
+    rank = ranking_from_saves(
+        vibe=(vibe or "").strip().lower() or None,
+        origin=home,
+        visited=settings.visited_country_list(),
+        avoid=settings.avoid_country_list(),
+    )
+    return JSONResponse(
+        {
+            "ok": True,
+            "vibe": (vibe or "").strip().lower() or None,
+            "home": home,
+            "ranking": rank,
+            "chips": [],  # client builds dataset-completion pills
+        }
+    )
+
+
+@app.get("/out")
+async def outbound_click(
+    request: Request,
+    u: str = Query(..., min_length=8, description="Destination booking URL"),
+    click_id: str | None = None,
+    chip_id: str | None = None,
+    chip_source: str | None = None,
+    dest: str | None = None,
+) -> RedirectResponse:
+    """Affiliate-friendly click-through: log funnel event, stamp URL, redirect."""
+    from yonder.attribution import log_event, stamp_outbound_url
+
+    settings = get_settings()
+    target = (u or "").strip()
+    if not target.startswith("http://") and not target.startswith("https://"):
+        return RedirectResponse(url="/", status_code=302)
+    # Basic open-redirect guard: allow known booking hosts only
+    host = target.split("/")[2].lower() if "://" in target else ""
+    allowed = (
+        "google.com",
+        "google.ca",
+        "google.co.uk",
+        "kayak.com",
+        "kayak.ca",
+        "www.google.com",
+        "www.kayak.com",
+        "www.kayak.ca",
+    )
+    if not any(host == a or host.endswith("." + a.lstrip("www.")) for a in allowed):
+        # Still allow airline deep links we generated (any https)
+        if not target.startswith("https://"):
+            return RedirectResponse(url="/", status_code=302)
+    stamped = stamp_outbound_url(
+        target,
+        click_id=click_id,
+        chip_id=chip_id,
+        chip_source=chip_source or "book",
+        affiliate_tag=getattr(settings, "affiliate_tag", "") or None,
+    )
+    try:
+        log_event(
+            "outbound_click",
+            click_id=click_id,
+            chip_id=chip_id,
+            chip_source=chip_source or "book",
+            dest=(dest or "")[:8] or None,
+            url=stamped or target,
+        )
+    except Exception:
+        pass
+    return RedirectResponse(url=stamped or target, status_code=302)
 
 
 @app.post("/api/travel-map")
@@ -1239,29 +2093,13 @@ async def settings_save(request: Request) -> RedirectResponse:
         except ValueError:
             updates[key] = default
 
-    for ck in ("COL_HOTEL", "COL_FOOD", "COL_TRANSIT", "COL_CULTURE", "COL_EXPECTED_DAILY"):
-        _col_num(ck)
+    # Single daily $ field is authoritative; zero legacy component split on save
+    _col_num("COL_EXPECTED_DAILY")
     _col_num("COL_TOLERANCE_PCT", default="25", hi=100.0)
-
-    # Component bag sums to daily total (authoritative when any component > 0)
-    try:
-        s = get_settings()
-
-        def _comp(form_key: str, attr: str) -> float:
-            if form_key in updates:
-                return float(updates[form_key] or 0)
-            return float(getattr(s, attr, 0) or 0)
-
-        total = (
-            _comp("COL_HOTEL", "col_hotel")
-            + _comp("COL_FOOD", "col_food")
-            + _comp("COL_TRANSIT", "col_transit")
-            + _comp("COL_CULTURE", "col_culture")
-        )
-        if total > 0:
-            updates["COL_EXPECTED_DAILY"] = str(round(total, 2))
-    except (TypeError, ValueError):
-        pass
+    updates["COL_HOTEL"] = "0"
+    updates["COL_FOOD"] = "0"
+    updates["COL_TRANSIT"] = "0"
+    updates["COL_CULTURE"] = "0"
 
     # Country map / multi-select → normalize ISO2 lists
     avoid_multi = form.getlist("AVOID_COUNTRIES_MULTI") if hasattr(form, "getlist") else []
