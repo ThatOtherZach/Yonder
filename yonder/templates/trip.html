@@ -62,10 +62,23 @@
       .trip-body {
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         gap: 2rem;
+        align-items: stretch;
       }
     }
     .trip-col-pass  { min-width: 0; }
-    .trip-col-notes { min-width: 0; }
+    .trip-col-notes {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .trip-col-notes .place-book {
+      flex: 1;
+      margin: 0;
+    }
+    .trip-col-notes .place-book + .place-book {
+      margin-top: 0.75rem;
+      flex: none;
+    }
     .trip-meta {
       color: var(--muted);
       font-size: 0.9rem;
