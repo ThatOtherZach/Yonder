@@ -695,6 +695,26 @@
     }
     .results-criteria .btn-refresh:hover { filter: brightness(1.07); }
     .results-criteria .btn-refresh:disabled { opacity: 0.55; cursor: wait; }
+    /* GPS auto-swap notice */
+    .gps-origin-notice {
+      display: none;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--sky, #2a7abf);
+      white-space: nowrap;
+      animation: gps-notice-in 0.18s ease;
+    }
+    .gps-origin-notice.is-visible { display: inline-flex; }
+    .gps-origin-notice .gps-notice-icon {
+      font-size: 0.8rem;
+      flex-shrink: 0;
+    }
+    @keyframes gps-notice-in {
+      from { opacity: 0; transform: translateY(-3px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
     .pb-fast-facts {
       display: flex;
       flex-wrap: wrap;
@@ -942,6 +962,10 @@
             value="{{ criteria_origin }}" title="Departure airport (currently {{ criteria_origin }})"
             autocomplete="off" spellcheck="false" />
         </label>
+        <span class="gps-origin-notice" id="gps-origin-notice" role="status" aria-live="polite">
+          <span class="gps-notice-icon">📍</span>
+          <span class="gps-notice-text"></span>
+        </span>
         <label {% if not has_detour %}title="Detour only"{% endif %}>Stop days
           <div class="criteria-stop-range">
             <input id="criteria-min-stop" type="number" min="1" max="21" step="1"
@@ -1794,6 +1818,23 @@
         // GPS cache for the page session: null = not yet tried, false = denied/unavailable, "XYZ" = IATA
         var gpsOriginCache = null;
 
+        var gpsNoticeEl = document.getElementById("gps-origin-notice");
+        var gpsNoticeTimer = null;
+
+        function showGpsNotice(iata) {
+          if (!gpsNoticeEl) return;
+          var textEl = gpsNoticeEl.querySelector(".gps-notice-text");
+          if (textEl) textEl.textContent = "Departing from " + iata + " — detected location";
+          gpsNoticeEl.classList.add("is-visible");
+          clearTimeout(gpsNoticeTimer);
+          gpsNoticeTimer = setTimeout(hideGpsNotice, 5000);
+        }
+
+        function hideGpsNotice() {
+          if (!gpsNoticeEl) return;
+          gpsNoticeEl.classList.remove("is-visible");
+        }
+
         function applyGpsOriginIfAway(iata) {
           if (!iata) return;
           var home = (originEl2 && originEl2.value || "").trim().toUpperCase();
@@ -1801,6 +1842,13 @@
           // Away from home: swap origin to current location
           if (originEl2) originEl2.value = iata;
           if (hidOrigin2) hidOrigin2.value = iata;
+          showGpsNotice(iata);
+        }
+
+        // Dismiss notice on any interaction with the origin field
+        if (originEl2) {
+          originEl2.addEventListener("focus", hideGpsNotice);
+          originEl2.addEventListener("input", hideGpsNotice);
         }
 
         function resolveOriginThenSubmit() {
