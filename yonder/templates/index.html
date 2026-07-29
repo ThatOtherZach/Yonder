@@ -1135,7 +1135,7 @@
     <div class="results-panel" id="detour-results" data-result-kind="detour">
     {% if detour_result %}
       <div class="card" id="adv-results" data-trip-meta='{{ (detour_trip_meta or {}) | tojson }}'>
-        <h2>With a stop · Getaway · Detour</h2>
+        <h2>Detour</h2>
         <p class="sub">
           {% if detour_result.direct_price is not none %}
             Direct-ish baseline <strong style="color:var(--good)">{{ detour_result.request.currency }} {{ '%.0f'|format(detour_result.direct_price) }}</strong>
