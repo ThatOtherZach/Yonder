@@ -1234,7 +1234,7 @@
             </div>
             <div class="bp-stub">
               <div>
-                <div class="bp-stub-label">Total</div>
+                <div class="bp-stub-label">Approx fare</div>
                 <div class="bp-stub-price price-with-sign">
                   <span class="price-amt">{{ o.display_price_base or o.display_price or ('~' ~ o.currency ~ ' ' ~ '%.0f'|format(o.price)) }}</span>{% if o.price_glyph %}<span class="price-sign {{ o.price_tone or 'neutral' }} sign">{{ o.price_glyph }}</span>{% endif %}
                 </div>
@@ -1431,7 +1431,7 @@
             </div>
             <div class="bp-stub">
               <div>
-                <div class="bp-stub-label">Total</div>
+                <div class="bp-stub-label">Approx fare</div>
                 <div class="bp-stub-price price-with-sign">
                   {% if it.total_price is not none %}
                   <span class="price-amt">{{ it.display_price_base or it.display_price or ('~' ~ it.currency ~ ' ' ~ '%.0f'|format(it.total_price)) }}</span>{% if it.price_glyph %}<span class="price-sign {{ it.price_tone or 'neutral' }} sign">{{ it.price_glyph }}</span>{% endif %}
