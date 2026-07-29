@@ -50,6 +50,73 @@
       font-size: 0.9rem;
       margin: 0 0 1rem;
     }
+    /* Field-note additions (pb-* classes used only on this page) */
+    .place-book .pb-fast-facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.5rem;
+      margin: 0.55rem 0 0.7rem;
+    }
+    .place-book .pb-fact {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      font-size: 0.8rem;
+      color: var(--ink-soft);
+    }
+    .place-book .pb-vibe-line {
+      font-size: 0.93rem;
+      color: var(--ink-soft);
+      margin: 0.3rem 0 0.6rem;
+      line-height: 1.45;
+    }
+    .place-book .pb-vibe-label {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-right: 0.45rem;
+      vertical-align: 0.1em;
+    }
+    .place-book .pb-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      width: 100%;
+      padding: 0.55rem 0 0;
+      border: none;
+      border-top: 1px solid var(--line);
+      background: none;
+      cursor: pointer;
+      font-size: 0.82rem;
+      color: var(--muted);
+      text-align: left;
+      margin-top: 0.75rem;
+    }
+    .place-book .pb-toggle:hover { color: var(--ink); }
+    .place-book .pb-toggle .pb-toggle-label { flex: 1; }
+    .place-book .pb-chevron {
+      font-size: 0.75rem;
+      transition: transform 0.15s;
+      display: inline-block;
+    }
+    .place-book .pb-toggle[aria-expanded="true"] .pb-chevron {
+      transform: rotate(180deg);
+    }
+    .place-book .pb-details {
+      margin-top: 0.85rem;
+    }
+    .place-book .pb-mesh-grid {
+      display: grid;
+      gap: 0.85rem;
+    }
+    @media (min-width: 480px) {
+      .place-book .pb-mesh-grid { grid-template-columns: 1fr 1fr; gap: 1rem 1.25rem; }
+    }
 {% endblock %}
 {% block body %}
   {% if not share %}
@@ -203,6 +270,87 @@
       </div>
     {% endif %}
 
+    {# ——— Field notes ——— #}
+    {% if place_books %}
+      {# For escape: one note for the destination #}
+      {% if share.kind == 'escape' %}
+        {% set q = (share.payload or {}).get('query') or {} %}
+        {% set pb = place_books.get((q.destination or '').upper()) %}
+        {% if pb %}
+        <div class="place-book" style="margin-top:1.25rem">
+          <span class="pb-tag">Field note</span>
+          <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+          {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
+          {% if pb.facts %}
+          <div class="pb-fast-facts" aria-label="Fast facts">
+            {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
+          </div>
+          {% endif %}
+          {% if pb.vibe %}
+          <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe }}</div>
+          {% endif %}
+          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
+          {% if pb.culture or pb.food or pb.caution %}
+          <button type="button" class="pb-toggle" aria-expanded="false">
+            <span class="pb-toggle-label">Culture, food &amp; heads-up</span>
+            <span class="pb-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="pb-details" hidden>
+            <div class="pb-grid pb-mesh-grid">
+              {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
+              {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
+              {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+      {# For detour: one note per stop that has a cached brief #}
+      {% elif share.kind == 'detour' %}
+        {% set it = (share.payload or {}).get('itinerary') or {} %}
+        {# Primary stop first, then leg destinations — deduplicated #}
+        {% set shown = namespace(iatas=[]) %}
+        {% set all_iatas = namespace(list=[]) %}
+        {% if it.stop_iata %}{% set all_iatas.list = all_iatas.list + [it.stop_iata] %}{% endif %}
+        {% for leg in (it.legs or []) %}{% if leg.to_iata %}{% set all_iatas.list = all_iatas.list + [leg.to_iata] %}{% endif %}{% endfor %}
+        {% for iata in all_iatas.list %}
+          {% set code = iata | upper %}
+          {% set pb = place_books.get(code) %}
+          {% if pb and code not in shown.iatas %}
+            {% set shown.iatas = shown.iatas + [code] %}
+        <div class="place-book" style="margin-top:1.25rem">
+          <span class="pb-tag">Field note · {{ iata }}</span>
+          <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+          {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
+          {% if pb.facts %}
+          <div class="pb-fast-facts" aria-label="Fast facts">
+            {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
+          </div>
+          {% endif %}
+          {% if pb.vibe %}
+          <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe }}</div>
+          {% endif %}
+          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
+          {% if pb.culture or pb.food or pb.caution %}
+          <button type="button" class="pb-toggle" aria-expanded="false">
+            <span class="pb-toggle-label">Culture, food &amp; heads-up</span>
+            <span class="pb-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="pb-details" hidden>
+            <div class="pb-grid pb-mesh-grid">
+              {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
+              {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
+              {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    {% endif %}
+
     <p class="muted" style="margin-top:1.25rem;font-size:0.85rem">
       <a href="/">← Back to Yonder</a>
       {% if share.kind == 'detour' %} · <a href="/saved">Saved</a>{% endif %}
@@ -210,22 +358,37 @@
   </main>
   <script>
     (function () {
+      // Copy link
       var btn = document.getElementById("copy-share-url");
       var text = document.getElementById("share-url-text");
-      if (!btn || !text) return;
-      btn.addEventListener("click", function () {
-        var url = text.textContent || "";
-        function ok() {
-          btn.textContent = "Copied";
-          setTimeout(function () { btn.textContent = "Copy link"; }, 1600);
-        }
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(url).then(ok).catch(function () {
+      if (btn && text) {
+        btn.addEventListener("click", function () {
+          var url = text.textContent || "";
+          function ok() {
+            btn.textContent = "Copied";
+            setTimeout(function () { btn.textContent = "Copy link"; }, 1600);
+          }
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(ok).catch(function () {
+              window.prompt("Copy link", url);
+            });
+          } else {
             window.prompt("Copy link", url);
-          });
-        } else {
-          window.prompt("Copy link", url);
-        }
+          }
+        });
+      }
+
+      // Field note expand / collapse
+      document.querySelectorAll(".place-book .pb-toggle").forEach(function (toggle) {
+        var details = toggle.nextElementSibling;
+        toggle.addEventListener("click", function () {
+          var expanded = toggle.getAttribute("aria-expanded") === "true";
+          toggle.setAttribute("aria-expanded", String(!expanded));
+          if (details) {
+            if (expanded) { details.setAttribute("hidden", ""); }
+            else { details.removeAttribute("hidden"); }
+          }
+        });
       });
     })();
   </script>

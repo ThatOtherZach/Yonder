@@ -57,6 +57,33 @@ def get_cached(key: str) -> dict[str, Any] | None:
         return None
 
 
+def get_any_cached_for_iata(iata: str) -> dict[str, Any] | None:
+    """Return the most-recent cached brief for *any* key starting with IATA|.
+
+    Used on the static share page where the exact country/city suffix may not
+    be known — returns None if nothing is cached (never calls Grok).
+    """
+    prefix = (iata or "").upper().strip() + "|"
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT payload_json, fetched_at FROM place_briefs
+            WHERE cache_key LIKE ? AND cache_key NOT LIKE '%|t:%'
+            ORDER BY fetched_at DESC LIMIT 1
+            """,
+            (prefix + "%",),
+        ).fetchone()
+    if not row:
+        return None
+    if time.time() - float(row["fetched_at"]) > TTL_SEC:
+        return None
+    try:
+        data = json.loads(row["payload_json"])
+        return data if isinstance(data, dict) else None
+    except json.JSONDecodeError:
+        return None
+
+
 def put_cached(key: str, payload: dict[str, Any]) -> None:
     with _connect() as conn:
         conn.execute(

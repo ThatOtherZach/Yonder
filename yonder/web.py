@@ -1742,6 +1742,29 @@ def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
         "escape": "Escape",
         "detour": "Detour",
     }.get(share.kind, share.kind.title())
+
+    # Gather cached field notes (never calls Grok — share page must be instant).
+    from yonder.encyclopedia import get_any_cached_for_iata
+
+    p = share.payload or {}
+    place_books: dict[str, dict] = {}
+    if share.kind == "escape":
+        dest = (p.get("query") or {}).get("destination") or ""
+        if dest:
+            brief = get_any_cached_for_iata(dest)
+            if brief:
+                place_books[dest.upper()] = brief
+    elif share.kind == "detour":
+        it = p.get("itinerary") or {}
+        for iata in filter(None, [it.get("stop_iata"), *[
+            leg.get("to_iata") for leg in (it.get("legs") or [])
+        ]]):
+            code = iata.upper()
+            if code not in place_books:
+                brief = get_any_cached_for_iata(code)
+                if brief:
+                    place_books[code] = brief
+
     return templates.TemplateResponse(
         request,
         "trip.html",
@@ -1754,6 +1777,7 @@ def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
             "qr_src": qr_png_data_uri(url, scale=7, border=3),
             "qr_svg": qr_svg_for_url(url, scale=5),
             "kind_label": kind_label,
+            "place_books": place_books,
         },
     )
 
