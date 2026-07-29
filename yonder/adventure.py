@@ -54,28 +54,50 @@ def _apply_theme(it: AdventureItinerary) -> AdventureItinerary:
         }
     )
 
-# Interesting hubs used as intentional stopovers (seed when Grok offline)
+# Interesting hubs used as intentional stopovers (seed when Grok offline / passport filter)
 SEED_STOPOVERS: list[dict[str, Any]] = [
     {"iata": "ZRH", "city": "Zurich", "country": "CH", "why": "Swiss Alps gateway — classic long-haul detour", "vibe_tags": ["alps", "city", "trains"]},
     {"iata": "IST", "city": "Istanbul", "country": "TR", "why": "Turkish Airlines hub with easy multi-day city break", "vibe_tags": ["city", "food", "bazaar"]},
-    {"iata": "LIS", "city": "Lisbon", "country": "PT", "why": "Atlantic TAP stopover city — cheap Europe beach vibes", "vibe_tags": ["city", "food", "coast"]},
+    {"iata": "LIS", "city": "Lisbon", "country": "PT", "why": "Atlantic TAP stopover city — cheap Europe beach vibes", "vibe_tags": ["city", "food", "coast", "cheap"]},
     {"iata": "KEF", "city": "Reykjavik", "country": "IS", "why": "Icelandair-style layover adventure — nature + hot springs", "vibe_tags": ["nature", "north"]},
-    {"iata": "DOH", "city": "Doha", "country": "QA", "why": "Qatar hub with strong long-haul deals", "vibe_tags": ["city", "modern"]},
+    {"iata": "DOH", "city": "Doha", "country": "QA", "why": "Qatar hub with strong long-haul deals", "vibe_tags": ["city", "modern", "safe"]},
     {"iata": "AMS", "city": "Amsterdam", "country": "NL", "why": "KLM hub — canals, bikes, easy city hop", "vibe_tags": ["city", "culture"]},
     {"iata": "CDG", "city": "Paris", "country": "FR", "why": "Obvious but underrated as a *planned* multi-day stop", "vibe_tags": ["city", "food", "art"]},
-    {"iata": "MEX", "city": "Mexico City", "country": "MX", "why": "North America detour with huge food culture", "vibe_tags": ["city", "food", "culture"]},
+    {"iata": "MEX", "city": "Mexico City", "country": "MX", "why": "North America detour with huge food culture", "vibe_tags": ["city", "food", "culture", "cheap"]},
     {"iata": "CUN", "city": "Cancun", "country": "MX", "why": "Beach break between Canadian coasts", "vibe_tags": ["beach", "relax"]},
     {"iata": "YUL", "city": "Montreal", "country": "CA", "why": "Domestic-ish culture detour if routing allows", "vibe_tags": ["city", "food"]},
     {"iata": "YYC", "city": "Calgary", "country": "CA", "why": "Rockies access between east and west Canada", "vibe_tags": ["nature", "mountains"]},
     {"iata": "LAX", "city": "Los Angeles", "country": "US", "why": "Sun + sprawl stop between continents/coasts", "vibe_tags": ["city", "sun"]},
-    {"iata": "NRT", "city": "Tokyo Narita", "country": "JP", "why": "Japan stopover when Pacific routing is wild", "vibe_tags": ["city", "food", "neon"]},
-    {"iata": "ICN", "city": "Seoul", "country": "KR", "why": "Incheon hub with great food and city energy", "vibe_tags": ["city", "food"]},
-    {"iata": "DXB", "city": "Dubai", "country": "AE", "why": "Mega-hub desert city for long east-west routes", "vibe_tags": ["city", "modern"]},
+    {"iata": "NRT", "city": "Tokyo Narita", "country": "JP", "why": "Japan stopover when Pacific routing is wild", "vibe_tags": ["city", "food", "neon", "safe"]},
+    {"iata": "ICN", "city": "Seoul", "country": "KR", "why": "Incheon hub with great food and city energy", "vibe_tags": ["city", "food", "safe"]},
+    {"iata": "DXB", "city": "Dubai", "country": "AE", "why": "Mega-hub desert city for long east-west routes", "vibe_tags": ["city", "modern", "safe"]},
     {"iata": "BCN", "city": "Barcelona", "country": "ES", "why": "Mediterranean detour worth the extra days", "vibe_tags": ["city", "beach", "food"]},
     {"iata": "LHR", "city": "London", "country": "GB", "why": "Classic hub — museums, pubs, easy connections", "vibe_tags": ["city", "culture"]},
     {"iata": "FRA", "city": "Frankfurt", "country": "DE", "why": "Lufthansa mega-hub for Europe hops", "vibe_tags": ["city", "hub"]},
-    {"iata": "SIN", "city": "Singapore", "country": "SG", "why": "Jewel of SE Asia stopovers", "vibe_tags": ["city", "food", "modern"]},
-    {"iata": "BKK", "city": "Bangkok", "country": "TH", "why": "Street food + easy multi-day chaos", "vibe_tags": ["city", "food"]},
+    {"iata": "SIN", "city": "Singapore", "country": "SG", "why": "Jewel of SE Asia stopovers — safe + food heaven", "vibe_tags": ["city", "food", "modern", "safe", "cheap"]},
+    {"iata": "BKK", "city": "Bangkok", "country": "TH", "why": "Street food + easy multi-day chaos", "vibe_tags": ["city", "food", "cheap"]},
+    # Extra getaway seeds for "cheap + food + safe + not visited" after a full passport map
+    {"iata": "HAN", "city": "Hanoi", "country": "VN", "why": "Street food capital with low daily spend", "vibe_tags": ["city", "food", "cheap", "safe"]},
+    {"iata": "SGN", "city": "Ho Chi Minh City", "country": "VN", "why": "Vietnamese food chaos, still traveler-friendly", "vibe_tags": ["city", "food", "cheap"]},
+    {"iata": "KUL", "city": "Kuala Lumpur", "country": "MY", "why": "Cheap hawker food + modern safe core", "vibe_tags": ["city", "food", "cheap", "safe"]},
+    {"iata": "DPS", "city": "Denpasar / Bali", "country": "ID", "why": "Island food + beach without wrecking the budget", "vibe_tags": ["beach", "food", "cheap", "relax"]},
+    {"iata": "CGK", "city": "Jakarta", "country": "ID", "why": "Huge food scene, low ground costs", "vibe_tags": ["city", "food", "cheap"]},
+    {"iata": "MNL", "city": "Manila", "country": "PH", "why": "Pacific food stop with friendly spend", "vibe_tags": ["city", "food", "cheap"]},
+    {"iata": "LIM", "city": "Lima", "country": "PE", "why": "World-class food capital, strong value", "vibe_tags": ["city", "food", "cheap", "culture"]},
+    {"iata": "BOG", "city": "Bogotá", "country": "CO", "why": "Andean food city with improving safety in core areas", "vibe_tags": ["city", "food", "cheap", "culture"]},
+    {"iata": "MDE", "city": "Medellín", "country": "CO", "why": "Spring climate + food scene, tourist-core safety", "vibe_tags": ["city", "food", "cheap"]},
+    {"iata": "SCL", "city": "Santiago", "country": "CL", "why": "Stable South America with solid food", "vibe_tags": ["city", "food", "safe"]},
+    {"iata": "EZE", "city": "Buenos Aires", "country": "AR", "why": "Steak + wine city with soft currency value", "vibe_tags": ["city", "food", "cheap", "culture"]},
+    {"iata": "ATH", "city": "Athens", "country": "GR", "why": "Mediterranean food + ruins, still good value", "vibe_tags": ["city", "food", "cheap", "culture", "safe"]},
+    {"iata": "ZAG", "city": "Zagreb", "country": "HR", "why": "Quiet Central Europe value + food", "vibe_tags": ["city", "food", "cheap", "safe"]},
+    {"iata": "OTP", "city": "Bucharest", "country": "RO", "why": "Low COL European capital", "vibe_tags": ["city", "food", "cheap", "safe"]},
+    {"iata": "SOF", "city": "Sofia", "country": "BG", "why": "Cheap Balkans capital with solid food", "vibe_tags": ["city", "food", "cheap", "safe"]},
+    {"iata": "CMN", "city": "Casablanca", "country": "MA", "why": "North Africa food + moderate spend", "vibe_tags": ["city", "food", "cheap", "culture"]},
+    {"iata": "CPT", "city": "Cape Town", "country": "ZA", "why": "Food + nature with well-trodden tourist circuits", "vibe_tags": ["city", "food", "nature", "cheap"]},
+    {"iata": "CMB", "city": "Colombo", "country": "LK", "why": "Island food and low daily costs", "vibe_tags": ["city", "food", "cheap", "beach"]},
+    {"iata": "TPE", "city": "Taipei", "country": "TW", "why": "Night markets + very safe city", "vibe_tags": ["city", "food", "safe", "cheap"]},
+    {"iata": "AKL", "city": "Auckland", "country": "NZ", "why": "Safe Pacific city break", "vibe_tags": ["city", "nature", "safe"]},
+    {"iata": "HEL", "city": "Helsinki", "country": "FI", "why": "Nordic safe city (higher COL)", "vibe_tags": ["city", "safe", "culture"]},
 ]
 
 
@@ -89,7 +111,7 @@ class AdventureRequest(BaseModel):
     cabin: CabinClass = CabinClass.ECONOMY
     min_stop_days: int = Field(default=2, ge=1, le=21)
     max_stop_days: int = Field(default=5, ge=1, le=30)
-    max_candidates: int = Field(default=5, ge=2, le=10)
+    max_candidates: int = Field(default=5, ge=2, le=5)
     vibe: str = "adventure"
     prompt: str = ""
     include_direct: bool = True
@@ -191,14 +213,15 @@ async def pick_pricing_provider(
     """Probe active keys, pick best *fare* provider (never AviationStack)."""
     from yonder.quota import FARE_PROVIDERS, choose_providers, get_registry
 
+    # No live health probe — too slow for the 30s budget
     await choose_providers(
         settings,
         client,
         mode="adventure_leg",
-        need=5,
+        need=2,
         include_mock=include_mock,
         force_all=False,
-        probe=True,
+        probe=False,
     )
     reg = get_registry()
     candidates: list[tuple[float, str]] = []
@@ -250,7 +273,11 @@ async def _price_leg(
         )
 
     errors: list[str] = []
-    for provider_name in chain:
+    # Only try primary + mock — long fallback chains blow the 30s budget
+    short_chain = chain[:1]
+    if include_mock and "mock" not in short_chain:
+        short_chain.append("mock")
+    for provider_name in short_chain:
         q = SearchQuery(
             origin=origin.upper(),
             destination=dest.upper(),
@@ -259,7 +286,7 @@ async def _price_leg(
             adults=req.adults,
             cabin=req.cabin,
             currency=req.currency,
-            max_results=5,
+            max_results=3,
             nonstop_only=False,
         )
         try:
@@ -268,7 +295,7 @@ async def _price_leg(
                 settings=settings,
                 include_mock=include_mock or provider_name == "mock",
                 only=[provider_name],
-                timeout=60.0,
+                timeout=8.0,
                 convert_currency=True,
                 client=http,
                 smart_route=False,
@@ -383,20 +410,36 @@ def filter_ideas(
     req: AdventureRequest,
 ) -> list[StopoverIdea]:
     avoid = normalize_avoid_list(req.avoid_countries)
+    visited = {
+        c.upper()
+        for c in normalize_country_list(req.visited_countries or [], max_n=250)
+    }
     origin = req.origin.upper()
     dest = req.destination.upper()
+    getaway = _is_getaway(req)
     out: list[StopoverIdea] = []
     seen: set[str] = set()
     for idea in ideas:
         code = idea.iata.upper()
         if code in (origin, dest) or code in seen:
+            # getaway home==dest: still exclude home via origin
+            if not (getaway and origin == dest and code == origin):
+                if code in (origin, dest) or code in seen:
+                    continue
+        if code == origin or code in seen:
+            continue
+        if not getaway and code == dest:
             continue
         if is_avoided_iata(code, avoid):
             continue
-        if idea.country and idea.country.upper() in avoid:
+        cc = (idea.country or country_for_iata(code) or "").upper()
+        if cc and cc in avoid:
+            continue
+        # Passport map: never land somewhere already stamped visited
+        if visited and cc and cc in visited:
             continue
         seen.add(code)
-        out.append(idea.model_copy(update={"iata": code}))
+        out.append(idea.model_copy(update={"iata": code, "country": cc or idea.country}))
         if len(out) >= req.max_candidates:
             break
     return out
@@ -451,10 +494,33 @@ def seed_ideas(req: AdventureRequest) -> list[StopoverIdea]:
             )
         )
     vibe = (req.vibe or "").lower()
-    if vibe and vibe not in ("adventure", "any", "chaos", ""):
-        tagged = [i for i in ideas if any(vibe in t or t in vibe for t in i.vibe_tags)]
-        if tagged:
-            ideas = tagged + [i for i in ideas if i not in tagged]
+    prompt_l = (req.prompt or "").lower()
+    # Boost seeds that match vibe + common getaway intents from free text
+    want_food = vibe in ("food",) or "food" in prompt_l
+    want_cheap = vibe in ("cheap", "budget") or any(
+        w in prompt_l for w in ("cheap", "cost of living", "budget", "affordable")
+    )
+    want_safe = any(
+        w in prompt_l for w in ("safe", "security", "secure", "personal security")
+    )
+
+    def _score(idea: StopoverIdea) -> int:
+        tags = {t.lower() for t in (idea.vibe_tags or [])}
+        s = 0
+        if want_food and ("food" in tags or vibe in tags):
+            s += 3
+        if want_cheap and "cheap" in tags:
+            s += 3
+        if want_safe and "safe" in tags:
+            s += 2
+        if vibe and vibe not in ("adventure", "any", "chaos", "") and vibe in tags:
+            s += 2
+        return s
+
+    if want_food or want_cheap or want_safe or (
+        vibe and vibe not in ("adventure", "any", "chaos", "")
+    ):
+        ideas = sorted(ideas, key=_score, reverse=True)
     return ideas[: req.max_candidates]
 
 
@@ -494,6 +560,16 @@ async def plan_adventure(
                 continue
             filtered.append(idea)
         ideas = filtered
+    # One idea per destination city (IATA first; collapse same city name)
+    unique_ideas: list[StopoverIdea] = []
+    seen_dest: set[str] = set()
+    for idea in ideas:
+        key = (idea.iata or "").upper() or (idea.city or "").strip().lower()
+        if not key or key in seen_dest:
+            continue
+        seen_dest.add(key)
+        unique_ideas.append(idea)
+    ideas = unique_ideas
     errors: list[str] = []
     itineraries: list[AdventureItinerary] = []
     direct_price: float | None = None
@@ -503,128 +579,89 @@ async def plan_adventure(
             f"({req.origin} round-trip). Candidates are destinations, not mid-route stops."
         )
 
-    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as http:
-        # Enrich stopovers with AviationStack airport metadata (free-tier friendly)
-        if settings.aviationstack_key and ideas:
-            try:
-                from yonder.providers.aviationstack import AviationStackProvider
+    # Hard latency budget — COL via Grok (sum hotel+food+transit+culture) vs Settings bag
+    import time as _time
 
-                av = AviationStackProvider(settings, http)
-                ideas = await av.enrich_stopovers(ideas)
+    budget = float(getattr(settings, "search_budget_seconds", 30.0) or 30.0)
+    deadline = _time.monotonic() + max(5.0, budget - 1.0)
+    ground_batch: dict = {}
+    bag_daily, bag_tol, _bag_parts = settings.col_budget()
+    try:
+        from yonder.daily_costs import estimate_batch_for_stops
+
+        stop_tuples = [
+            (i.iata, i.country, i.city)
+            for i in ideas[: max(1, int(req.max_candidates or 5))]
+        ]
+        col_timeout = min(7.0, max(3.0, budget * 0.25))
+        try:
+            ground_batch = await asyncio.wait_for(
+                estimate_batch_for_stops(
+                    settings,
+                    origin_iata=req.origin,
+                    stops=stop_tuples,
+                    currency=req.currency,
+                    vibe=req.vibe or "adventure",
+                    live_grok=True,
+                ),
+                timeout=col_timeout,
+            )
+            if bag_daily and bag_daily > 0:
                 errors.append(
-                    "AviationStack: enriched stopover airports (not used for fares)"
+                    f"Grok COL vs Settings bag {format_approx(bag_daily, req.currency)}/day "
+                    f"(+{bag_tol:.0f}% over-budget band)"
                 )
-            except Exception as exc:  # noqa: BLE001
-                errors.append(f"AviationStack enrichment skipped: {exc}")
-
-        # Batch ground-cost estimates (Grok + 60-day cache) — one call for all stops
-        ground_batch: dict = {}
-        if ideas:
+            else:
+                errors.append(
+                    "Grok COL attached (set Settings day bag to score under/over budget)"
+                )
+        except asyncio.TimeoutError:
+            ground_batch = await estimate_batch_for_stops(
+                settings,
+                origin_iata=req.origin,
+                stops=stop_tuples,
+                currency=req.currency,
+                vibe=req.vibe or "adventure",
+                live_grok=False,
+            )
+            errors.append(
+                "COL from cache/static (Grok timed out) — still scored vs Settings bag"
+            )
+        except Exception as col_exc:  # noqa: BLE001
             try:
-                from yonder.daily_costs import estimate_batch_for_stops
-
                 ground_batch = await estimate_batch_for_stops(
                     settings,
                     origin_iata=req.origin,
-                    stops=[
-                        (i.iata, i.country, i.city) for i in ideas
-                    ],
+                    stops=stop_tuples,
                     currency=req.currency,
-                    vibe=req.vibe,
+                    vibe=req.vibe or "adventure",
+                    live_grok=False,
                 )
-                errors.append(
-                    "Ground costs: lean day bag (hotel+food+transit+1–2 culture; "
-                    "local→your currency FX; cached 60d)"
-                )
-            except Exception as exc:  # noqa: BLE001
-                errors.append(f"Ground cost estimates skipped: {exc}")
+                errors.append(f"COL fallback after error: {str(col_exc)[:72]}")
+            except Exception:
                 ground_batch = {}
+                errors.append("COL unavailable")
+    except Exception as col_outer:  # noqa: BLE001
+        ground_batch = {}
+        errors.append(f"COL skipped: {str(col_outer)[:72]}")
+    errors.append("30s budget: skipped AviationStack enrich + direct baseline")
 
+    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as http:
         only = await pick_pricing_provider(settings, http, include_mock)
+        if only:
+            only = only[:1]
         pricing_name = only[0] if only else None
-        fallback_chain = list(only or [])
-        if settings.duffel_is_test and pricing_name == "serpapi_google_flights":
-            errors.append(
-                "Using SerpAPI (live Google Flights snapshots) — Duffel is a "
-                "duffel_test sandbox token so its fares would not match Google"
-            )
-        elif settings.duffel_is_test and pricing_name == "duffel":
-            errors.append(
-                "WARNING: Duffel SANDBOX token — prices are demo data, not real market. "
-                "Google Flights links show live fares and will disagree."
-            )
-
+        fallback_chain: list[str] = []
         if pricing_name:
-            errors.append(
-                f"Primary fare API: {pricing_name} "
-                f"(fallbacks: {', '.join(fallback_chain[1:4]) or 'none'})"
-            )
+            errors.append(f"Primary fare API: {pricing_name} (single provider)")
         else:
             errors.append(
                 "No active fare providers — add Duffel live / SerpAPI / Amadeus or enable mock"
             )
 
-        if req.include_direct:
-            direct_leg = await _price_leg(
-                req.origin,
-                req.destination,
-                req.depart_date,
-                req,
-                settings=settings,
-                include_mock=include_mock,
-                only=only,
-                http=http,
-                fallback_chain=fallback_chain,
-            )
-            if direct_leg.offer:
-                direct_price = direct_leg.offer.price
-                g_direct = direct_leg.google_flights_url or google_flights_url(
-                    req.origin,
-                    req.destination,
-                    req.depart_date,
-                    currency=req.currency,
-                    adults=req.adults,
-                )
-                d_off = direct_leg.offer
-                d_pd = price_display(
-                    d_off.price,
-                    d_off.currency,
-                    deal_label=d_off.deal_label,
-                    deal_score=d_off.deal_score,
-                )
-                itineraries.append(
-                    _apply_theme(
-                        AdventureItinerary(
-                            kind="direct",
-                            title=f"Direct-ish {format_route(req.origin, req.destination)}",
-                            total_price=d_off.price,
-                            currency=d_off.currency,
-                            legs=[direct_leg],
-                            why="Baseline: get there without a multi-day detour",
-                            adventure_score=15.0,
-                            notes=[
-                                "Signal from free APIs — confirm on Google before buying.",
-                                f"Source: {pricing_name or 'providers'}",
-                                "▼ green = under typical history · ▲ red = over",
-                            ],
-                            bookable_separately=False,
-                            google_flights_url=g_direct,
-                            booking_url=direct_leg.booking_url or g_direct,
-                            kayak_url=kayak_url(
-                                req.origin, req.destination, req.depart_date
-                            ),
-                            display_price=d_pd.full,
-                            display_price_base=d_pd.base,
-                            price_sign=d_pd.sign or None,
-                            price_glyph=d_pd.glyph or None,
-                            price_tone=d_pd.tone,
-                        )
-                    )
-                )
-            elif direct_leg.error:
-                errors.append(f"Direct: {direct_leg.error}")
-
         async def price_stopover(idea: StopoverIdea) -> AdventureItinerary | None:
+            if _time.monotonic() >= deadline:
+                return None
             stay = max(req.min_stop_days, min(req.max_stop_days, idea.stay_days))
             leg2_date = req.depart_date + timedelta(days=stay)
             if req.arrive_by and leg2_date > req.arrive_by:
@@ -676,34 +713,48 @@ async def plan_adventure(
             ground_fields: dict = {}
             col_delta = 0.0
             try:
-                from yonder.daily_costs import compare_for_stop
+                from yonder.daily_costs import compare_for_stop, settings_ground_fields
 
+                gcmp = None
                 if ground_batch:
                     gcmp = compare_for_stop(
                         ground_batch, stop_iata=idea.iata, stay_days=stay
                     )
-                    if gcmp:
-                        notes.extend(gcmp.note_lines)
-                        col_delta = float(gcmp.rank_delta or 0.0)
-                        compare_line = gcmp.ground_compare_line or (
+                if gcmp:
+                    notes.extend(gcmp.note_lines)
+                    col_delta = float(gcmp.rank_delta or 0.0)
+                    ground_fields = {
+                        "ground_daily_stop": gcmp.daily_stop,
+                        "ground_daily_origin": gcmp.daily_origin,
+                        "ground_total": gcmp.ground_total,
+                        "ground_display": (
+                            f"+ {gcmp.display_ground} ground "
+                            f"({stay}× {gcmp.display_daily_stop}/day)"
+                        ),
+                        "ground_compare_line": gcmp.ground_compare_line
+                        or (
                             f"{gcmp.display_daily_stop}/day in {gcmp.stop_name} vs "
                             f"{gcmp.display_daily_origin}/day at home ({gcmp.origin_name})"
-                        )
-                        ground_fields = {
-                            "ground_daily_stop": gcmp.daily_stop,
-                            "ground_daily_origin": gcmp.daily_origin,
-                            "ground_total": gcmp.ground_total,
-                            "ground_display": (
-                                f"+ {gcmp.display_ground} ground "
-                                f"({stay}× {gcmp.display_daily_stop}/day)"
-                            ),
-                            "ground_compare_line": compare_line,
-                            "ground_budget_status": gcmp.budget_status,
-                            "ground_budget_line": gcmp.budget_line or None,
-                            "ground_rank_delta": col_delta,
-                        }
+                        ),
+                        "ground_budget_status": gcmp.budget_status,
+                        "ground_budget_line": gcmp.budget_line or None,
+                        "ground_rank_delta": col_delta,
+                    }
+                else:
+                    # No city estimate — still surface Settings bag as planning ground
+                    stop_label = format_place(idea.iata, idea.city)
+                    ground_fields, col_notes = settings_ground_fields(
+                        settings,
+                        stay_days=stay,
+                        currency=req.currency,
+                        stop_label=stop_label,
+                    )
+                    if col_notes:
+                        notes.extend(col_notes)
+                    col_delta = float(ground_fields.get("ground_rank_delta") or 0.0)
             except Exception:
-                pass
+                ground_fields = {}
+                col_delta = 0.0
             multi_url = google_flights_multi(
                 [
                     (req.origin, idea.iata, req.depart_date),
@@ -816,28 +867,52 @@ async def plan_adventure(
                 )
             )
 
-        stop_results = await asyncio.gather(*(price_stopover(i) for i in ideas))
+        # At most five ideas priced per search
+        ideas = ideas[: max(2, min(5, req.max_candidates))]
+        remaining = max(1.0, deadline - _time.monotonic())
+        try:
+            stop_results = await asyncio.wait_for(
+                asyncio.gather(
+                    *(price_stopover(i) for i in ideas),
+                    return_exceptions=True,
+                ),
+                timeout=remaining,
+            )
+        except asyncio.TimeoutError:
+            stop_results = []
+            errors.append("Hit 30s budget while pricing stopovers — showing what finished")
         for it in stop_results:
+            if isinstance(it, Exception):
+                errors.append(f"Stopover pricing error: {it}")
+                continue
             if it is not None:
                 itineraries.append(it)
 
     complete = [i for i in itineraries if i.total_price is not None]
-    incomplete = [i for i in itineraries if i.total_price is None]
-    complete.sort(
-        key=lambda i: (
-            0 if i.kind == "stopover" else 1,
-            -i.adventure_score,
-            i.total_price or 1e12,
+    # Rank cheapest → most expensive; one package per destination city
+    complete.sort(key=lambda i: (i.total_price or 1e12, -i.adventure_score))
+    top: list[AdventureItinerary] = []
+    seen_cities: set[str] = set()
+    for it in complete:
+        city_key = (
+            (it.stop_iata or "").upper()
+            or (it.stop_city or "").strip().lower()
+            or it.title.strip().lower()
         )
-    )
+        if not city_key or city_key in seen_cities:
+            continue
+        seen_cities.add(city_key)
+        top.append(it)
+        if len(top) >= 5:
+            break
     if req.avoid_countries:
         errors.append(
             "Avoiding countries: " + ", ".join(req.avoid_countries)
         )
     return AdventureResult(
         request=req,
-        ideas=ideas,
-        itineraries=complete + incomplete,
+        ideas=ideas[:5],
+        itineraries=top,
         direct_price=direct_price,
         errors=errors,
         pricing_provider=pricing_name,

@@ -649,6 +649,42 @@
   font-weight: 600;
 }
 
+.ymap-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--ymap-avoid, #b33a3a) 45%, var(--line, #d9d0c2));
+  background: color-mix(in srgb, var(--ymap-avoid, #b33a3a) 10%, var(--paper, #f4efe6));
+  color: var(--ymap-avoid, #b33a3a);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+.ymap-clear-btn:hover {
+  background: color-mix(in srgb, var(--ymap-avoid, #b33a3a) 18%, var(--paper, #f4efe6));
+  border-color: var(--ymap-avoid, #b33a3a);
+  filter: none;
+  transform: none;
+}
+.ymap-clear-btn:active {
+  transform: scale(0.98);
+  filter: none;
+}
+.ymap-clear-btn[hidden] {
+  display: none !important;
+}
+.ymap-stats .ymap-clear-btn {
+  align-self: center;
+  margin-left: auto;
+}
+
 .ymap.ymap-compact .ymap-drawer {
   margin-top: 0.55rem;
 }

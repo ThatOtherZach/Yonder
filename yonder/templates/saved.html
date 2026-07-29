@@ -74,11 +74,11 @@
         {% set s = card.saved %}
         {% set it = card.it %}
         {% if it %}
-        <article class="boarding-pass is-adventure">
+        <article class="boarding-pass is-adventure"{% if s.theme_primary or it.theme_primary %} style="--bp-accent: {{ s.theme_primary or it.theme_primary }}; border-color: color-mix(in srgb, {{ s.theme_primary or it.theme_primary }} 35%, var(--line));"{% endif %}>
           <div class="bp-main">
             <div class="bp-top">
-              <span class="bp-label">Boarding pass · saved</span>
-              <span class="bp-badge soft">{{ it.theme_label or it.kind or 'Trip' }}</span>
+              <span class="bp-label">Boarding pass · saved{% if s.vibe %} · {{ s.vibe }}{% endif %}</span>
+              <span class="bp-badge soft"{% if s.theme_primary %} style="background:{{ s.theme_primary }};color:#fff;border:none"{% endif %}>{{ it.theme_label or s.theme_label or it.kind or 'Trip' }}</span>
             </div>
             {% if it.legs and it.legs|length >= 1 %}
             <div class="bp-route">
@@ -143,11 +143,21 @@
             </div>
             {% endif %}
 
-            {% if it.ground_display or it.all_in_display %}
-            <p class="bp-note">
-              {% if it.ground_display %}{{ it.ground_display }}{% endif %}
-              {% if it.all_in_display %} · {{ it.all_in_display }}{% endif %}
-            </p>
+            {% if it.ground_display or it.ground_compare_line or it.ground_budget_line or it.all_in_display %}
+            <div class="bp-col">
+              {% if it.ground_display %}
+              <p class="bp-note" style="margin:0.55rem 0 0">{{ it.ground_display }}</p>
+              {% endif %}
+              {% if it.ground_compare_line %}
+              <p class="bp-note muted" style="margin:0.2rem 0 0">{{ it.ground_compare_line }}</p>
+              {% endif %}
+              {% if it.ground_budget_line %}
+              <p class="bp-note{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}" style="margin:0.2rem 0 0">{{ it.ground_budget_line }}</p>
+              {% endif %}
+              {% if it.all_in_display %}
+              <p class="bp-note" style="margin:0.25rem 0 0;font-weight:650">{{ it.all_in_display }}</p>
+              {% endif %}
+            </div>
             {% endif %}
 
             <div class="bp-actions">
@@ -182,7 +192,21 @@
               </div>
             </div>
             <div class="bp-stub-meta">{{ s.price_stale_label }}</div>
+            {% if card.share and card.share.qr_src %}
+            <div class="bp-stub-qr">
+              <a class="bp-qr" href="{{ card.share.url }}" target="_blank" rel="noopener" title="{{ card.share.url }}">
+                <img src="{{ card.share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
+              </a>
+              <div class="bp-stub-share">Scan · share</div>
+            </div>
+            {% elif card.share %}
+            <div class="bp-stub-qr">
+              <a class="bp-qr" href="{{ card.share.url }}" target="_blank" rel="noopener" title="{{ card.share.url }}">{{ card.share.qr_svg | safe }}</a>
+              <div class="bp-stub-share">Scan · share</div>
+            </div>
+            {% else %}
             <div class="bp-barcode" aria-hidden="true"></div>
+            {% endif %}
           </div>
         </article>
         {% else %}

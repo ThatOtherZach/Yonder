@@ -363,16 +363,30 @@
         <div class="section-title">Defaults</div>
         <div class="field-grid">
           <label for="DEFAULT_CURRENCY">Default currency
-            <span class="help">Search + adventure display currency (we convert provider USD→this)</span>
-            <input id="DEFAULT_CURRENCY" name="DEFAULT_CURRENCY" type="text" maxlength="3"
-              value="{{ view.default_currency }}" style="text-transform:uppercase;max-width:120px" />
+            <span class="help">Escape + Detour fare display currency (providers converted into this). Default <strong>USD</strong>.</span>
+            <select id="DEFAULT_CURRENCY" name="DEFAULT_CURRENCY" style="max-width:140px">
+              {% set cur_def = (view.default_currency or 'USD')|upper %}
+              {% for code in ['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY', 'CHF', 'MXN'] %}
+              <option value="{{ code }}" {% if cur_def == code %}selected{% endif %}>{{ code }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label for="HOME_IATA">Home airport
+            <span class="help">
+              Default <strong>origin</strong> for Escape/Detour when you don’t name a city
+              (e.g. <code>YVR</code>). Blank → first passport-map country → default currency’s
+              country → USA. Currently resolves to <strong>{{ view.home_resolved or 'JFK' }}</strong>.
+            </span>
+            <input id="HOME_IATA" name="HOME_IATA" type="text" maxlength="3" pattern="[A-Za-z]{0,3}"
+              placeholder="YVR" value="{{ view.home_iata or '' }}"
+              style="max-width:100px;text-transform:uppercase;letter-spacing:0.08em;font-weight:700" />
           </label>
           <div>
             <label style="margin-bottom:0.45rem">Your expected day bag
               <span class="help">
-                Plug in what you expect to spend per person/day (default currency).
-                These <strong>add up</strong> to your daily COL target; over-budget % is the OK band above that total.
-                Leave all zero to ignore COL ranking.
+                Your personal target per person/day (default currency). Components
+                <strong>add up</strong> to the budget Grok is scored against.
+                Leave all zero to show Grok COL without under/over ranking.
               </span>
             </label>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.65rem;align-items:end">
@@ -409,8 +423,8 @@
               <span class="muted" style="margin-left:0.35rem">(sum × (1 + %/100))</span>
             </p>
             <p class="muted" style="margin:0.35rem 0 0;font-size:0.8rem">
-              Detour ranks stopovers against this bag: under ↑ · within band ≈ · over ↓.
-              Estimates are hotel+food+transit+culture for that country (FX’d to your currency).
+              Detour: Grok estimates hotel+food+transit+culture for each stop (sum = daily spend),
+              then ranks vs this bag: under ↑ · within +% band ≈ · over ↓.
             </p>
           </div>
           <script>
@@ -452,6 +466,29 @@
               <option value="true" {% if view.testing %}selected{% endif %}>true (allow Test Data)</option>
             </select>
           </label>
+
+          <div class="section-title" style="margin-top:0.35rem">Detour defaults</div>
+          <p class="muted" style="margin:0 0 0.65rem;font-size:0.85rem">
+            Used on every Detour plan. Pretty standard trip knobs — change here, not on the compose form.
+          </p>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:0.75rem;align-items:end">
+            <label for="DETOUR_MIN_STOP_DAYS">Min stop days
+              <span class="help">Shortest multi-day stop (default 3)</span>
+              <input id="DETOUR_MIN_STOP_DAYS" name="DETOUR_MIN_STOP_DAYS" type="number" min="1" max="21" step="1"
+                value="{{ view.detour_min_stop_days }}" />
+            </label>
+            <label for="DETOUR_MAX_STOP_DAYS">Max stop days
+              <span class="help">Longest multi-day stop (default 5)</span>
+              <input id="DETOUR_MAX_STOP_DAYS" name="DETOUR_MAX_STOP_DAYS" type="number" min="1" max="30" step="1"
+                value="{{ view.detour_max_stop_days }}" />
+            </label>
+            <label for="DETOUR_MAX_CANDIDATES">Options to price
+              <span class="help">Ideas to invent &amp; price (2–5, default 5). Each search shows at most 5 results.</span>
+              <input id="DETOUR_MAX_CANDIDATES" name="DETOUR_MAX_CANDIDATES" type="number" min="2" max="5" step="1"
+                value="{{ view.detour_max_candidates }}" />
+            </label>
+          </div>
+
           <div>
             <label style="margin-bottom:0.45rem">Travel map
               <span class="help">

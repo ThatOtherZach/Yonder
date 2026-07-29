@@ -59,10 +59,31 @@
       line-height: 1.55;
       color: var(--ink);
       background:
-        radial-gradient(1200px 500px at 10% -10%, #e8f0f8 0%, transparent 55%),
-        radial-gradient(900px 400px at 100% 0%, #f0e6d4 0%, transparent 50%),
+        radial-gradient(1200px 500px at 10% -10%, color-mix(in srgb, var(--sky-mist) 90%, transparent) 0%, transparent 55%),
+        radial-gradient(900px 400px at 100% 0%, color-mix(in srgb, var(--brass-mist) 70%, transparent) 0%, transparent 50%),
         var(--paper);
       -webkit-font-smoothing: antialiased;
+      transition: background 0.2s ease;
+    }
+    body.has-vibe-theme .brand span { color: var(--sky-bright); }
+    body.has-vibe-theme .mode-tabs a.active,
+    body.has-vibe-theme .mode-tabs button.active {
+      background: var(--sky);
+    }
+    body.has-vibe-theme .mode-tabs a[data-mode="detour"].active,
+    body.has-vibe-theme .mode-tabs button[data-mode="detour"].active {
+      background: linear-gradient(135deg, color-mix(in srgb, var(--sky-bright) 70%, #fff), var(--sky-bright));
+      color: #1a1200;
+    }
+    body.has-vibe-theme .boarding-pass {
+      --bp-accent: var(--sky);
+    }
+    body.has-vibe-theme .boarding-pass.is-pick {
+      border-color: color-mix(in srgb, var(--sky-bright) 55%, var(--line));
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--sky-bright) 25%, transparent), var(--shadow);
+    }
+    body.has-vibe-theme .fs-progress-fill {
+      background: linear-gradient(90deg, var(--sky), var(--sky-bright));
     }
 
     /* —— Nav —— */
@@ -343,7 +364,7 @@
       font-size: 0.82rem;
     }
 
-    /* Mode tabs */
+    /* Mode tabs (links or in-card toggle buttons) */
     .mode-tabs {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -357,7 +378,8 @@
       border-radius: 999px;
       box-shadow: var(--shadow-sm);
     }
-    .mode-tabs a {
+    .mode-tabs a,
+    .mode-tabs button {
       text-align: center;
       text-decoration: none;
       font-weight: 600;
@@ -366,15 +388,26 @@
       border-radius: 999px;
       color: var(--muted);
       transition: background 0.15s, color 0.15s;
+      border: none;
+      background: transparent;
+      font-family: inherit;
+      cursor: pointer;
     }
-    .mode-tabs a:hover { color: var(--ink); }
-    .mode-tabs a.active {
+    .mode-tabs a:hover,
+    .mode-tabs button:hover { color: var(--ink); }
+    .mode-tabs a.active,
+    .mode-tabs button.active {
       color: var(--white);
       background: var(--sky);
     }
-    .mode-tabs a[data-mode="detour"].active {
+    .mode-tabs a[data-mode="detour"].active,
+    .mode-tabs button[data-mode="detour"].active {
       background: linear-gradient(135deg, #c9a227, var(--brass));
       color: #1a1200;
+    }
+    .compose-card .mode-tabs {
+      max-width: 100%;
+      margin: 0 0 0.95rem;
     }
 
     /* Place book — field notes */
@@ -682,6 +715,73 @@
     @media (min-width: 640px) {
       .bp-barcode { margin-top: 0.5rem; }
     }
+    /* QR stub — shareable trip page (fixed box, crisp PNG modules) */
+    .bp-stub-qr {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      margin: 0;
+      gap: 0.25rem;
+    }
+    a.bp-qr {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      width: 88px;
+      height: 88px;
+      margin: 0;
+      padding: 6px;
+      border-radius: 10px;
+      background: #ffffff;
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
+      line-height: 0;
+      text-decoration: none;
+      flex-shrink: 0;
+      overflow: hidden;
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    a.bp-qr:hover {
+      transform: scale(1.03);
+      box-shadow: var(--shadow);
+    }
+    a.bp-qr img,
+    a.bp-qr .bp-qr-img,
+    a.bp-qr svg {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+      object-fit: contain;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    .bp-stub-share {
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.2;
+    }
+    @media (min-width: 640px) {
+      a.bp-qr { width: 96px; height: 96px; padding: 7px; }
+      .bp-stub-qr { margin-top: 0.15rem; }
+    }
+    /* Mobile stub is a row — keep price left, QR right, no squash */
+    @media (max-width: 639px) {
+      .bp-stub {
+        align-items: center;
+        gap: 0.65rem;
+      }
+      .bp-stub > div:first-child { flex: 1 1 auto; min-width: 0; }
+      a.bp-qr { width: 80px; height: 80px; padding: 5px; }
+    }
     .bp-actions {
       display: flex;
       flex-wrap: wrap;
@@ -805,14 +905,14 @@
 
     {% block extra_css %}{% endblock %}
   </style>
-  <link rel="stylesheet" href="/static/country_map.css?v=14" />
+  <link rel="stylesheet" href="/static/country_map.css?v=15" />
   <script>
     window.FS_TRAVEL = {{ (travel_ctx or {"avoid": [], "visited": [], "avoid_names": [], "visited_names": [], "country_names": {}}) | tojson }};
   </script>
   <script src="/static/progress.js" defer></script>
   {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body class="{% if vibe_theme and vibe_theme.color %}has-vibe-theme{% endif %}"{% if vibe_theme and vibe_theme.style %} style="{{ vibe_theme.style }}"{% endif %}>
   <nav class="topnav">
     <div class="topnav-inner">
       <a class="brand" href="/">Yon<span>der</span></a>

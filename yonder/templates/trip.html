@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}{{ share.title }} · Yonder{% endblock %}
+{% block extra_css %}
+    .trip-share {
+      max-width: 40rem;
+      margin: 0 auto;
+    }
+    .trip-share .share-url {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin: 0.75rem 0 1.1rem;
+      padding: 0.65rem 0.85rem;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      font-size: 0.88rem;
+      word-break: break-all;
+    }
+    .trip-share .share-url code {
+      flex: 1 1 auto;
+      font-size: 0.82rem;
+      color: var(--ink-soft);
+    }
+    .trip-qr-big {
+      display: flex;
+      justify-content: center;
+      margin: 0.5rem 0 1rem;
+    }
+    .trip-qr-big .bp-qr {
+      width: 168px;
+      height: 168px;
+      padding: 10px;
+      background: #fff;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-sm);
+    }
+    .trip-qr-big .bp-qr img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      display: block;
+    }
+    .trip-meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin: 0 0 1rem;
+    }
+{% endblock %}
+{% block body %}
+  {% if not share %}
+  <header class="page-head">
+    <h1>Trip not found</h1>
+    <p class="trip-meta">{{ error or "This shared trip is missing or expired." }}</p>
+  </header>
+  <main class="trip-share">
+    <p class="muted"><a href="/">← Back to Yonder</a></p>
+  </main>
+  {% else %}
+  {% set p = share.payload or {} %}
+  <header class="page-head">
+    <h1>{{ share.title }}</h1>
+    <p class="trip-meta">
+      Shared {{ kind_label }} · scan the QR or open this link on another device.
+      Fares are signals only — re-check before you buy.
+    </p>
+  </header>
+  <main class="trip-share">
+    <div class="trip-qr-big">
+      {% if qr_src %}
+      <a class="bp-qr" href="{{ share_url }}" title="Open this trip">
+        <img src="{{ qr_src }}" alt="QR code for this trip" width="160" height="160" />
+      </a>
+      {% else %}
+      <a class="bp-qr" href="{{ share_url }}" title="Open this trip">{{ qr_svg | safe }}</a>
+      {% endif %}
+    </div>
+    <div class="share-url">
+      <code id="share-url-text">{{ share_url }}</code>
+      <button type="button" class="btn secondary" id="copy-share-url" style="padding:0.4rem 0.75rem;font-size:0.85rem">Copy link</button>
+    </div>
+
+    {% if share.kind == 'escape' %}
+      {% set q = p.query or {} %}
+      {% set o = p.offer or {} %}
+      <article class="boarding-pass">
+        <div class="bp-main">
+          <div class="bp-top">
+            <span class="bp-label">Boarding pass · signal</span>
+            <span class="bp-badge soft">Escape</span>
+          </div>
+          <div class="bp-route">
+            <span class="bp-iata">{{ q.origin or '—' }}</span>
+            <span class="bp-plane" aria-hidden="true">✈</span>
+            <span class="bp-iata">{{ q.destination or '—' }}</span>
+          </div>
+          <p class="bp-cities">{{ route(q.origin or '', q.destination or '') if q.origin and q.destination else share.title }}</p>
+          <div class="bp-fields">
+            <div class="bp-field"><span class="k">Depart</span><span class="v">{{ q.depart_date or '—' }}</span></div>
+            {% if q.return_date %}<div class="bp-field"><span class="k">Return</span><span class="v">{{ q.return_date }}</span></div>{% endif %}
+            <div class="bp-field"><span class="k">Airline</span><span class="v">{{ (o.airlines or [])|join(', ') or '—' }}</span></div>
+            <div class="bp-field"><span class="k">Stops</span><span class="v">{{ o.stops_out if o.stops_out is defined else '—' }}</span></div>
+          </div>
+          <div class="bp-actions">
+            {% if o.google_flights_url %}
+            <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
+            {% endif %}
+            {% if o.deep_link and 'kayak.com' not in (o.deep_link or '') %}
+            <a class="btn secondary" href="{{ o.deep_link }}" target="_blank" rel="noopener">Airline ↗</a>
+            {% endif %}
+          </div>
+        </div>
+        <div class="bp-stub">
+          <div>
+            <div class="bp-stub-label">Approx fare</div>
+            <div class="bp-stub-price">
+              {{ o.display_price_base or o.display_price or (('~' ~ (o.currency or '') ~ ' ' ~ '%.0f'|format(o.price)) if o.price is defined and o.price is not none else '—') }}
+            </div>
+          </div>
+          <div class="bp-stub-meta">{{ o.provider or 'signal' }}</div>
+        </div>
+      </article>
+
+    {% elif share.kind == 'detour' %}
+      {% set it = p.itinerary or {} %}
+      {% set legs = it.legs or [] %}
+      <article class="boarding-pass is-adventure"{% if it.theme_primary %} style="--bp-accent: {{ it.theme_primary }}; border-color: color-mix(in srgb, {{ it.theme_primary }} 35%, var(--line));"{% endif %}>
+        <div class="bp-main">
+          <div class="bp-top">
+            <span class="bp-label">Boarding pass · {{ it.kind or 'detour' }}</span>
+            <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{{ it.theme_label or 'Detour' }}</span>
+          </div>
+          {% if legs|length >= 1 %}
+          <div class="bp-route">
+            <span class="bp-iata">{{ legs[0].from_iata }}</span>
+            <span class="bp-plane" aria-hidden="true">✈</span>
+            {% if it.stop_iata %}<span class="bp-iata" style="font-size:1.35rem;opacity:0.85">{{ it.stop_iata }}</span>
+            <span class="bp-plane" aria-hidden="true">✈</span>{% endif %}
+            <span class="bp-iata">{{ (legs|last).to_iata }}</span>
+          </div>
+          {% endif %}
+          <p class="bp-cities">{{ it.title or share.title }}</p>
+          {% if it.why %}<p class="bp-why">{{ it.why }}</p>{% endif %}
+          {% if legs %}
+          <div class="bp-legs">
+            {% for leg in legs %}
+            <div class="bp-leg">
+              <div>
+                <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
+                <div class="meta">
+                  {{ leg.depart_date }}
+                  {% if leg.offer and leg.offer.airlines %} · {{ leg.offer.airlines|join(', ') }}{% endif %}
+                </div>
+              </div>
+              <div class="fare">
+                {% if leg.offer %}
+                  {{ leg.offer.display_price_base or leg.offer.display_price or ('~' ~ leg.offer.currency ~ ' ' ~ '%.0f'|format(leg.offer.price)) }}
+                {% else %}—{% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+          {% if it.ground_display or it.ground_compare_line or it.all_in_display %}
+          <div class="bp-col">
+            {% if it.ground_display %}<p class="bp-note" style="margin:0.55rem 0 0">{{ it.ground_display }}</p>{% endif %}
+            {% if it.ground_compare_line %}<p class="bp-note muted" style="margin:0.2rem 0 0">{{ it.ground_compare_line }}</p>{% endif %}
+            {% if it.ground_budget_line %}<p class="bp-note" style="margin:0.2rem 0 0">{{ it.ground_budget_line }}</p>{% endif %}
+            {% if it.all_in_display %}<p class="bp-note" style="margin:0.25rem 0 0;font-weight:650">{{ it.all_in_display }}</p>{% endif %}
+          </div>
+          {% endif %}
+          <div class="bp-actions">
+            {% if it.google_flights_url %}
+            <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
+            {% endif %}
+            {% if legs and legs[0].google_flights_url %}
+            <a class="btn secondary" href="{{ legs[0].google_flights_url }}" target="_blank" rel="noopener">Leg 1 ↗</a>
+            {% endif %}
+            {% if legs|length > 1 and legs[1].google_flights_url %}
+            <a class="btn secondary" href="{{ legs[1].google_flights_url }}" target="_blank" rel="noopener">Leg 2 ↗</a>
+            {% endif %}
+          </div>
+        </div>
+        <div class="bp-stub">
+          <div>
+            <div class="bp-stub-label">Trip total</div>
+            <div class="bp-stub-price">
+              {% if it.total_price is not none %}
+              {{ it.display_price_base or it.display_price or ('~' ~ it.currency ~ ' ' ~ '%.0f'|format(it.total_price)) }}
+              {% else %}—{% endif %}
+            </div>
+          </div>
+          <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }}d stop{% else %}multi-leg{% endif %}</div>
+        </div>
+      </article>
+    {% else %}
+      <div class="card">
+        <p class="muted">Unknown share type.</p>
+      </div>
+    {% endif %}
+
+    <p class="muted" style="margin-top:1.25rem;font-size:0.85rem">
+      <a href="/">← Back to Yonder</a>
+      {% if share.kind == 'detour' %} · <a href="/saved">Saved</a>{% endif %}
+    </p>
+  </main>
+  <script>
+    (function () {
+      var btn = document.getElementById("copy-share-url");
+      var text = document.getElementById("share-url-text");
+      if (!btn || !text) return;
+      btn.addEventListener("click", function () {
+        var url = text.textContent || "";
+        function ok() {
+          btn.textContent = "Copied";
+          setTimeout(function () { btn.textContent = "Copy link"; }, 1600);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(ok).catch(function () {
+            window.prompt("Copy link", url);
+          });
+        } else {
+          window.prompt("Copy link", url);
+        }
+      });
+    })();
+  </script>
+  {% endif %}
+{% endblock %}

@@ -2,11 +2,26 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = ROOT / ".env"
+
+
+def _empty_as(default: Any):
+    """Treat blank .env values as missing so field defaults apply."""
+
+    def _parse(v: Any) -> Any:
+        if v is None:
+            return default
+        if isinstance(v, str) and not v.strip():
+            return default
+        return v
+
+    return _parse
 
 
 class Settings(BaseSettings):
@@ -29,7 +44,9 @@ class Settings(BaseSettings):
     xai_api_key: str = ""
     xai_model: str = "grok-4.5"
 
-    default_currency: str = "CAD"
+    default_currency: str = "USD"
+    # Home / default origin airport (IATA). Blank → first visited map country → YVR
+    home_iata: str = ""
     # Comma-separated ISO2 codes, max 10 (e.g. US,RU,CN)
     avoid_countries: str = ""
     # Comma-separated ISO2 codes — personal travel passport map (unlimited-ish)
@@ -48,6 +65,72 @@ class Settings(BaseSettings):
     provider_mode: str = "smart"
     # When true, Search/Adventure may show "Test Data" (mock fares)
     testing: bool = False
+    # Detour defaults (editable in Settings) — blank .env uses these
+    detour_min_stop_days: int = 3
+    detour_max_stop_days: int = 5
+    # How many detour ideas to invent/price (results always capped at 5 cheapest)
+    detour_max_candidates: int = 5
+    # Hard wall-clock budget for Escape + Detour (seconds)
+    search_budget_seconds: float = 30.0
+
+    @field_validator(
+        "detour_min_stop_days",
+        "detour_max_stop_days",
+        "detour_max_candidates",
+        mode="before",
+    )
+    @classmethod
+    def _blank_int_defaults(cls, v: Any, info: Any) -> Any:
+        defaults = {
+            "detour_min_stop_days": 3,
+            "detour_max_stop_days": 5,
+            "detour_max_candidates": 5,
+        }
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            return defaults.get(getattr(info, "field_name", ""), 5)
+        return v
+
+    @field_validator(
+        "col_hotel",
+        "col_food",
+        "col_transit",
+        "col_culture",
+        "col_expected_daily",
+        "col_tolerance_pct",
+        mode="before",
+    )
+    @classmethod
+    def _blank_float_defaults(cls, v: Any, info: Any) -> Any:
+        defaults = {
+            "col_hotel": 0.0,
+            "col_food": 0.0,
+            "col_transit": 0.0,
+            "col_culture": 0.0,
+            "col_expected_daily": 0.0,
+            "col_tolerance_pct": 25.0,
+        }
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            return defaults.get(getattr(info, "field_name", ""), 0.0)
+        return v
+
+    def detour_stop_defaults(self) -> tuple[int, int, int]:
+        """(min_stop_days, max_stop_days, max_candidates) clamped to safe ranges."""
+        try:
+            lo = int(self.detour_min_stop_days or 3)
+        except (TypeError, ValueError):
+            lo = 3
+        try:
+            hi = int(self.detour_max_stop_days or 5)
+        except (TypeError, ValueError):
+            hi = 5
+        try:
+            n = int(self.detour_max_candidates or 5)
+        except (TypeError, ValueError):
+            n = 5
+        lo = max(1, min(21, lo))
+        hi = max(lo, min(30, hi))
+        n = max(2, min(5, n))  # at most 5 results per search
+        return lo, hi, n
 
     @property
     def amadeus_base(self) -> str:
@@ -81,6 +164,36 @@ class Settings(BaseSettings):
         from yonder.countries import normalize_country_list
 
         return normalize_country_list(self.visited_countries, max_n=250)
+
+    def resolve_home_iata(self) -> str:
+        """Home origin for Escape/Detour when the prompt doesn't name one.
+
+        Order:
+          1. HOME_IATA setting
+          2. primary airport of first passport-map country
+          3. primary airport for default_currency's country
+          4. USA (JFK)
+        """
+        from yonder.countries import country_for_currency, primary_iata_for_country
+
+        raw = (self.home_iata or "").strip().upper()
+        if len(raw) == 3 and raw.isalpha():
+            return raw
+        visited = self.visited_country_list()
+        if visited:
+            for cc in visited:
+                iata = primary_iata_for_country(cc)
+                if iata:
+                    return iata
+        cur = (self.default_currency or "").strip().upper()
+        if cur:
+            cc = country_for_currency(cur)
+            if cc:
+                iata = primary_iata_for_country(cc)
+                if iata:
+                    return iata
+        # Final fallback: USA
+        return primary_iata_for_country("US") or "JFK"
 
     def col_components(self) -> dict[str, float]:
         """Hotel / food / transit / culture expected amounts (0 if unset)."""

@@ -120,6 +120,23 @@
       border-top: 1px solid var(--line);
       background: color-mix(in srgb, var(--white) 55%, var(--paper));
     }
+    /* Depart strip at top of Detour compose box */
+    .compose-field-top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem 0.75rem;
+      padding: 0.45rem 0.65rem;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--white) 50%, var(--paper));
+    }
+    .compose-field-top .date-field {
+      height: 2.35rem;
+      background: var(--white);
+    }
+    .compose-field-top .date-field input[type="date"] {
+      min-width: 9rem;
+    }
     .ask-form { display: flex; flex-direction: column; gap: 0; }
     .ask-row {
       display: flex;
@@ -343,42 +360,7 @@
       outline: 2px solid var(--sky-bright);
       outline-offset: 2px;
     }
-    .compose-more {
-      margin-top: 0.65rem;
-      border: 1px dashed var(--line-strong);
-      border-radius: 12px;
-      padding: 0.15rem 0.75rem 0.15rem;
-      background: color-mix(in srgb, var(--paper) 60%, transparent);
-    }
-    .compose-more > summary {
-      cursor: pointer;
-      font-size: 0.82rem;
-      font-weight: 600;
-      color: var(--muted);
-      padding: 0.55rem 0;
-      list-style: none;
-    }
-    .compose-more > summary::-webkit-details-marker { display: none; }
-    .compose-more > summary::after {
-      content: "▾";
-      margin-left: 0.35rem;
-      font-size: 0.7rem;
-      opacity: 0.7;
-    }
-    .compose-more[open] > summary::after { content: "▴"; }
-    .compose-more .grid-form {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
-      gap: 0.65rem;
-      padding-bottom: 0.75rem;
-      align-items: end;
-    }
-    .compose-more .check-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.65rem 1rem;
-      padding-bottom: 0.75rem;
-    }
+
     .parsed-box {
       font-size: 0.9rem;
       color: var(--ink-soft);
@@ -561,12 +543,38 @@
       font-weight: 500;
     }
     #ask-client-error.show { display: block; }
+    .results-panel[hidden] { display: none !important; }
+    .examples-set[hidden] { display: none !important; }
+    .compose-field-top[hidden] { display: none !important; }
+    .parsed-box[hidden] { display: none !important; }
 {% endblock %}
 {% block body %}
   {% set mode = mode or 'escape' %}
-  <header class="page-head">
-    <h1>{% if mode == 'detour' %}The long way around{% else %}Get out of town{% endif %}</h1>
-    <p>
+  {% set ep = escape_panel if escape_panel is defined and escape_panel else {} %}
+  {% set dp = detour_panel if detour_panel is defined and detour_panel else {} %}
+  {% set ef = ep.form if ep.form is defined and ep.form else {} %}
+  {% set df = dp.form if dp.form is defined and dp.form else {} %}
+  {% set cur = (form.currency if form is defined and form.currency else none) or (df.currency if df.currency is defined else none) or (ef.currency if ef.currency is defined else none) or 'USD' %}
+  {% set cur = cur|upper %}
+  {% set lock_vibe = lock_vibe if lock_vibe is defined else false %}
+  {% set esc_vibe = (ef.vibe if ef.vibe is defined and ef.vibe else '') %}
+  {% set det_vibe = (df.vibe if df.vibe is defined and df.vibe else '') %}
+  {# Only lock vibe after a live search; refresh always re-rolls a random vibe #}
+  {% set cur_vibe = (form.vibe if lock_vibe and form is defined and form.vibe is defined and form.vibe else '') %}
+  {% set esc_text = (ep.ask if ep.ask is defined else none) or ask or '' %}
+  {% set det_text = (df.prompt if df.prompt is defined else '') or '' %}
+  {% set det_depart = (df.depart if df.depart is defined else '') or '' %}
+  {% set escape_result = ep.result if ep.result is defined else (result if mode != 'detour' else none) %}
+  {% set detour_result = dp.result if dp.result is defined else (result if mode == 'detour' else none) %}
+  {% set escape_parsed = ep.parsed if ep.parsed is defined else (parsed if mode != 'detour' else none) %}
+  {% set escape_place_book = ep.place_book if ep.place_book is defined else (place_book if mode != 'detour' else none) %}
+  {% set escape_dest_theme = ep.dest_theme if ep.dest_theme is defined else (dest_theme if mode != 'detour' else none) %}
+  {% set detour_place_books = dp.place_books if dp.place_books is defined else (place_books if mode == 'detour' else {}) %}
+  {% set detour_trip_meta = dp.trip_meta if dp.trip_meta is defined else (trip_meta if mode == 'detour' else none) %}
+
+  <header class="page-head" id="explore-head">
+    <h1 id="explore-title">{% if mode == 'detour' %}The long way around{% else %}Get out of town{% endif %}</h1>
+    <p id="explore-blurb">
       {% if mode == 'detour' %}
         Multi-day stops and open getaways — two tickets, one story. Fare signals first; confirm before you buy.
       {% else %}
@@ -575,234 +583,155 @@
     </p>
   </header>
   <main>
-    <div class="mode-tabs" role="tablist" aria-label="Explore mode">
-      <a href="/?mode=escape" class="{% if mode != 'detour' %}active{% endif %}" data-mode="escape">Escape</a>
-      <a href="/?mode=detour" class="{% if mode == 'detour' %}active{% endif %}" data-mode="detour">Detour</a>
-    </div>
+    {# ——— One compose card: Escape | Detour toggle, shared prompt + vibe + map ——— #}
+    <div class="card compose-card{% if mode == 'detour' %} is-detour{% endif %}" id="compose-card">
+      <div class="mode-tabs" role="tablist" aria-label="Explore mode" id="explore-mode-tabs">
+        <button type="button" role="tab" data-mode="escape" class="{% if mode != 'detour' %}active{% endif %}" aria-selected="{{ 'true' if mode != 'detour' else 'false' }}">Escape</button>
+        <button type="button" role="tab" data-mode="detour" class="{% if mode == 'detour' %}active{% endif %}" aria-selected="{{ 'true' if mode == 'detour' else 'false' }}">Detour</button>
+      </div>
+      <h2 id="compose-heading">{% if mode == 'detour' %}The long way{% else %}Where to?{% endif %}</h2>
+      <p class="sub" id="compose-sub">{% if mode == 'detour' %}A→B with stops, or “get me out of town” — plus a vibe. Stamp avoid on the map.{% else %}Plain English + a vibe. Dates live in the sentence (one traveler).{% endif %}</p>
 
-    {# ——— One compose card: prompt + compact map + actions ——— #}
-    {% set cur = (form.currency if form is defined else 'CAD')|default('CAD')|upper %}
-    {# Empty default → client picks a random vibe on load; form POST keeps chosen value #}
-    {% set cur_vibe = (form.vibe if form is defined and form.vibe is defined and form.vibe else '') %}
+      <form
+        id="explore-form"
+        class="ask-form"
+        method="post"
+        action="{% if mode == 'detour' %}/adventure{% else %}/ask{% endif %}"
+        data-mode="{{ mode }}"
+      >
+        <input type="hidden" name="mode" id="explore-mode" value="{{ mode }}" />
+        <input type="hidden" name="use_grok" value="true" />
+        <input type="hidden" name="vibe" id="explore-vibe" value="{{ cur_vibe }}" />
 
-    {% if mode != 'detour' %}
-    <div class="card compose-card">
-      <h2>Where to?</h2>
-      <p class="sub">Plain English + a vibe. Dates and cabin live in the sentence.</p>
-      <form id="ask-form" class="ask-form" action="/ask" method="post">
-        <input type="hidden" name="mode" value="escape" />
-        <input type="hidden" name="vibe" id="escape-vibe" value="{{ cur_vibe }}" />
         <div class="compose-field has-vibe">
+          <div class="compose-field-top" id="depart-strip"{% if mode != 'detour' %} hidden{% endif %}>
+            <label class="date-field" title="Depart date">
+              <span>Depart</span>
+              <input name="depart" id="explore-depart" type="date" value="{{ det_depart }}" {% if mode == 'detour' %}required{% endif %} />
+            </label>
+          </div>
           <div class="compose-text-row">
-            <textarea id="ask-text" name="ask" placeholder="Cheap one-way YVR to Tokyo mid-September…" required>{{ ask or '' }}</textarea>
-            <button type="submit" id="ask-submit" class="btn-vibe-go">Find escape</button>
+            <textarea
+              id="explore-text"
+              name="{% if mode == 'detour' %}prompt{% else %}ask{% endif %}"
+              required
+              placeholder="{% if mode == 'detour' %}Toronto to Vancouver via somewhere new, 3–5 days…{% else %}Cheap one-way YVR to Tokyo mid-September…{% endif %}"
+            >{% if mode == 'detour' %}{{ det_text }}{% else %}{{ esc_text }}{% endif %}</textarea>
+            <button type="submit" id="explore-submit" class="btn-vibe-go">{% if mode == 'detour' %}Find Detour{% else %}Plan Escape{% endif %}</button>
           </div>
           <div
             data-vibe-slider
-            data-input-id="escape-vibe"
+            data-input-id="explore-vibe"
             data-initial="{{ cur_vibe }}"
+            {% if lock_vibe %}data-lock-vibe="1"{% endif %}
           ></div>
         </div>
-        <div class="examples">
+
+        <div class="examples examples-set" id="escape-examples"{% if mode == 'detour' %} hidden{% endif %}>
           <button type="button" class="example-chip" data-q="Cheap one-way from YVR to NRT around September 15 2026">YVR → NRT</button>
-          <button type="button" class="example-chip" data-q="Round trip Toronto to London first week of October 2026, 2 adults, economy">YYZ → LHR</button>
+          <button type="button" class="example-chip" data-q="Round trip Toronto to London first week of October 2026">YYZ → LHR</button>
           <button type="button" class="example-chip" data-q="Nonstop flights Vancouver to Los Angeles next month">YVR → LAX</button>
+        </div>
+        <div class="examples examples-set" id="detour-examples"{% if mode != 'detour' %} hidden{% endif %}>
+          <button type="button" class="ex" data-vibe="adventure" data-q="Toronto to Vancouver mid September — multi-day European stopovers if the price signal looks good, 3-5 days somewhere cool">YYZ → YVR via Europe</button>
+          <button type="button" class="ex" data-vibe="food" data-q="Vancouver to London in October — food-city stopovers, 2-4 days, street food and markets">YVR → LHR food</button>
+          <button type="button" class="ex" data-vibe="chaos" data-q="I kinda want to get out of Vancouver for a few days, not somewhere I've been, cheap, low hassle, different">YVR getaway</button>
         </div>
 
         <div class="compose-atlas">
           <div
+            id="explore-map"
             data-yonder-map
             data-compact="1"
-            data-theme="phosphor"
+            data-theme="{% if mode == 'detour' %}amber{% else %}phosphor{% endif %}"
             data-visited="{{ (visited_defaults or [])|join(',') }}"
             data-avoid="{{ (avoid_defaults or [])|join(',') }}"
           ></div>
         </div>
 
         <div class="compose-actions">
-          <label class="currency-field" title="Display currency">
-            <span>Cur</span>
-            <select name="currency" id="ask-currency" aria-label="Currency">
-              {% for code in ['CAD', 'USD', 'EUR', 'GBP', 'AUD', 'JPY', 'CHF', 'MXN'] %}
-              <option value="{{ code }}" {% if cur == code %}selected{% endif %}>{{ code }}</option>
-              {% endfor %}
-            </select>
-          </label>
           {% if testing %}
           <label class="check" title="Fake demo fares">
-            <input type="checkbox" name="mock" value="true" id="ask-mock" {% if form is defined and form.mock %}checked{% endif %} /> Test Data
+            <input type="checkbox" name="mock" value="true" id="explore-mock" {% if form is defined and form.mock %}checked{% endif %} /> Test Data
           </label>
           {% endif %}
+          <p class="fine-print" id="compose-fine" style="margin:0;flex:1 1 auto">
+            {% if mode == 'detour' %}
+              Stopovers = two tickets. Currency: <strong>{{ cur }}</strong> · stop days &amp; option count in <a href="/settings">Settings</a>
+            {% else %}
+              Currency: <strong>{{ cur }}</strong> · change in <a href="/settings">Settings</a>
+            {% endif %}
+          </p>
           <div id="ask-client-error"></div>
         </div>
       </form>
-      {% if parsed %}
-      <div class="parsed-box">
+
+      {% if escape_parsed %}
+      <div class="parsed-box" id="escape-parsed"{% if mode == 'detour' %} hidden{% endif %}>
         <strong style="color:var(--text)">Heard:</strong>
-        {{ place(parsed.origin) }} → {{ place(parsed.destination) }}
-        · {{ parsed.depart_date }}
-        {% if parsed.return_date %}· return {{ parsed.return_date }}{% endif %}
-        · {{ parsed.currency }}
-        {% if cur_vibe %}· vibe {{ cur_vibe }}{% endif %}
+        {{ place(escape_parsed.origin) }} → {{ place(escape_parsed.destination) }}
+        · {{ escape_parsed.depart_date }}
+        {% if escape_parsed.return_date %}· return {{ escape_parsed.return_date }}{% endif %}
+        · {{ escape_parsed.currency }}
+        {% if esc_vibe %}· vibe {{ esc_vibe }}{% endif %}
       </div>
       {% endif %}
     </div>
-    {% else %}
-    <div class="card compose-card is-detour">
-      <h2>The long way</h2>
-      <p class="sub">A→B with stops, or “get me out of town” — plus a vibe. Stamp avoid on the map.</p>
-      <form id="adv-form" class="ask-form" method="post" action="/adventure">
-        <input type="hidden" name="mode" value="detour" />
-        <input type="hidden" name="use_grok" value="true" />
-        <input type="hidden" name="vibe" id="adv-vibe" value="{{ cur_vibe }}" />
-        <div class="compose-field has-vibe">
-          <div class="compose-text-row">
-            <textarea id="adv-prompt" name="prompt" required placeholder="Toronto to Vancouver via somewhere new, 3–5 days…">{{ form.prompt if form is defined and form.prompt is defined else '' }}</textarea>
-            <button type="submit" id="adv-submit" class="btn-vibe-go">Plan detour</button>
-          </div>
-          <div
-            data-vibe-slider
-            data-input-id="adv-vibe"
-            data-initial="{{ cur_vibe }}"
-          ></div>
-        </div>
-        <div class="examples" id="adv-examples">
-          <button type="button" class="ex" data-vibe="adventure" data-min="3" data-max="5" data-q="Toronto to Vancouver mid September — multi-day European stopovers if the price signal looks good, 3-5 days somewhere cool">YYZ → YVR via Europe</button>
-          <button type="button" class="ex" data-vibe="food" data-min="2" data-max="4" data-q="Vancouver to London in October — food-city stopovers, 2-4 days, street food and markets">YVR → LHR food</button>
-          <button type="button" class="ex" data-vibe="chaos" data-min="3" data-max="5" data-q="I kinda want to get out of Vancouver for a few days, not somewhere I've been, cheap, low hassle, different">YVR getaway</button>
-        </div>
-
-        <div class="compose-atlas">
-          <div
-            data-yonder-map
-            data-compact="1"
-            data-theme="amber"
-            data-visited="{{ (visited_defaults or [])|join(',') }}"
-            data-avoid="{{ (avoid_defaults or [])|join(',') }}"
-          ></div>
-        </div>
-
-        <div class="compose-actions">
-          <label class="date-field" title="Depart date">
-            <span>Depart</span>
-            <input name="depart" type="date" value="{{ form.depart if form is defined else '' }}" required />
-          </label>
-          <p class="fine-print">Stopovers = two tickets. Signals aren’t tickets — confirm before you buy.</p>
-        </div>
-
-        <details class="compose-more">
-          <summary>More options</summary>
-          <div class="grid-form">
-            <label>Arrive by
-              <input name="arrive_by" type="date" value="{{ form.arrive_by if form is defined and form.arrive_by is defined else '' }}" />
-            </label>
-            <label>Min stop days
-              <input name="min_stop_days" type="number" min="1" max="21" value="{{ form.min_stop_days if form is defined and form.min_stop_days is defined else 3 }}" />
-            </label>
-            <label>Max stop days
-              <input name="max_stop_days" type="number" min="1" max="30" value="{{ form.max_stop_days if form is defined and form.max_stop_days is defined else 5 }}" />
-            </label>
-            <label>Detours
-              <input name="max_candidates" type="number" min="2" max="10" value="{{ form.max_candidates if form is defined and form.max_candidates is defined else 5 }}" />
-            </label>
-          </div>
-          <div class="check-row">
-            {% if testing %}
-            <label class="check">
-              <input type="checkbox" name="mock" value="true" {% if form is defined and form.mock %}checked{% endif %} /> Test Data
-            </label>
-            {% endif %}
-            <label class="check">
-              <input type="checkbox" name="grok_story" value="true" {% if form is defined and form.grok_story %}checked{% endif %} /> Story mode
-            </label>
-          </div>
-        </details>
-      </form>
-    </div>
-    {% endif %}
 
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
-    <script src="/static/country_map.js?v=11"></script>
-    <script src="/static/vibe_slider.js?v=9"></script>
+    <script src="/static/country_map.js?v=13"></script>
+    <script src="/static/vibe_slider.js?v=13"></script>
 
     {% if error %}
-      <div class="error">{{ error }}</div>
+      <div class="error" id="server-error">{{ error }}</div>
     {% endif %}
 
-    {# ——— Flight results ——— #}
-    {% if mode != 'detour' and analysis %}
-    <div class="card">
-      <h2>The take</h2>
-      {% if analysis.headline %}
-        <p style="margin:0 0 0.6rem;font-size:1.05rem;font-weight:600;font-family:var(--font-display)">{{ analysis.headline }}</p>
-      {% endif %}
-      {% if analysis.pick_index %}
-        <p class="muted" style="margin-top:0">Row #{{ analysis.pick_index }}{% if analysis.pick_reason %} — {{ analysis.pick_reason }}{% endif %}</p>
-      {% endif %}
-      <div class="analysis-md" style="font-size:0.95rem">
-        {% if analysis.raw_markdown %}
-          {% for block in analysis.raw_markdown.split('\n\n') %}
-            {% if block.startswith('- ') or block.startswith('* ') %}
-              <ul class="muted">
-                {% for line in block.split('\n') %}
-                  {% if line.strip().startswith('- ') or line.strip().startswith('* ') %}
-                    <li>{{ line.strip()[2:] }}</li>
-                  {% endif %}
-                {% endfor %}
-              </ul>
-            {% else %}
-              <p>{{ block | replace('**', '') }}</p>
-            {% endif %}
-          {% endfor %}
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-
-    {% if mode != 'detour' and place_book %}
+    {# ——— Escape results (kept in DOM for client toggle) ——— #}
+    <div class="results-panel" id="escape-results" data-mode="escape"{% if mode == 'detour' %} hidden{% endif %}>
+    {% if escape_place_book %}
     <div class="place-book">
       <span class="pb-tag">Field note</span>
-      <h3>{{ place_book.title }}</h3>
-      {% if place_book.subtitle %}<p class="pb-sub">{{ place_book.subtitle }}</p>{% endif %}
+      <h3>{{ escape_place_book.title }}</h3>
+      {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
       <div class="pb-grid">
-        {% if place_book.culture %}
-        <div class="pb-block"><h4>Culture</h4><p>{{ place_book.culture }}</p></div>
+        {% if escape_place_book.culture %}
+        <div class="pb-block"><h4>Culture</h4><p>{{ escape_place_book.culture }}</p></div>
         {% endif %}
-        {% if place_book.food %}
-        <div class="pb-block"><h4>Food</h4><p>{{ place_book.food }}</p></div>
+        {% if escape_place_book.food %}
+        <div class="pb-block"><h4>Food</h4><p>{{ escape_place_book.food }}</p></div>
         {% endif %}
-        {% if place_book.vibe %}
-        <div class="pb-block"><h4>Vibe</h4><p>{{ place_book.vibe }}</p></div>
+        {% if escape_place_book.vibe %}
+        <div class="pb-block"><h4>Vibe</h4><p>{{ escape_place_book.vibe }}</p></div>
         {% endif %}
-        {% if place_book.caution %}
-        <div class="pb-block"><h4>Heads-up</h4><p>{{ place_book.caution }}</p></div>
+        {% if escape_place_book.caution %}
+        <div class="pb-block"><h4>Heads-up</h4><p>{{ escape_place_book.caution }}</p></div>
         {% endif %}
       </div>
-      {% if place_book.facts %}
+      {% if escape_place_book.facts %}
       <ul style="margin-top:0.65rem">
-        {% for f in place_book.facts %}<li>{{ f }}</li>{% endfor %}
+        {% for f in escape_place_book.facts %}<li>{{ f }}</li>{% endfor %}
       </ul>
       {% endif %}
-      {% if place_book.era_note %}<p class="pb-closer">{{ place_book.era_note }}</p>{% endif %}
+      {% if escape_place_book.era_note %}<p class="pb-closer">{{ escape_place_book.era_note }}</p>{% endif %}
     </div>
     {% endif %}
 
-    {% if mode != 'detour' and result %}
+    {% if escape_result %}
       <div class="card">
-        {% if dest_theme %}
+        {% if escape_dest_theme %}
         <div class="results-banner">
-          {% if dest_theme.flag_img %}
-            <img class="flag-img" src="{{ dest_theme.flag_img }}" alt="" width="32" height="24" loading="lazy" />
+          {% if escape_dest_theme.flag_img %}
+            <img class="flag-img" src="{{ escape_dest_theme.flag_img }}" alt="" width="32" height="24" loading="lazy" />
           {% endif %}
           <div>
-            <strong>{{ dest_theme.label }}</strong>
-            <span class="muted"> · {{ route(result.query.origin, result.query.destination) }}</span>
+            <strong>{{ escape_dest_theme.label }}</strong>
+            <span class="muted"> · {{ route(escape_result.query.origin, escape_result.query.destination) }}</span>
           </div>
         </div>
         {% endif %}
         <div class="pills" style="margin-top:0;margin-bottom:0.85rem">
-          {% for r in result.results %}
+          {% for r in escape_result.results %}
             {% if r.ok %}
               <span class="pill ok">{{ r.provider }} · {{ r.latency_ms }}ms</span>
             {% else %}
@@ -810,28 +739,25 @@
             {% endif %}
           {% endfor %}
         </div>
-        {% if result.offers %}
+        {% if escape_result.offers %}
         <div class="pass-stack">
-          {% for o in result.offers[:24] %}
-          {% set is_pick = analysis and analysis.pick_index == loop.index %}
-          <article class="boarding-pass {% if is_pick %}is-pick{% endif %}">
+          {% for o in escape_result.offers[:1] %}
+          <article class="boarding-pass">
             <div class="bp-main">
               <div class="bp-top">
                 <span class="bp-label">Boarding pass · signal</span>
-                <span class="bp-badge {% if is_pick %}pick{% endif %}">
-                  {% if is_pick %}Grok pick{% else %}#{{ loop.index }}{% endif %}
-                </span>
+                <span class="bp-badge soft">#{{ loop.index }}</span>
               </div>
               <div class="bp-route">
-                <span class="bp-iata">{{ result.query.origin }}</span>
+                <span class="bp-iata">{{ escape_result.query.origin }}</span>
                 <span class="bp-plane" aria-hidden="true">✈</span>
-                <span class="bp-iata">{{ result.query.destination }}</span>
+                <span class="bp-iata">{{ escape_result.query.destination }}</span>
               </div>
-              <p class="bp-cities">{{ route(result.query.origin, result.query.destination) }}</p>
+              <p class="bp-cities">{{ route(escape_result.query.origin, escape_result.query.destination) }}</p>
               <div class="bp-fields">
                 <div class="bp-field">
                   <span class="k">Depart</span>
-                  <span class="v">{{ result.query.depart_date }}</span>
+                  <span class="v">{{ escape_result.query.depart_date }}</span>
                 </div>
                 <div class="bp-field">
                   <span class="k">Airline</span>
@@ -867,7 +793,22 @@
                 </div>
               </div>
               <div class="bp-stub-meta">{{ o.provider }}</div>
+              {% set share = share_escape(request, escape_result, o) %}
+              {% if share and share.qr_src %}
+              <div class="bp-stub-qr">
+                <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
+                  <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
+                </a>
+                <div class="bp-stub-share">Scan · share</div>
+              </div>
+              {% elif share %}
+              <div class="bp-stub-qr">
+                <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
+                <div class="bp-stub-share">Scan · share</div>
+              </div>
+              {% else %}
               <div class="bp-barcode" aria-hidden="true"></div>
+              {% endif %}
             </div>
           </article>
           {% endfor %}
@@ -877,32 +818,28 @@
         {% endif %}
       </div>
     {% endif %}
+    </div>
 
-    {# ——— Adventure results as boarding passes ——— #}
-    {% if mode == 'detour' and result %}
-      {% if result.narrative %}
-      <div class="card">
-        <h2>Brief from the bar</h2>
-        <div class="narrative">{{ result.narrative }}</div>
-      </div>
-      {% endif %}
-      <div class="card" id="adv-results" data-trip-meta='{{ (trip_meta or {}) | tojson }}'>
+    {# ——— Detour results ——— #}
+    <div class="results-panel" id="detour-results" data-mode="detour"{% if mode != 'detour' %} hidden{% endif %}>
+    {% if detour_result %}
+      <div class="card" id="adv-results" data-trip-meta='{{ (detour_trip_meta or {}) | tojson }}'>
         <h2>Boarding stack</h2>
         <p class="sub">
-          {% if result.direct_price is not none %}
-            Direct-ish baseline <strong style="color:var(--good)">{{ result.request.currency }} {{ '%.0f'|format(result.direct_price) }}</strong>
+          {% if detour_result.direct_price is not none %}
+            Direct-ish baseline <strong style="color:var(--good)">{{ detour_result.request.currency }} {{ '%.0f'|format(detour_result.direct_price) }}</strong>
           {% else %}No direct baseline{% endif %}
-          · {{ result.ideas|length }} cities priced
+          · {{ detour_result.itineraries|length }} of {{ detour_result.ideas|length }} cities · cheapest first
           · <a href="/saved">Saved</a>
         </p>
-        {% if result.itineraries %}
+        {% if detour_result.itineraries %}
         <div class="pass-stack">
-          {% for it in result.itineraries %}
-          <article class="boarding-pass is-adventure">
+          {% for it in detour_result.itineraries[:5] %}
+          <article class="boarding-pass is-adventure"{% if it.theme_primary %} style="--bp-accent: {{ it.theme_primary }}; border-color: color-mix(in srgb, {{ it.theme_primary }} 35%, var(--line));"{% endif %}>
             <div class="bp-main">
               <div class="bp-top">
                 <span class="bp-label">Boarding pass · {{ it.kind or 'detour' }}</span>
-                <span class="bp-badge soft">{{ it.theme_label or '#' ~ loop.index }}</span>
+                <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{{ it.theme_label or '#' ~ loop.index }}</span>
               </div>
               {% if it.legs and it.legs|length >= 1 %}
               <div class="bp-route">
@@ -915,6 +852,7 @@
               {% endif %}
               <p class="bp-cities">{{ it.title }}</p>
               {% if it.why %}<p class="bp-why">{{ it.why }}</p>{% endif %}
+              {% if it.legs %}
               <div class="bp-legs">
                 {% for leg in it.legs %}
                 <div class="bp-leg">
@@ -922,19 +860,47 @@
                     <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
                     <div class="meta">
                       {{ leg.depart_date }}
-                      {% if leg.offer %} · {{ leg.offer.airlines|join(', ') or '—' }}{% endif %}
+                      {% if leg.offer %}
+                        · {{ leg.offer.airlines|join(', ') or '—' }}
+                        · {{ leg.offer.stops_out }} stop{{ 's' if leg.offer.stops_out != 1 else '' }}
+                      {% elif leg.error %}
+                        · {{ leg.error[:64] }}
+                      {% endif %}
+                      {% if leg.offer and leg.offer.deep_link and 'kayak.com' not in leg.offer.deep_link %}
+                        · <a href="{{ leg.offer.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(leg.offer.airlines) }} ↗</a>
+                      {% endif %}
+                      {% if leg.google_flights_url %}
+                        · <a href="{{ leg.google_flights_url }}" target="_blank" rel="noopener">Google ↗</a>
+                      {% endif %}
                     </div>
                   </div>
                   <div class="fare">
                     {% if leg.offer %}
-                      {{ leg.offer.display_price_base or ('~' ~ leg.offer.currency ~ ' ' ~ '%.0f'|format(leg.offer.price)) }}
+                      {{ leg.offer.display_price_base or leg.offer.display_price or ('~' ~ leg.offer.currency ~ ' ' ~ '%.0f'|format(leg.offer.price)) }}
                     {% else %}—{% endif %}
                   </div>
                 </div>
                 {% endfor %}
               </div>
-              {% if place_books and it.stop_iata and place_books.get(it.stop_iata) %}
-                {% set pb = place_books[it.stop_iata] %}
+              {% endif %}
+              {% if it.ground_display or it.ground_compare_line or it.ground_budget_line or it.all_in_display %}
+              <div class="bp-col">
+                {% if it.ground_display %}
+                <p class="bp-note" style="margin:0.55rem 0 0">{{ it.ground_display }}</p>
+                {% endif %}
+                {% if it.ground_compare_line %}
+                <p class="bp-note muted" style="margin:0.2rem 0 0">{{ it.ground_compare_line }}</p>
+                {% endif %}
+                {% if it.ground_budget_line %}
+                <p class="bp-note{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}" style="margin:0.2rem 0 0">{{ it.ground_budget_line }}</p>
+                {% endif %}
+                {% if it.all_in_display %}
+                <p class="bp-note" style="margin:0.25rem 0 0;font-weight:650">{{ it.all_in_display }}</p>
+                {% endif %}
+              </div>
+              {% endif %}
+              {% if detour_place_books and it.stop_iata and detour_place_books.get(it.stop_iata) %}
+                {% set pb = detour_place_books[it.stop_iata] %}
                 <div class="place-book" style="margin-top:0.75rem;box-shadow:none">
                   <span class="pb-tag">Detour field note</span>
                   <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
@@ -951,7 +917,16 @@
               <div class="bp-actions">
                 <button type="button" class="btn secondary btn-save-it" data-it-idx="{{ loop.index0 }}">★ Save</button>
                 {% if it.google_flights_url %}
-                <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Google ↗</a>
+                <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
+                {% endif %}
+                {% if it.legs and it.legs[0].google_flights_url %}
+                <a class="btn secondary" href="{{ it.legs[0].google_flights_url }}" target="_blank" rel="noopener">Leg 1 ↗</a>
+                {% endif %}
+                {% if it.legs|length > 1 and it.legs[1].google_flights_url %}
+                <a class="btn secondary" href="{{ it.legs[1].google_flights_url }}" target="_blank" rel="noopener">Leg 2 ↗</a>
+                {% endif %}
+                {% if it.kayak_url %}
+                <a class="btn secondary" href="{{ it.kayak_url }}" target="_blank" rel="noopener">Kayak (leg 1) ↗</a>
                 {% endif %}
               </div>
             </div>
@@ -967,7 +942,22 @@
                 </div>
               </div>
               <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }}d stop{% else %}multi-leg{% endif %}</div>
+              {% set share = share_detour(request, it, detour_trip_meta) %}
+              {% if share and share.qr_src %}
+              <div class="bp-stub-qr">
+                <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
+                  <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
+                </a>
+                <div class="bp-stub-share">Scan · share</div>
+              </div>
+              {% elif share %}
+              <div class="bp-stub-qr">
+                <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
+                <div class="bp-stub-share">Scan · share</div>
+              </div>
+              {% else %}
               <div class="bp-barcode" aria-hidden="true"></div>
+              {% endif %}
             </div>
           </article>
           {% endfor %}
@@ -977,119 +967,271 @@
         {% endif %}
       </div>
     {% endif %}
+    </div>
   </main>
   <footer class="site-foot">
     Signals aren’t tickets. Re-check live fares. Culture notes are short takes, not gospel.
   </footer>
   <script>
     (function () {
-      /* Flights form */
-      function bootFlights() {
-        var form = document.getElementById("ask-form");
-        var ta = document.getElementById("ask-text");
-        var btn = document.getElementById("ask-submit");
-        var errBox = document.getElementById("ask-client-error");
-        var grokReady = {{ "true" if grok_ready else "false" }};
-        if (!form || !ta) return;
-        function showError(msg) {
-          if (!errBox) return;
-          errBox.textContent = msg;
-          errBox.classList.add("show");
+      var COPY = {
+        escape: {
+          title: "Get out of town",
+          blurb: "Point A to B in plain English. Real fare signals, a sharp pick, and a short field note on the place.",
+          heading: "Where to?",
+          sub: "Plain English + a vibe. Dates live in the sentence (one traveler).",
+          placeholder: "Cheap one-way YVR to Tokyo mid-September…",
+          cta: "Plan Escape",
+          progressMode: "search",
+          progressTitle: "Hunting fares…",
+          action: "/ask",
+          field: "ask",
+          mapTheme: "phosphor",
+        },
+        detour: {
+          title: "The long way around",
+          blurb: "Multi-day stops and open getaways — two tickets, one story. Fare signals first; confirm before you buy.",
+          heading: "The long way",
+          sub: "A→B with stops, or “get me out of town” — plus a vibe. Stamp avoid on the map.",
+          placeholder: "Toronto to Vancouver via somewhere new, 3–5 days…",
+          cta: "Find Detour",
+          progressMode: "adventure",
+          progressTitle: "Plotting detours…",
+          action: "/adventure",
+          field: "prompt",
+          mapTheme: "amber",
+        },
+      };
+      var currencyLabel = {{ cur|tojson }};
+      COPY.escape.fine = "Currency: <strong>" + currencyLabel + "</strong> · change in <a href=\"/settings\">Settings</a>";
+      COPY.detour.fine = "Stopovers = two tickets. Currency: <strong>" + currencyLabel + "</strong> · stop days &amp; option count in <a href=\"/settings\">Settings</a>";
+
+      var lockVibe = {{ "true" if lock_vibe else "false" }};
+      var state = {
+        escape: {
+          text: {{ esc_text|tojson }},
+          // Only carry last-search vibe when locked (post-search); else empty → random
+          vibe: lockVibe ? {{ esc_vibe|tojson }} : "",
+        },
+        detour: {
+          text: {{ det_text|tojson }},
+          vibe: lockVibe ? {{ det_vibe|tojson }} : "",
+          depart: {{ det_depart|tojson }},
+        },
+      };
+      var mode = {{ mode|tojson }} === "detour" ? "detour" : "escape";
+      var form = document.getElementById("explore-form");
+      var ta = document.getElementById("explore-text");
+      var btn = document.getElementById("explore-submit");
+      var modeInput = document.getElementById("explore-mode");
+      var vibeInput = document.getElementById("explore-vibe");
+      var depart = document.getElementById("explore-depart");
+      var departStrip = document.getElementById("depart-strip");
+      var card = document.getElementById("compose-card");
+      var errBox = document.getElementById("ask-client-error");
+      var grokReady = {{ "true" if grok_ready else "false" }};
+
+      function showError(msg) {
+        if (!errBox) return;
+        errBox.textContent = msg;
+        errBox.classList.add("show");
+      }
+      function clearError() {
+        if (!errBox) return;
+        errBox.textContent = "";
+        errBox.classList.remove("show");
+      }
+
+      function setVibe(val) {
+        var host = document.querySelector("[data-vibe-slider]");
+        if (host && host._vibeSlider && val) {
+          host._vibeSlider.setById(val, true);
+          return;
         }
-        document.querySelectorAll(".example-chip").forEach(function (chip) {
+        if (vibeInput && val) {
+          vibeInput.disabled = false;
+          vibeInput.value = val;
+        }
+      }
+
+      function saveCurrent() {
+        if (!ta) return;
+        state[mode].text = ta.value || "";
+        if (vibeInput) state[mode].vibe = vibeInput.value || "";
+        if (mode === "detour" && depart) state.detour.depart = depart.value || "";
+      }
+
+      function applyMode(next, opts) {
+        opts = opts || {};
+        if (next !== "escape" && next !== "detour") return;
+        if (!opts.skipSave) saveCurrent();
+        mode = next;
+        var c = COPY[mode];
+
+        if (form) {
+          form.action = c.action;
+          form.dataset.mode = mode;
+        }
+        if (modeInput) modeInput.value = mode;
+        if (ta) {
+          ta.name = c.field;
+          ta.placeholder = c.placeholder;
+          ta.value = state[mode].text || "";
+        }
+        if (vibeInput) vibeInput.value = state[mode].vibe || "";
+        if (state[mode].vibe) setVibe(state[mode].vibe);
+
+        if (departStrip) {
+          if (mode === "detour") {
+            departStrip.hidden = false;
+            if (depart) {
+              depart.required = true;
+              if (!depart.value && state.detour.depart) depart.value = state.detour.depart;
+              if (!depart.value) {
+                var dt = new Date();
+                dt.setDate(dt.getDate() + 45);
+                depart.value = dt.toISOString().slice(0, 10);
+                state.detour.depart = depart.value;
+              }
+            }
+          } else {
+            departStrip.hidden = true;
+            if (depart) depart.required = false;
+          }
+        }
+
+        if (btn) btn.textContent = c.cta;
+        if (card) card.classList.toggle("is-detour", mode === "detour");
+
+        var title = document.getElementById("explore-title");
+        var blurb = document.getElementById("explore-blurb");
+        var heading = document.getElementById("compose-heading");
+        var sub = document.getElementById("compose-sub");
+        var fine = document.getElementById("compose-fine");
+        if (title) title.textContent = c.title;
+        if (blurb) blurb.textContent = c.blurb;
+        if (heading) heading.textContent = c.heading;
+        if (sub) sub.textContent = c.sub;
+        if (fine) fine.innerHTML = c.fine;
+
+        document.querySelectorAll("#explore-mode-tabs [data-mode]").forEach(function (tab) {
+          var on = tab.getAttribute("data-mode") === mode;
+          tab.classList.toggle("active", on);
+          tab.setAttribute("aria-selected", on ? "true" : "false");
+        });
+
+        var escEx = document.getElementById("escape-examples");
+        var detEx = document.getElementById("detour-examples");
+        if (escEx) escEx.hidden = mode !== "escape";
+        if (detEx) detEx.hidden = mode !== "detour";
+
+        var escRes = document.getElementById("escape-results");
+        var detRes = document.getElementById("detour-results");
+        if (escRes) escRes.hidden = mode !== "escape";
+        if (detRes) detRes.hidden = mode !== "detour";
+        var escParsed = document.getElementById("escape-parsed");
+        if (escParsed) escParsed.hidden = mode !== "escape";
+
+        var mapEl = document.getElementById("explore-map");
+        if (mapEl) {
+          mapEl.setAttribute("data-theme", c.mapTheme);
+          if (mapEl._yonderMap && typeof mapEl._yonderMap.setTheme === "function") {
+            try { mapEl._yonderMap.setTheme(c.mapTheme); } catch (e) {}
+          }
+        }
+
+        try {
+          var url = new URL(window.location.href);
+          url.searchParams.set("mode", mode);
+          history.replaceState({ mode: mode }, "", url.pathname + "?" + url.searchParams.toString() + url.hash);
+        } catch (e) {}
+
+        document.title = (mode === "detour" ? "Detour" : "Escape") + " · Yonder";
+        clearError();
+      }
+
+      function bootToggle() {
+        document.querySelectorAll("#explore-mode-tabs [data-mode]").forEach(function (tab) {
+          tab.addEventListener("click", function () {
+            applyMode(tab.getAttribute("data-mode") || "escape");
+          });
+        });
+      }
+
+      function bootForm() {
+        if (!form || !ta) return;
+
+        document.querySelectorAll("#escape-examples .example-chip").forEach(function (chip) {
           chip.addEventListener("click", function () {
+            if (mode !== "escape") applyMode("escape");
             ta.value = chip.getAttribute("data-q") || "";
+            state.escape.text = ta.value;
             if (typeof form.requestSubmit === "function") form.requestSubmit();
             else form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
           });
         });
+
+        document.querySelectorAll("#detour-examples .ex").forEach(function (chip) {
+          chip.addEventListener("click", function () {
+            if (mode !== "detour") applyMode("detour");
+            ta.value = chip.getAttribute("data-q") || "";
+            state.detour.text = ta.value;
+            if (chip.dataset.vibe) {
+              setVibe(chip.dataset.vibe);
+              state.detour.vibe = chip.dataset.vibe;
+            }
+            if (depart && !depart.value) {
+              var dt = new Date();
+              dt.setDate(dt.getDate() + 45);
+              depart.value = dt.toISOString().slice(0, 10);
+              state.detour.depart = depart.value;
+            }
+            ta.focus();
+          });
+        });
+
         form.addEventListener("submit", function (e) {
           e.preventDefault();
-          if (!(ta.value || "").trim()) {
+          clearError();
+          saveCurrent();
+          var text = (ta.value || "").trim();
+          if (!text) {
             showError("Type a trip first.");
+            ta.focus();
             return;
           }
-          if (!grokReady) {
+          if (mode === "escape" && !grokReady) {
             showError("Add XAI_API_KEY in Settings.");
+            return;
+          }
+          if (mode === "detour" && depart && !depart.value) {
+            showError("Pick a depart date.");
+            depart.focus();
             return;
           }
           if (!window.YonderProgress) {
             showError("Progress UI failed — hard-refresh.");
             return;
           }
+          ta.name = COPY[mode].field;
+          form.action = COPY[mode].action;
+          if (modeInput) modeInput.value = mode;
           btn.disabled = true;
-          YonderProgress.submitWithProgress(form, {
-            mode: "search",
-            title: "Hunting fares…",
-            expectedMs: 50000,
-            timeoutMs: 180000,
-          }).finally(function () {
-            btn.disabled = false;
-            btn.textContent = "Find escape";
-          });
-        });
-      }
-
-      function setVibeFromExample(val) {
-        var host = document.querySelector("[data-vibe-slider]");
-        if (host && host._vibeSlider && val) {
-          host._vibeSlider.setById(val, true);
-          return;
-        }
-        var vibe = document.getElementById("adv-vibe") || document.getElementById("escape-vibe");
-        if (vibe && val) {
-          vibe.disabled = false;
-          vibe.value = val;
-        }
-      }
-
-      function bootAdventure() {
-        var form = document.getElementById("adv-form");
-        var btn = document.getElementById("adv-submit");
-        var prompt = document.getElementById("adv-prompt");
-        if (!form || !prompt) return;
-        form.addEventListener("submit", function (e) {
-          e.preventDefault();
-          if (!(prompt.value || "").trim()) {
-            prompt.focus();
-            return;
-          }
-          var dep = form.querySelector("[name=depart]");
-          if (dep && !dep.value) {
-            dep.focus();
-            return;
-          }
-          if (!window.YonderProgress) return;
-          btn.disabled = true;
+          var cta = COPY[mode].cta;
           btn.textContent = "Planning…";
-          var cands = parseInt((form.querySelector("[name=max_candidates]") || {}).value || "5", 10);
           YonderProgress.submitWithProgress(form, {
-            mode: "adventure",
-            title: "Plotting detours…",
-            expectedMs: 40000 + cands * 18000,
-            timeoutMs: 360000,
+            mode: COPY[mode].progressMode,
+            title: COPY[mode].progressTitle,
+            expectedMs: 22000,
+            timeoutMs: 32000,
           }).finally(function () {
             btn.disabled = false;
-            btn.textContent = "Plan detour";
+            btn.textContent = cta;
           });
         });
-        document.querySelectorAll(".ex").forEach(function (chip) {
-          chip.addEventListener("click", function () {
-            prompt.value = chip.getAttribute("data-q") || "";
-            if (chip.dataset.vibe) setVibeFromExample(chip.dataset.vibe);
-            var minEl = form.querySelector("[name=min_stop_days]");
-            var maxEl = form.querySelector("[name=max_stop_days]");
-            if (minEl && chip.dataset.min) minEl.value = chip.dataset.min;
-            if (maxEl && chip.dataset.max) maxEl.value = chip.dataset.max;
-            var dep = form.querySelector("[name=depart]");
-            if (dep && !dep.value) {
-              var dt = new Date();
-              dt.setDate(dt.getDate() + 45);
-              dep.value = dt.toISOString().slice(0, 10);
-            }
-            prompt.focus();
-          });
-        });
+      }
+
+      function bootSave() {
         var results = document.getElementById("adv-results");
         var tripMeta = {};
         if (results && results.dataset.tripMeta) {
@@ -1128,8 +1270,10 @@
       }
 
       function boot() {
-        bootFlights();
-        bootAdventure();
+        bootToggle();
+        bootForm();
+        bootSave();
+        applyMode(mode, { skipSave: true });
       }
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", function () { setTimeout(boot, 30); });

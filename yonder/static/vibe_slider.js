@@ -163,9 +163,12 @@
     hidden.removeAttribute("disabled");
     if (!hidden.name) hidden.name = "vibe";
 
-    // Prefer server/form initial; otherwise pick a random vibe each page load
-    var idx = indexOfId(initialId);
-    if (idx < 0) idx = Math.floor(Math.random() * VIBES.length);
+    // Prefer locked server/form initial (post-search); otherwise a fresh random vibe each load
+    var lockVibe = host.getAttribute("data-lock-vibe") === "1";
+    var idx = lockVibe && initialId ? indexOfId(initialId) : -1;
+    if (idx < 0) {
+      idx = Math.floor(Math.random() * VIBES.length);
+    }
     var start = VIBES[idx];
 
     host.classList.add("vibe-slider-host", "vibe-inline-host", "is-open", "is-required");
@@ -205,6 +208,48 @@
       return y > 0.62 ? "#1a1200" : "#ffffff";
     }
 
+    function mixToward(hex, toward, t) {
+      var a = hexToRgb(hex);
+      var b = hexToRgb(toward);
+      function ch(x, y) {
+        return Math.round(x + (y - x) * t);
+      }
+      function p(n) {
+        var s = Math.max(0, Math.min(255, n)).toString(16);
+        return s.length === 1 ? "0" + s : s;
+      }
+      return "#" + p(ch(a.r, b.r)) + p(ch(a.g, b.g)) + p(ch(a.b, b.b));
+    }
+
+    /** Paint lounge chrome from vibe color (sky/brass/accent aliases). */
+    function applyPageTheme(color) {
+      var root = document.documentElement;
+      var deep = mixToward(color, "#000000", 0.32);
+      var mist = mixToward(color, "#ffffff", 0.88);
+      var pairs = [
+        ["--vibe-now", color],
+        ["--sky-bright", color],
+        ["--sky", deep],
+        ["--sky-mist", mist],
+        ["--brass", color],
+        ["--brass-deep", deep],
+        ["--brass-mist", mist],
+        ["--accent", color],
+        ["--accent-soft", mist],
+        ["--gold", color],
+        ["--gold-soft", mist],
+      ];
+      pairs.forEach(function (kv) {
+        root.style.setProperty(kv[0], kv[1]);
+      });
+      if (document.body) {
+        document.body.classList.add("has-vibe-theme");
+        document.body.style.setProperty("--vibe-now", color);
+      }
+      if (shell) shell.style.setProperty("--vibe-now", color);
+      host.style.setProperty("--vibe-now", color);
+    }
+
     function paintGoButtons(color) {
       var form = host.closest("form");
       var root = form || document;
@@ -212,12 +257,8 @@
         btn.style.background = color;
         btn.style.borderColor = color;
         btn.style.color = contrastInk(color);
-        btn.style.boxShadow =
-          "0 2px 12px " + color + "55";
+        btn.style.boxShadow = "0 2px 12px " + color + "55";
       });
-      if (shell) {
-        shell.style.setProperty("--vibe-now", color);
-      }
     }
 
     function syncUi() {
@@ -228,12 +269,11 @@
       nameOut.textContent = vibe.label;
       nameOut.style.color = show;
       nameSwatch.style.backgroundColor = show;
-      host.style.setProperty("--vibe-now", show);
-      if (shell) shell.style.setProperty("--vibe-now", show);
       hueEl.setAttribute("aria-valuenow", String(Math.round(h * 100)));
       hueEl.setAttribute("aria-valuetext", vibe.label);
       hidden.value = vibe.id;
       hidden.disabled = false;
+      applyPageTheme(show);
       paintGoButtons(show);
       applyMap(show);
     }

@@ -245,7 +245,7 @@ def save_itinerary(
     """Persist an adventure itinerary snapshot. Prices are frozen until refresh."""
     meta = dict(trip_meta or {})
     origin, dest = _legs_origin_dest(itinerary)
-    currency = (itinerary.get("currency") or meta.get("currency") or "CAD").upper()
+    currency = (itinerary.get("currency") or meta.get("currency") or "USD").upper()
     total = itinerary.get("total_price")
     display = itinerary.get("display_price")
     if total is not None and not display:
@@ -253,6 +253,30 @@ def save_itinerary(
     notes = itinerary.get("notes") or []
     if not isinstance(notes, list):
         notes = [str(notes)]
+
+    # Prefer explicit vibe color from trip_meta (page theme) over country theme
+    vibe_slug = meta.get("vibe") or itinerary.get("vibe")
+    vibe_color = meta.get("vibe_color") or itinerary.get("theme_primary")
+    vibe_label = meta.get("vibe_label")
+    if vibe_slug and not vibe_color:
+        try:
+            from yonder.vibe_theme import vibe_theme as _vt
+
+            vt = _vt(str(vibe_slug))
+            vibe_color = vt["color"]
+            vibe_label = vibe_label or vt["label"]
+        except Exception:
+            pass
+    theme_primary = vibe_color or itinerary.get("theme_primary")
+    theme_accent = itinerary.get("theme_accent")
+    if vibe_color and not theme_accent:
+        try:
+            from yonder.vibe_theme import darken
+
+            theme_accent = darken(str(vibe_color), 0.32)
+        except Exception:
+            theme_accent = vibe_color
+    theme_label = vibe_label or itinerary.get("theme_label")
 
     now = time.time()
     sid = replace_id or str(uuid.uuid4())
@@ -271,6 +295,19 @@ def save_itinerary(
     elif existing and total is None:
         priced_at = existing.priced_at
 
+    # Keep vibe color on the frozen itinerary JSON too
+    if vibe_color:
+        itinerary = dict(itinerary)
+        itinerary["theme_primary"] = theme_primary
+        itinerary["theme_accent"] = theme_accent
+        if theme_label:
+            itinerary["theme_label"] = theme_label
+        if vibe_slug:
+            itinerary["vibe"] = vibe_slug
+        meta.setdefault("vibe_color", vibe_color)
+        if vibe_slug:
+            meta.setdefault("vibe", vibe_slug)
+
     row = (
         sid,
         saved_at,
@@ -287,14 +324,14 @@ def save_itinerary(
         dest or meta.get("destination"),
         int(meta.get("adults") or 1),
         str(meta.get("cabin") or "economy"),
-        meta.get("vibe") or itinerary.get("why"),
+        vibe_slug or meta.get("vibe") or itinerary.get("why"),
         meta.get("prompt") or meta.get("trip_prompt"),
         itinerary.get("theme_country"),
-        itinerary.get("theme_primary"),
-        itinerary.get("theme_accent"),
+        theme_primary,
+        theme_accent,
         itinerary.get("theme_gradient"),
         itinerary.get("theme_flag_img"),
-        itinerary.get("theme_label"),
+        theme_label,
         itinerary.get("google_flights_url"),
         itinerary.get("kayak_url"),
         itinerary.get("ground_display"),

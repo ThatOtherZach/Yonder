@@ -316,7 +316,7 @@
         ></div>
         <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
-        <script src="/static/country_map.js?v=8"></script>
+        <script src="/static/country_map.js?v=13"></script>
       </div>
 
       <div class="card adv-card">
@@ -374,9 +374,6 @@
           <label class="check">
             <input type="checkbox" name="use_grok" value="true" {% if form.use_grok %}checked{% endif %} /> Grok translates + invents
           </label>
-          <label class="check">
-            <input type="checkbox" name="grok_story" value="true" {% if form.grok_story %}checked{% endif %} /> Grok story
-          </label>
           {% if grok_ready %}
             <span class="pill ok">Grok ready</span>
           {% else %}
@@ -408,13 +405,6 @@
     {% endif %}
 
     {% if result %}
-      {% if result.narrative %}
-      <div class="card adv-card">
-        <h2 style="margin:0 0 0.75rem">Grok's adventure brief</h2>
-        <div class="narrative">{{ result.narrative }}</div>
-      </div>
-      {% endif %}
-
       <div class="card" id="adv-results"
            data-trip-meta='{{ (trip_meta or {}) | tojson }}'>
         <h2 style="margin:0 0 0.35rem">Ranked adventures</h2>

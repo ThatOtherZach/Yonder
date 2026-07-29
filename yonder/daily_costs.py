@@ -371,6 +371,24 @@ def cache_put(
         conn.commit()
 
 
+def _sum_col_components(info: dict[str, Any]) -> float:
+    """Sum hotel+food+transit+culture from a Grok stop payload (local currency)."""
+    total = 0.0
+    found = 0
+    for key in ("hotel", "food", "transit", "culture"):
+        raw = info.get(f"{key}_local")
+        if raw is None:
+            raw = info.get(key)
+        try:
+            v = float(raw or 0)
+        except (TypeError, ValueError):
+            v = 0.0
+        if v > 0:
+            total += v
+            found += 1
+    return total if found else 0.0
+
+
 def col_rank_delta(
     daily_stop: float,
     *,
@@ -395,6 +413,67 @@ def col_rank_delta(
         return -min(8.0, frac * 8.0), "within", vs_pct
     over = (d_s - ceiling) / exp
     return -min(35.0, 10.0 + over * 40.0), "over", vs_pct
+
+
+def settings_ground_fields(
+    settings: Settings,
+    *,
+    stay_days: int,
+    currency: str,
+    stop_label: str | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Ground costs strictly from Settings day bag (no Grok / city estimates).
+
+    Returns (itinerary ground_* fields, note lines). Empty fields when the bag is unset.
+    """
+    daily, tol, comps = settings.col_budget()
+    cur = (currency or settings.default_currency or "USD").upper()
+    stay = max(1, int(stay_days or 1))
+    if daily is None or daily <= 0:
+        return {}, [
+            "Ground COL off — set hotel / food / transit / culture in Settings",
+        ]
+
+    ground = round(float(daily) * stay, 2)
+    daily_disp = format_approx(daily, cur)
+    ground_disp = format_approx(ground, cur)
+    bag_bits = []
+    for key, label in (
+        ("hotel", "hotel"),
+        ("food", "food"),
+        ("transit", "transit"),
+        ("culture", "culture"),
+    ):
+        v = float(comps.get(key) or 0)
+        if v > 0:
+            bag_bits.append(f"{label} {format_approx(v, cur)}")
+    bag_txt = " + ".join(bag_bits) if bag_bits else f"{daily_disp}/day"
+    place = (stop_label or "stop").strip() or "stop"
+    ceil = float(daily) * (1.0 + max(0.0, float(tol)) / 100.0)
+    compare = (
+        f"Your Settings day bag for {place}: {bag_txt} = {daily_disp}/day"
+    )
+    budget_line = (
+        f"Ground plan {ground_disp} "
+        f"({stay}× {daily_disp}/day · ±{tol:.0f}% band ok up to "
+        f"{format_approx(ceil, cur)}/day) · edit in Settings"
+    )
+    fields = {
+        "ground_daily_stop": float(daily),
+        "ground_daily_origin": float(daily),  # same bag — no city COL model
+        "ground_total": ground,
+        "ground_display": f"+ {ground_disp} ground ({stay}× {daily_disp}/day day bag)",
+        "ground_compare_line": compare,
+        "ground_budget_status": "within",
+        "ground_budget_line": budget_line,
+        "ground_rank_delta": 0.0,
+    }
+    notes = [
+        f"Ground: {compare}",
+        budget_line,
+        "Cost of living uses your Settings bag only — not local market estimates",
+    ]
+    return fields, notes
 
 
 def build_compare(
@@ -462,13 +541,30 @@ def build_compare(
         if bag_txt:
             notes.insert(
                 1,
-                f"Your day bag: {bag_txt} = {exp_disp}/day · ±{tol:.0f}% band "
-                f"(ok up to {format_approx(ceil, cur)}/day)",
+                f"Your Settings bag: {bag_txt} = {exp_disp}/day · over-budget band "
+                f"+{tol:.0f}% (ok up to {format_approx(ceil, cur)}/day)",
             )
+        stop_comps = payload.get("components") if isinstance(payload, dict) else None
+        if isinstance(stop_comps, dict) and any(float(stop_comps.get(k) or 0) > 0 for k in stop_comps):
+            bits = []
+            for key, label in (
+                ("hotel", "hotel"),
+                ("food", "food"),
+                ("transit", "transit"),
+                ("culture", "culture"),
+            ):
+                v = float(stop_comps.get(key) or 0)
+                if v > 0:
+                    bits.append(f"{label} {format_approx(v, cur)}")
+            if bits:
+                notes.insert(
+                    1,
+                    f"Grok COL in {s_name}: {' + '.join(bits)} = {format_approx(d_s, cur)}/day",
+                )
         if budget_status == "under":
             budget_line = (
                 f"Budget: {format_approx(d_s, cur)}/day under your {exp_disp}/day bag "
-                f"({abs(vs_budget_pct or 0):.0f}% under)"
+                f"({abs(vs_budget_pct or 0):.0f}% under · +{tol:.0f}% band)"
             )
         elif budget_status == "within":
             budget_line = (
@@ -483,8 +579,8 @@ def build_compare(
             )
         notes.insert(2 if bag_txt else 1, budget_line)
         compare_line = (
-            f"{format_approx(d_s, cur)}/day in {s_name} · your bag {exp_disp}/day"
-            f" ({budget_status or 'n/a'})"
+            f"Grok {format_approx(d_s, cur)}/day in {s_name} vs your "
+            f"{exp_disp}/day bag ({budget_status or 'n/a'} · +{tol:.0f}% ok)"
         )
 
     if payload.get("blurb") and src != "fallback":
@@ -547,8 +643,13 @@ async def estimate_batch_for_stops(
     stops: list[tuple[str, str | None, str | None]],  # (iata, country, city)
     currency: str,
     vibe: str = "adventure",
+    live_grok: bool = True,
 ) -> dict[str, Any]:
-    """Batch lean day costs; Grok prices in local currency → convert to user currency."""
+    """Batch lean day costs; Grok prices in local currency → convert to user currency.
+
+    When live_grok is False, only disk cache + static fallbacks are used (fast path
+    for the 30s Detour budget).
+    """
     origin_cc = country_for_iata(origin_iata) or "CA"
     currency = (currency or "CAD").upper()
     origin_local = local_currency(origin_cc)
@@ -586,7 +687,7 @@ async def estimate_batch_for_stops(
         if hit:
             payloads_by_cc[cc] = hit
 
-    if needed and settings.grok_ready():
+    if needed and live_grok and settings.grok_ready():
         try:
             from yonder.grok import GrokClient
 
@@ -594,6 +695,18 @@ async def estimate_batch_for_stops(
                 timeout=20.0
             ) as http:
                 b_daily, b_tol, b_comps = settings.col_budget()
+                # Default all-zero bag: omit budget from Grok prompt entirely
+                user_budget = None
+                if b_daily is not None and float(b_daily) > 0:
+                    user_budget = {
+                        "currency": currency,
+                        "hotel": b_comps.get("hotel") or 0,
+                        "food": b_comps.get("food") or 0,
+                        "transit": b_comps.get("transit") or 0,
+                        "culture": b_comps.get("culture") or 0,
+                        "total": float(b_daily),
+                        "tolerance_pct": b_tol,
+                    }
                 batch = await grok.estimate_daily_costs_batch(
                     origin_country=origin_cc,
                     origin_name=COUNTRY_NAME.get(origin_cc, origin_cc),
@@ -602,15 +715,7 @@ async def estimate_batch_for_stops(
                     currency=currency,
                     vibe=vibe,
                     anchors=anchor_examples_for_currency(currency),
-                    user_budget={
-                        "currency": currency,
-                        "hotel": b_comps.get("hotel") or 0,
-                        "food": b_comps.get("food") or 0,
-                        "transit": b_comps.get("transit") or 0,
-                        "culture": b_comps.get("culture") or 0,
-                        "total": b_daily or 0,
-                        "tolerance_pct": b_tol,
-                    },
+                    user_budget=user_budget,
                 )
 
                 # Origin: prefer local amount
@@ -637,23 +742,31 @@ async def estimate_batch_for_stops(
                 for cc, info in stops_map.items():
                     cc_u = str(cc).upper()
                     if isinstance(info, dict):
-                        local_amt = float(
-                            info.get("daily_local")
-                            or info.get("daily_stop")
-                            or info.get("daily")
-                            or info.get("cost")
-                            or 0
-                        )
+                        # Prefer hotel+food+transit+culture sum (Grok COL components)
+                        local_amt = _sum_col_components(info)
+                        if local_amt <= 0:
+                            local_amt = float(
+                                info.get("daily_local")
+                                or info.get("daily_stop")
+                                or info.get("daily")
+                                or info.get("cost")
+                                or 0
+                            )
                         local_cur = str(
                             info.get("local_currency")
                             or info.get("currency")
                             or local_currency(cc_u)
                         ).upper()
                         blurb = str(info.get("blurb") or info.get("note") or "")
+                        comps_local = {
+                            k: float(info.get(f"{k}_local") or info.get(k) or 0)
+                            for k in ("hotel", "food", "transit", "culture")
+                        }
                     else:
                         local_amt = float(info)
                         local_cur = local_currency(cc_u)
                         blurb = ""
+                        comps_local = {}
                     if local_amt <= 0:
                         continue
                     daily_stop = await _to_user_currency(
@@ -666,6 +779,14 @@ async def estimate_batch_for_stops(
                             (blurb + " " if blurb else "")
                             + f"(~{int(round(local_amt)):,} {local_cur}/day → {currency})"
                         ).strip()
+                    # Optional component FX for display (same rate as total)
+                    comps_disp: dict[str, float] = {}
+                    if comps_local and local_amt > 0:
+                        for ck, cv in comps_local.items():
+                            if cv and cv > 0:
+                                comps_disp[ck] = round(
+                                    daily_stop * (float(cv) / float(local_amt)), 1
+                                )
                     payload = {
                         "daily_origin": round(origin_daily),
                         "daily_stop": round(daily_stop),
@@ -674,6 +795,7 @@ async def estimate_batch_for_stops(
                         "includes": INCLUDES,
                         "blurb": blurb[:240],
                         "source": "grok",
+                        "components": comps_disp,
                     }
                     cache_put(origin_cc, cc_u, currency, payload, source="grok")
                     payloads_by_cc[cc_u] = {**payload, "source": "grok"}

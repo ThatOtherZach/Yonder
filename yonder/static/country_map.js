@@ -151,6 +151,7 @@
       "</span>" +
       '<span class="ymap-drawer-caret" aria-hidden="true">▾</span>' +
       "</button>" +
+      '<button type="button" class="ymap-clear-btn" hidden title="Clear all visited and avoid stamps">Clear map</button>' +
       '<span class="v ymap-save">—</span>' +
       '<span class="ymap-warn"></span>';
     root.appendChild(meta);
@@ -159,8 +160,17 @@
     this.avoidCountEl = meta.querySelector(".ymap-avoid-count");
     this.saveEl = meta.querySelector(".ymap-save");
     this.warnEl = meta.querySelector(".ymap-warn");
+    this.clearBtn = meta.querySelector(".ymap-clear-btn");
     this.chromeStatus = null;
     this.drawerToggle = meta.querySelector(".ymap-drawer-toggle");
+    if (this.clearBtn) {
+      var selfClear = this;
+      this.clearBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        selfClear.clearMap();
+      });
+    }
 
     var drawer = el("div", "ymap-drawer");
     drawer.hidden = true;
@@ -239,13 +249,22 @@
       '<span class="k">Sync</span>' +
       '<span class="v ymap-save">—</span>' +
       '<span class="ymap-warn"></span>' +
-      "</div>";
+      "</div>" +
+      '<button type="button" class="ymap-clear-btn" hidden title="Clear all visited and avoid stamps">Clear map</button>';
     footer.appendChild(stats);
     this.visitedCountEl = stats.querySelector(".ymap-visited-count");
     this.avoidCountEl = stats.querySelector(".ymap-avoid-count");
     this.saveEl = stats.querySelector(".ymap-save");
     this.warnEl = stats.querySelector(".ymap-warn");
+    this.clearBtn = stats.querySelector(".ymap-clear-btn");
     this.chromeStatus = null;
+    if (this.clearBtn) {
+      var selfFullClear = this;
+      this.clearBtn.addEventListener("click", function (e) {
+        e.preventDefault();
+        selfFullClear.clearMap();
+      });
+    }
 
     var legend = el("div", "ymap-legend");
     legend.innerHTML =
@@ -361,6 +380,17 @@
           ? "Avoid list full — clear one before adding another"
           : "";
     }
+    if (this.clearBtn) {
+      var stamped = v.length + a.length;
+      this.clearBtn.hidden = stamped <= 1;
+      this.clearBtn.disabled = stamped === 0;
+      this.clearBtn.setAttribute(
+        "aria-label",
+        stamped > 1
+          ? "Clear all " + stamped + " map stamps"
+          : "Clear map (need more than one country)"
+      );
+    }
     this.renderChips();
 
     if (global.FS_TRAVEL) {
@@ -377,6 +407,26 @@
         }.bind(this)
       );
     }
+  };
+
+  /** Wipe visited + avoid when the user wants a clean passport map. */
+  YonderMap.prototype.clearMap = function () {
+    var total = this.visited.size + this.avoid.size;
+    if (total <= 1) return;
+    if (
+      !global.confirm(
+        "Clear all " +
+          total +
+          " stamps (visited + avoid)? This saves to your passport map."
+      )
+    ) {
+      return;
+    }
+    this.visited.clear();
+    this.avoid.clear();
+    this.paintAll();
+    this.syncUi();
+    this.scheduleSave();
   };
 
   /** Same cycle as Settings: none → visited → avoid → clear */

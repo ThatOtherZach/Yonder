@@ -41,20 +41,23 @@ async def search_flights(
     settings: Settings | None = None,
     include_mock: bool = False,
     only: list[str] | None = None,
-    timeout: float = 90.0,
+    timeout: float = 12.0,
     convert_currency: bool = True,
     client: httpx.AsyncClient | None = None,
     force_all: bool = False,
     smart_route: bool = True,
+    max_providers: int = 1,
 ) -> UnifiedSearchResult:
     settings = settings or get_settings()
     target = (query.currency or settings.default_currency or "USD").upper()
     query = query.model_copy(update={"currency": target})
 
     owns = client is None
-    http = client or httpx.AsyncClient(timeout=timeout, follow_redirects=True)
+    # Cap HTTP client timeout so a hung API cannot exceed the search budget
+    http_timeout = min(float(timeout), 12.0)
+    http = client or httpx.AsyncClient(timeout=http_timeout, follow_redirects=True)
     try:
-        # Smart routing: probe active keys, then pick by budget/quality
+        # Prefer configured keys without slow health probes (30s budget)
         selected = only
         if selected is None and smart_route and not force_all:
             mode = "scan"
@@ -64,20 +67,24 @@ async def search_flights(
                 settings,
                 http,
                 mode=mode,
-                need=2 if not force_all else 99,
+                need=1 if not force_all else 99,
                 include_mock=include_mock,
                 force_all=force_all,
-                probe=True,
+                probe=False,
             )
             from yonder.quota import FARE_PROVIDERS
 
             fare = [n for n in selected if n in FARE_PROVIDERS or n == "mock"]
             if fare:
-                selected = fare if force_all else fare[:2]
+                selected = fare if force_all else fare[: max(1, max_providers)]
         elif selected is None:
             selected = settings.configured_providers()
             if include_mock:
                 selected = list(selected) + ["mock"]
+            from yonder.quota import FARE_PROVIDERS
+
+            fare = [n for n in selected if n in FARE_PROVIDERS or n == "mock"]
+            selected = fare[: max(1, max_providers)] if fare else selected
 
         providers = build_providers(
             settings, http, include_mock=include_mock, only=selected
@@ -85,7 +92,10 @@ async def search_flights(
         if not providers:
             return UnifiedSearchResult(query=query, results=[], offers=[])
 
-        results = await asyncio.gather(*(p.safe_search(query) for p in providers))
+        results = await asyncio.wait_for(
+            asyncio.gather(*(p.safe_search(query) for p in providers)),
+            timeout=http_timeout,
+        )
         all_offers = merge_offers(o for r in results for o in r.offers)
 
         if convert_currency and all_offers:
@@ -126,6 +136,9 @@ async def search_flights(
                     }
                 )
             )
+
+        # One fare per destination city (Escape is a single O/D) — keep cheapest only
+        decorated = decorated[:1]
 
         return UnifiedSearchResult(
             query=query,

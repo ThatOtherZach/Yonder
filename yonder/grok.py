@@ -49,7 +49,10 @@ class GrokClient:
 
     async def __aenter__(self) -> GrokClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=60.0)
+            # Connect fast; allow enough read time for invent/parse (fallback still catches stalls)
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=8.0, read=22.0, write=10.0, pool=8.0)
+            )
         return self
 
     async def __aexit__(self, *args: object) -> None:
@@ -95,30 +98,72 @@ class GrokClient:
         prompt: str,
         *,
         default_currency: str = "USD",
+        default_origin: str | None = None,
         today: date | None = None,
+        avoid_countries: list[str] | None = None,
+        visited_countries: list[str] | None = None,
     ) -> ParsedTrip:
+        """Parse free-text into a trip. Honors passport map: avoid + visited ISO2 lists."""
+        from yonder.countries import country_for_iata, country_label
+
         today = today or date.today()
+        avoid = [a.upper() for a in (avoid_countries or []) if a]
+        visited = [v.upper() for v in (visited_countries or []) if v]
+        avoid_set = set(avoid)
+        visited_set = set(visited)
+        home = (default_origin or "").strip().upper()
+        if len(home) != 3 or not home.isalpha():
+            home = "YVR"
+
         system = (
             "You are a flight-search query parser for a personal multi-provider scanner. "
             "Convert the user's free-text trip request into STRICT JSON only (no markdown fences). "
             "Use IATA airport codes (3 letters). Prefer major commercial airports. "
             "If the user names a city with multiple airports, pick the most common one and note it in assumptions. "
-            "Resolve relative dates using the provided 'today'. "
+            "Resolve relative dates using the provided 'today'.\n"
+            "ORIGIN: If the user does not name a from/origin city, use default_origin exactly.\n"
+            "PASSPORT RULES (hard constraints — ground truth is the ISO2 lists, not prose):\n"
+            "- NEVER set destination in avoid_countries (ISO2).\n"
+            "- If the user wants somewhere new / not been / nowhere I've been / unexplored / "
+            "or names places they already visited (e.g. 'including Thailand' as past travel): "
+            "NEVER set destination in visited_countries. Pick a different country.\n"
+            "- Phrases like 'nowhere I've been including X' mean X is already-visited, NOT the destination.\n"
+            "- Open-ended 'somewhere new' / vibe-only prompts still need a concrete destination IATA — "
+            "invent a plausible major-city airport outside visited+avoid; origin = default_origin.\n"
             "Schema:\n"
             "{"
-            '"origin":"YVR","destination":"NRT","depart_date":"YYYY-MM-DD",'
-            '"return_date":"YYYY-MM-DD"|null,"adults":1,'
-            '"cabin":"economy|premium_economy|business|first",'
+            f'"origin":"{home}","destination":"NRT","depart_date":"YYYY-MM-DD",'
+            '"return_date":"YYYY-MM-DD"|null,'
             '"currency":"USD","nonstop_only":false,'
             '"intent_summary":"one line","assumptions":["..."]'
-            "}"
+            "}\n"
+            "Always single traveler economy — do not invent party size or cabin."
         )
-        user = (
-            f"today: {today.isoformat()}\n"
-            f"default_currency: {default_currency}\n"
-            f"request: {prompt.strip()}"
-        )
-        text = await self._chat(system, user, temperature=0.1)
+
+        def _blocked(dest_iata: str) -> str | None:
+            cc = (country_for_iata(dest_iata) or "").upper()
+            if not cc:
+                return None
+            if cc in avoid_set:
+                return f"{dest_iata} is in avoided country {cc} ({country_label(cc)})"
+            if cc in visited_set:
+                return f"{dest_iata} is in visited country {cc} ({country_label(cc)}) — user wants new places"
+            return None
+
+        def _user_msg(extra: str = "") -> str:
+            parts = [
+                f"today: {today.isoformat()}",
+                f"default_currency: {default_currency}",
+                f"default_origin (use when user omits from-city): {home}",
+                f"avoid_countries (ISO2, NEVER destination): {avoid or []}",
+                f"visited_countries (ISO2, NEVER destination if user wants new places): {visited or []}",
+                f"request: {prompt.strip()}",
+            ]
+            if extra:
+                parts.append(extra)
+            return "\n".join(parts)
+
+        text = await self._chat(system, _user_msg(), temperature=0.1)
         payload = _extract_json(text)
         try:
             trip = ParsedTrip.model_validate(payload)
@@ -127,6 +172,49 @@ class GrokClient:
         trip.origin = trip.origin.upper()
         trip.destination = trip.destination.upper()
         trip.currency = (trip.currency or default_currency).upper()
+        # Personal app: always one traveler, economy; fill missing origin from home
+        if len(trip.origin) != 3 or not trip.origin.isalpha():
+            trip = trip.model_copy(update={"origin": home})
+        trip = trip.model_copy(update={"adults": 1, "cabin": CabinClass.ECONOMY})
+
+        # Enforce passport map: one correction retry if destination is visited/avoided
+        reason = _blocked(trip.destination)
+        if reason:
+            retry_extra = (
+                f"CORRECTION REQUIRED: previous destination was invalid: {reason}. "
+                f"Output a NEW destination IATA whose country is NOT in avoid_countries "
+                f"and NOT in visited_countries. Do not use {trip.destination}."
+            )
+            text2 = await self._chat(system, _user_msg(retry_extra), temperature=0.2)
+            payload2 = _extract_json(text2)
+            try:
+                trip2 = ParsedTrip.model_validate(payload2)
+            except ValidationError as exc:
+                raise RuntimeError(
+                    f"Grok returned invalid trip JSON on retry: {exc}"
+                ) from exc
+            trip2.origin = trip2.origin.upper()
+            trip2.destination = trip2.destination.upper()
+            trip2.currency = (trip2.currency or default_currency).upper()
+            trip2 = trip2.model_copy(update={"adults": 1, "cabin": CabinClass.ECONOMY})
+            reason2 = _blocked(trip2.destination)
+            if reason2:
+                raise RuntimeError(
+                    "Could not pick a destination outside your visited/avoid map. "
+                    f"Last try: {reason2}. Update the passport map or name a specific new city."
+                )
+            # keep origin/dates from first pass when retry omits them poorly
+            if len(trip2.origin) == 3:
+                trip.origin = trip2.origin
+            trip.destination = trip2.destination
+            if trip2.depart_date:
+                trip.depart_date = trip2.depart_date
+            trip.return_date = trip2.return_date
+            trip.assumptions = list(trip.assumptions or []) + [
+                f"Retried destination: avoided {reason}"
+            ]
+            trip.intent_summary = trip2.intent_summary or trip.intent_summary
+
         return trip
 
     async def analyze_results(
@@ -261,14 +349,14 @@ class GrokClient:
                 "era_note": "Trust your gut; recheck the fare.",
             }
 
-    def to_search_query(self, trip: ParsedTrip, max_results: int = 25) -> SearchQuery:
+    def to_search_query(self, trip: ParsedTrip, max_results: int = 5) -> SearchQuery:
         return SearchQuery(
             origin=trip.origin,
             destination=trip.destination,
             depart_date=trip.depart_date,
             return_date=trip.return_date,
-            adults=trip.adults,
-            cabin=trip.cabin,
+            adults=1,
+            cabin=CabinClass.ECONOMY,
             currency=trip.currency,
             max_results=max_results,
             nonstop_only=trip.nonstop_only,
@@ -287,8 +375,10 @@ class GrokClient:
         Token-efficient: replaces separate parse + propose calls.
         """
         today = today or date.today()
-        avoid = form.get("avoid_countries") or []
-        visited = form.get("visited_countries") or []
+        from yonder.countries import country_label
+
+        avoid = [str(a).upper() for a in (form.get("avoid_countries") or []) if a]
+        visited = [str(v).upper() for v in (form.get("visited_countries") or []) if v]
         system = (
             "You are a flight API translator + adventure trip planner. "
             "Turn messy human travel text into CLEAN structured data for flight APIs. "
@@ -297,7 +387,7 @@ class GrokClient:
             '"trip_kind":"detour|getaway",'
             '"origin":"YVR","destination":"YVR",'
             '"depart_date":"YYYY-MM-DD",'
-            '"arrive_by":null,"adults":1,"currency":"CAD","cabin":"economy",'
+            '"arrive_by":null,"currency":"USD",'
             '"min_stop_days":3,"max_stop_days":5,"vibe":"adventure",'
             '"intent_summary":"one line",'
             '"candidates":[{"iata":"PDX","city":"Portland","country":"US",'
@@ -306,22 +396,26 @@ class GrokClient:
             "trip_kind rules (IMPORTANT):\n"
             "- getaway: user wants OUT OF a home base for a few days with NO named second city "
             "(e.g. 'get out of Vancouver', 'somewhere I haven't been', 'cheap escape', "
-            "'not really anywhere specific'). Set origin AND destination to the SAME home IATA "
+            "'not really anywhere specific', 'low hassle different'). "
+            "Set origin AND destination to the SAME home IATA "
             "(round-trip home→X→home). candidates are DESTINATIONS (the X places), not mid-route stops.\n"
             "- detour: user named two cities (A to B) and wants multi-day stopovers en route. "
             "origin≠destination. candidates are mid-route stops.\n"
+            "PASSPORT MAP (ground truth — always apply):\n"
+            "- NEVER propose candidate countries in avoid_countries (ISO2)\n"
+            "- For getaway / 'not somewhere I've been' / new places: NEVER propose visited_countries (ISO2)\n"
+            "- The map lists are authoritative even if the user names a visited place in prose\n"
             "Other rules:\n"
             "- IATA 3-letter codes only\n"
             "- Prefer form fields when provided; fill gaps from free-text\n"
             "- Resolve relative dates from today\n"
             "- currency MUST match form/default\n"
-            "- NEVER propose places in avoid_countries (ISO2)\n"
-            "- If user says they haven't been / new places: NEVER propose visited_countries (ISO2)\n"
             "- Never use home/origin as a candidate\n"
             "- Exactly max_candidates creative but bookable places\n"
-            "- For cheap/low-hassle getaways prefer short-haul or easy hub cities\n"
+            "- For cheap/low-hassle/chaos getaways prefer short-haul or easy hub cities\n"
             "- country = ISO2 for each candidate"
         )
+        # Codes only in the prompt (names bloat tokens / latency for large passport maps)
         user = json.dumps(
             {
                 "today": today.isoformat(),
@@ -340,9 +434,16 @@ class GrokClient:
                     "vibe": form.get("vibe"),
                 },
                 "user_prompt": prompt.strip(),
+                "default_origin": (
+                    str(form.get("origin") or "").upper()
+                    if len(str(form.get("origin") or "")) == 3
+                    else None
+                ),
                 "hint": (
-                    "If only a home city is named (e.g. Vancouver) and destination is open, "
-                    "use trip_kind=getaway with origin=destination=that city's main airport."
+                    "If no A→B cities are named (food/COL/safe/somewhere new), "
+                    "use trip_kind=getaway. Prefer form origin, else default_origin/YVR; "
+                    "origin=destination=home. candidates are NEW destinations outside "
+                    "visited_countries and avoid_countries — lean cheap food + safe hubs."
                 ),
             },
             default=str,
@@ -399,9 +500,9 @@ class GrokClient:
                         else None
                     )
                 ),
-                adults=int(payload.get("adults") or 1),
+                adults=1,
                 currency=currency,
-                cabin=CabinClass(str(payload.get("cabin") or "economy")),
+                cabin=CabinClass.ECONOMY,
                 min_stop_days=int(
                     form.get("min_stop_days")
                     or payload.get("min_stop_days")
@@ -540,12 +641,29 @@ class GrokClient:
         """
         disp = currency.upper()
         origin_loc = (origin_local_currency or "USD").upper()
+        # Only treat as a real bag when total/components are set (> 0)
+        ub: dict[str, Any] | None = None
+        if isinstance(user_budget, dict):
+            try:
+                total = float(user_budget.get("total") or 0)
+            except (TypeError, ValueError):
+                total = 0.0
+            parts_sum = 0.0
+            for k in ("hotel", "food", "transit", "culture"):
+                try:
+                    parts_sum += float(user_budget.get(k) or 0)
+                except (TypeError, ValueError):
+                    pass
+            if total > 0 or parts_sum > 0:
+                ub = user_budget
+
         system = (
             "You estimate a LEAN traveler day bag — realistic, not inflated. "
             "Price each country in its **local currency** (use the local_currency given). "
-            "Break the day into: hotel_local (decent 3★ night), food_local (meals+drinks), "
-            "transit_local (basic metro/bus if any), culture_local (1–2 simple activities). "
-            "daily_local MUST be the sum of those four. "
+            "Break the day into four COL parts and ADD THEM UP: "
+            "hotel_local (decent 3★ night) + food_local (meals+drinks) + "
+            "transit_local (basic metro/bus if any) + culture_local (1–2 simple activities). "
+            "daily_local MUST equal hotel_local+food_local+transit_local+culture_local. "
             "NOT backpacker floor, NOT luxury, NOT taxis/shopping/flights. "
             "Country-level averages; city only if it strongly skews cost. "
             "Return STRICT JSON only (no markdown):\n"
@@ -556,30 +674,41 @@ class GrokClient:
             '"blurb":"one short sentence"}}'
             "}\n"
             "Rules: integers; one entry per stop ISO2; use that stop's local_currency; "
+            "always output all four component fields; daily_local = their sum; "
             "2024–2026 realistic prices; do NOT convert to "
-            f"{disp} yourself — leave amounts in local currency. "
-            "If the user provides a budget breakdown in display currency, treat it as "
-            "their personal target style (not a price floor for every country)."
+            f"{disp} yourself — leave amounts in local currency."
         )
-        user = json.dumps(
-            {
-                "origin_country_iso2": origin_country.upper(),
-                "origin_country_name": origin_name,
-                "origin_local_currency": origin_loc,
-                "display_currency_for_anchors_only": disp,
-                "traveler_style": "lean day bag",
-                "basket": "hotel + food/drink + basic transit + 1-2 culture",
-                "vibe": vibe,
-                "stop_countries": stops,
-                "calibration_anchors_in_display_currency": anchors or [],
-                "user_budget_breakdown_in_display_currency": user_budget or {},
-                "note": (
-                    f"Anchors/budget are in {disp} for calibration only. "
-                    "JSON money fields must be local currency for each place."
-                ),
-            },
-            default=str,
-        )
+        if ub:
+            system += (
+                " If the user provides a personal budget bag in display currency, that is "
+                "THEIR target for later comparison (with an over-budget tolerance %) — "
+                "do NOT force every country to match it; still estimate real local costs."
+            )
+        payload: dict[str, Any] = {
+            "origin_country_iso2": origin_country.upper(),
+            "origin_country_name": origin_name,
+            "origin_local_currency": origin_loc,
+            "display_currency_for_anchors_only": disp,
+            "traveler_style": "lean day bag",
+            "basket": "hotel + food/drink + basic transit + 1-2 culture (sum = daily)",
+            "vibe": vibe,
+            "stop_countries": stops,
+            "calibration_anchors_in_display_currency": anchors or [],
+            "note": (
+                f"Anchors are in {disp} for calibration only. "
+                "JSON money fields must be local currency for each place."
+            ),
+        }
+        if ub:
+            payload["user_budget_breakdown_in_display_currency"] = ub
+            payload["user_over_budget_tolerance_pct"] = ub.get("tolerance_pct")
+            payload["note"] = (
+                f"Anchors/budget are in {disp} for calibration only. "
+                "JSON money fields must be local currency for each place. "
+                "User will score your daily_local against their bag total "
+                f"with +{ub.get('tolerance_pct', 25)}% over-budget band."
+            )
+        user = json.dumps(payload, default=str)
         text = await self._chat(system, user, temperature=0.2)
         return _extract_json(text)
 
@@ -663,6 +792,64 @@ def _guess_home_iata(prompt: str) -> str | None:
         if re.search(rf"\b{re.escape(city)}\b", p):
             return iata
     return None
+
+
+def looks_like_open_getaway(prompt: str) -> bool:
+    """True when the user wants somewhere new without a clear A→B flight pair.
+
+    These belong in Detour (home → X → home), not Escape point-to-point.
+    """
+    p = (prompt or "").strip().lower()
+    if not p:
+        return False
+    # Explicit A→B / IATA pair → Escape
+    if re.search(r"\b[a-z]{3}\s*(?:→|->|to)\s*[a-z]{3}\b", p):
+        return False
+    if re.search(
+        r"\b(?:from|fly(?:ing)?\s+from)\s+[a-z][a-z\s]{1,20}\s+to\s+[a-z]",
+        p,
+    ):
+        return False
+    open_markers = (
+        "not anywhere i",
+        "nowhere i've been",
+        "nowhere ive been",
+        "haven't been",
+        "havent been",
+        "somewhere new",
+        "somewhere i haven't",
+        "somewhere i havent",
+        "not somewhere i",
+        "get out of town",
+        "get me out",
+        "getaway",
+        "open destination",
+        "wherever",
+        "cost of living",
+        "cheap cost of living",
+        "somewhere cheap",
+        "not been before",
+        "unexplored",
+    )
+    if any(m in p for m in open_markers):
+        return True
+    # No city/airport anchors at all + vibe-y wanderlust
+    has_city = any(city in p for city, _ in _HOME_CITY_IATA)
+    has_iata = bool(re.search(r"\b[A-Z]{3}\b", prompt or ""))
+    vibe_only = any(
+        w in p
+        for w in (
+            "food",
+            "cheap",
+            "beach",
+            "safe",
+            "security",
+            "adventure",
+            "relax",
+            "culture",
+        )
+    )
+    return (not has_city and not has_iata) and vibe_only
 
 
 def _extract_json(text: str) -> dict[str, Any]:

@@ -21,6 +21,12 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
     ("XAI_MODEL", "Grok model", "Default grok-4.5", False),
     ("DEFAULT_CURRENCY", "Default currency", "e.g. USD, CAD, EUR", False),
     (
+        "HOME_IATA",
+        "Home airport (IATA)",
+        "Default origin for Escape/Detour (e.g. YVR). Blank → first map country → currency country → USA",
+        False,
+    ),
+    (
         "AVOID_COUNTRIES",
         "Avoid countries (ISO2, max 10)",
         "Comma-separated e.g. US,RU,CN — never used as adventure stopovers",
@@ -78,6 +84,24 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
         "TESTING",
         "Testing mode",
         "true = show Test Data (mock fares) on Escape/Detour · false = live only",
+        False,
+    ),
+    (
+        "DETOUR_MIN_STOP_DAYS",
+        "Detour min stop days",
+        "Shortest multi-day stopover stay (default 3)",
+        False,
+    ),
+    (
+        "DETOUR_MAX_STOP_DAYS",
+        "Detour max stop days",
+        "Longest multi-day stopover stay (default 5)",
+        False,
+    ),
+    (
+        "DETOUR_MAX_CANDIDATES",
+        "Detour options to price",
+        "How many stopover/getaway ideas to invent and price (2–5, default 5). Each search returns at most 5 results.",
         False,
     ),
 ]
@@ -180,6 +204,23 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
     for key, *_ in MANAGED_KEYS:
         current.setdefault(key, "")
 
+    # Numeric Detour defaults — never leave blank (Settings UI / pydantic ints)
+    _detour_defaults = {
+        "DETOUR_MIN_STOP_DAYS": "3",
+        "DETOUR_MAX_STOP_DAYS": "5",
+        "DETOUR_MAX_CANDIDATES": "5",
+    }
+    for key, default in _detour_defaults.items():
+        if not str(current.get(key) or "").strip():
+            current[key] = default
+        # Cap options at 5 results per search
+        if key == "DETOUR_MAX_CANDIDATES":
+            try:
+                n = int(str(current.get(key) or "5").strip() or "5")
+            except ValueError:
+                n = 5
+            current[key] = str(max(2, min(5, n)))
+
     lines: list[str] = [
         "# Yonder settings — local only, do not commit",
         f"# Path: {ENV_PATH}",
@@ -206,6 +247,9 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
                 "VISITED_COUNTRIES",
                 "PROVIDER_MODE",
                 "TESTING",
+                "DETOUR_MIN_STOP_DAYS",
+                "DETOUR_MAX_STOP_DAYS",
+                "DETOUR_MAX_CANDIDATES",
             ],
         ),
     ]
@@ -271,7 +315,8 @@ def settings_view() -> dict:
         "fields": fields,
         "providers": providers,
         "amadeus_env": env.get("AMADEUS_ENV") or "test",
-        "default_currency": env.get("DEFAULT_CURRENCY") or "CAD",
+        "default_currency": env.get("DEFAULT_CURRENCY") or "USD",
+        "home_iata": (env.get("HOME_IATA") or "").strip().upper(),
         "xai_model": env.get("XAI_MODEL") or "grok-4.5",
         "grok_ready": bool(env.get("XAI_API_KEY")),
         "avoid_countries": env.get("AVOID_COUNTRIES") or "",
@@ -295,4 +340,7 @@ def settings_view() -> dict:
         "provider_mode": (env.get("PROVIDER_MODE") or "smart").lower(),
         "testing": str(env.get("TESTING") or "false").strip().lower()
         in ("1", "true", "yes", "on"),
+        "detour_min_stop_days": env.get("DETOUR_MIN_STOP_DAYS") or "3",
+        "detour_max_stop_days": env.get("DETOUR_MAX_STOP_DAYS") or "5",
+        "detour_max_candidates": env.get("DETOUR_MAX_CANDIDATES") or "5",
     }

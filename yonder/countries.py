@@ -358,6 +358,127 @@ def country_for_iata(iata: str) -> str | None:
     return IATA_COUNTRY.get(iata.upper())
 
 
+# Preferred main airport per ISO2 (home / default origin resolution)
+COUNTRY_PRIMARY_IATA: dict[str, str] = {
+    "CA": "YVR",
+    "US": "JFK",
+    "GB": "LHR",
+    "FR": "CDG",
+    "DE": "FRA",
+    "NL": "AMS",
+    "ES": "MAD",
+    "IT": "FCO",
+    "PT": "LIS",
+    "IE": "DUB",
+    "CH": "ZRH",
+    "AT": "VIE",
+    "BE": "BRU",
+    "SE": "ARN",
+    "NO": "OSL",
+    "DK": "CPH",
+    "FI": "HEL",
+    "PL": "WAW",
+    "CZ": "PRG",
+    "HU": "BUD",
+    "GR": "ATH",
+    "TR": "IST",
+    "JP": "NRT",
+    "KR": "ICN",
+    "CN": "PVG",
+    "HK": "HKG",
+    "TW": "TPE",
+    "SG": "SIN",
+    "TH": "BKK",
+    "VN": "HAN",
+    "MY": "KUL",
+    "ID": "CGK",
+    "PH": "MNL",
+    "IN": "DEL",
+    "AU": "SYD",
+    "NZ": "AKL",
+    "MX": "MEX",
+    "BR": "GRU",
+    "AR": "EZE",
+    "CL": "SCL",
+    "PE": "LIM",
+    "CO": "BOG",
+    "AE": "DXB",
+    "QA": "DOH",
+    "SA": "RUH",
+    "IL": "TLV",
+    "EG": "CAI",
+    "ZA": "JNB",
+    "MA": "CMN",
+    "IS": "KEF",
+    "RU": "SVO",
+}
+
+
+def primary_iata_for_country(cc: str | None) -> str | None:
+    """Best-effort main airport for an ISO2 country code."""
+    if not cc:
+        return None
+    code = cc.strip().upper()
+    if len(code) != 2:
+        return None
+    hit = COUNTRY_PRIMARY_IATA.get(code)
+    if hit:
+        return hit
+    # Fallback: first known IATA in our table for that country
+    for iata, c in IATA_COUNTRY.items():
+        if c == code:
+            return iata
+    return None
+
+
+# Display currency → likely home country (for origin fallback)
+CURRENCY_HOME_COUNTRY: dict[str, str] = {
+    "USD": "US",
+    "CAD": "CA",
+    "EUR": "DE",
+    "GBP": "GB",
+    "AUD": "AU",
+    "NZD": "NZ",
+    "JPY": "JP",
+    "CHF": "CH",
+    "MXN": "MX",
+    "SGD": "SG",
+    "HKD": "HK",
+    "INR": "IN",
+    "BRL": "BR",
+    "KRW": "KR",
+    "SEK": "SE",
+    "NOK": "NO",
+    "DKK": "DK",
+    "PLN": "PL",
+    "CZK": "CZ",
+    "HUF": "HU",
+    "TRY": "TR",
+    "THB": "TH",
+    "MYR": "MY",
+    "IDR": "ID",
+    "PHP": "PH",
+    "VND": "VN",
+    "ZAR": "ZA",
+    "AED": "AE",
+    "QAR": "QA",
+    "SAR": "SA",
+    "ILS": "IL",
+    "EGP": "EG",
+    "CLP": "CL",
+    "PEN": "PE",
+    "COP": "CO",
+    "ARS": "AR",
+}
+
+
+def country_for_currency(currency: str | None) -> str | None:
+    """ISO2 country associated with a display currency, if known."""
+    if not currency:
+        return None
+    return CURRENCY_HOME_COUNTRY.get(currency.strip().upper())
+
+
 def is_avoided_iata(iata: str, avoid: list[str]) -> bool:
     if not avoid:
         return False

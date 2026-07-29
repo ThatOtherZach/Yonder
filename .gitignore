@@ -8,12 +8,15 @@ price_history.db
 price_history_export.jsonl
 daily_costs_cache.db
 saved_itineraries.db
+shared_trips.db
+place_book_cache.db
 *.egg-info/
 dist/
 build/
 .pytest_cache/
 .mypy_cache/
 out.json
+.last_search.json
 *.json.bak
 .DS_Store
 Thumbs.db
