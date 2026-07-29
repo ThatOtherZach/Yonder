@@ -2152,6 +2152,7 @@ async def outbound_click(
         chip_id=chip_id,
         chip_source=chip_source or "book",
         affiliate_tag=getattr(settings, "affiliate_tag", "") or None,
+        affiliate_tag_live=bool(getattr(settings, "affiliate_tag_live", False)),
     )
     try:
         log_event(
@@ -2220,6 +2221,7 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
         flash = {"kind": "ok", "message": saved}
     elif err:
         flash = {"kind": "err", "message": err}
+    import os as _os
     settings = reload_settings()
     view = settings_view()
     view["home_resolved"] = settings.resolve_home_iata()
@@ -2230,6 +2232,7 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
             "nav": "settings",
             "view": view,
             "flash": flash,
+            "is_deployed": bool(_os.environ.get("REPLIT_DOMAINS")),
             **_base_ctx(settings),
         },
     )
@@ -2324,6 +2327,12 @@ async def settings_save(request: Request) -> RedirectResponse:
         updates["TESTING"] = (
             "true" if val in ("1", "true", "yes", "on") else "false"
         )
+
+    # AFFILIATE_TAG_LIVE is a checkbox — unchecked = absent from form = "false"
+    atl_raw = form.get("AFFILIATE_TAG_LIVE")
+    updates["AFFILIATE_TAG_LIVE"] = (
+        "true" if str(atl_raw or "").strip().lower() in ("1", "true", "yes", "on") else "false"
+    )
 
     try:
         path = write_env(updates, clear_keys=clear_keys)

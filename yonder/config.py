@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     search_max_seconds: float = 42.0
     # Affiliate / partner tag for outbound booking links (product attribution)
     affiliate_tag: str = ""
+    # When false (default), the tag is suppressed in deployed/production contexts
+    # (detected via REPLIT_DOMAINS env var). Set true to stamp in production too.
+    affiliate_tag_live: bool = False
 
     @field_validator(
         "detour_min_stop_days",

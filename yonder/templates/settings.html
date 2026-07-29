@@ -480,11 +480,24 @@
               <input id="SEARCH_MAX_SECONDS" name="SEARCH_MAX_SECONDS" type="number" min="8" max="600" step="1"
                 value="{{ view.search_max_seconds }}" />
             </label>
-            <label for="AFFILIATE_TAG">Affiliate tag
-              <span class="help">Partner id stamped on outbound book links (optional product attribution)</span>
-              <input id="AFFILIATE_TAG" name="AFFILIATE_TAG" type="text" maxlength="80"
-                value="{{ view.affiliate_tag or '' }}" placeholder="your-partner-id" />
-            </label>
+            <div>
+              <label for="AFFILIATE_TAG">Affiliate tag
+                <span class="help">
+                  Partner id stamped on outbound booking links (optional product attribution).
+                  {% if is_deployed %}
+                    <strong style="color:var(--warn)">Running on Replit — tag is suppressed by default. Check the box below to enable it.</strong>
+                  {% endif %}
+                </span>
+                <input id="AFFILIATE_TAG" name="AFFILIATE_TAG" type="text" maxlength="80"
+                  value="{{ view.affiliate_tag or '' }}" placeholder="your-partner-id" />
+              </label>
+              <label class="check" style="margin-top:0.5rem;display:flex;align-items:center;gap:0.45rem;font-size:0.85rem">
+                <input type="checkbox" id="AFFILIATE_TAG_LIVE" name="AFFILIATE_TAG_LIVE" value="true"
+                  {% if view.affiliate_tag_live %}checked{% endif %} />
+                Apply affiliate tag in the published / production app
+                <span class="help" style="display:inline">— off by default so test clicks don't pollute your affiliate stats</span>
+              </label>
+            </div>
           </div>
 
           <div>

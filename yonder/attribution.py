@@ -103,6 +103,12 @@ def log_event(
     return eid
 
 
+def _is_deployed() -> bool:
+    """True when running as a published Replit deployment (REPLIT_DOMAINS is set)."""
+    import os
+    return bool(os.environ.get("REPLIT_DOMAINS"))
+
+
 def stamp_outbound_url(
     url: str | None,
     *,
@@ -110,9 +116,15 @@ def stamp_outbound_url(
     chip_id: str | None = None,
     chip_source: str | None = None,
     affiliate_tag: str | None = None,
+    affiliate_tag_live: bool = False,
     campaign: str = "yonder",
 ) -> str | None:
-    """Attach UTM (+ optional affiliate tag) for partner/affiliate attribution."""
+    """Attach UTM (+ optional affiliate tag) for partner/affiliate attribution.
+
+    The affiliate tag is suppressed in deployed/production contexts unless
+    ``affiliate_tag_live`` is explicitly True — this protects against accidentally
+    exposing a partner ID in a publicly shared app during testing.
+    """
     if not url or not str(url).startswith("http"):
         return url
     try:
@@ -125,10 +137,12 @@ def stamp_outbound_url(
             q["utm_content"] = click_id[:64]
         if chip_id:
             q["utm_term"] = chip_id[:64]
-        # Partner-specific tags (Kayak, etc.) — product config later
+        # Partner-specific tags (Kayak, etc.)
+        # Suppress in deployed/production contexts unless explicitly opted in.
         tag = (affiliate_tag or "").strip()
-        if tag and "kayak." in (parts.netloc or "").lower():
-            q.setdefault("a", tag)
+        if tag and not (_is_deployed() and not affiliate_tag_live):
+            if "kayak." in (parts.netloc or "").lower():
+                q.setdefault("a", tag)
         new_query = urlencode(q)
         return urlunparse(
             (parts.scheme, parts.netloc, parts.path, parts.params, new_query, parts.fragment)

@@ -103,6 +103,12 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
         "Optional partner id stamped on outbound booking links (product attribution)",
         False,
     ),
+    (
+        "AFFILIATE_TAG_LIVE",
+        "Apply affiliate tag in published / production app",
+        "false = tag is suppressed when the app is deployed publicly (safe default); true = always stamp",
+        False,
+    ),
 ]
 
 PROVIDER_META = [
@@ -173,9 +179,37 @@ def _parse_env(text: str) -> dict[str, str]:
 
 
 def read_env() -> dict[str, str]:
-    if not ENV_PATH.exists():
-        return {}
-    return _parse_env(ENV_PATH.read_text(encoding="utf-8"))
+    """Read managed keys from .env file, falling back to os.environ for any missing/blank values.
+
+    This lets the Settings page show correct values when keys were set via Replit
+    env-var tooling (os.environ) rather than a .env file, while the .env file
+    remains the canonical store after a Settings save.
+    """
+    import os
+
+    file_values: dict[str, str] = {}
+    if ENV_PATH.exists():
+        file_values = _parse_env(ENV_PATH.read_text(encoding="utf-8"))
+
+    managed = {k for k, *_ in MANAGED_KEYS}
+    result: dict[str, str] = {}
+
+    # For managed keys: prefer .env, fall back to os.environ
+    for key in managed:
+        file_val = file_values.get(key, "")
+        if file_val:
+            result[key] = file_val
+        elif key in os.environ:
+            result[key] = os.environ[key]
+        else:
+            result[key] = ""
+
+    # Preserve non-managed keys from the file
+    for key, val in file_values.items():
+        if key not in result:
+            result[key] = val
+
+    return result
 
 
 def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) -> Path:
@@ -270,6 +304,7 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
                 "SEARCH_BUDGET_SECONDS",
                 "SEARCH_MAX_SECONDS",
                 "AFFILIATE_TAG",
+                "AFFILIATE_TAG_LIVE",
             ],
         ),
     ]
@@ -286,6 +321,14 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
             lines.append(f"{key}={_quote_if_needed(val)}")
 
     ENV_PATH.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+    # Mirror written values into os.environ so the running process reflects changes
+    # immediately without a restart (pydantic-settings reads os.environ first).
+    import os as _os
+    for key, val in current.items():
+        if key in managed:
+            _os.environ[key] = val
+
     return ENV_PATH
 
 
@@ -391,4 +434,6 @@ def settings_view() -> dict:
         "search_budget_seconds": env.get("SEARCH_BUDGET_SECONDS") or "30",
         "search_max_seconds": env.get("SEARCH_MAX_SECONDS") or "42",
         "affiliate_tag": env.get("AFFILIATE_TAG") or "",
+        "affiliate_tag_live": str(env.get("AFFILIATE_TAG_LIVE") or "false").strip().lower()
+        in ("1", "true", "yes", "on"),
     }
