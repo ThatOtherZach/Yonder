@@ -173,6 +173,9 @@ templates.env.globals["airline_site_label"] = airline_site_label
 templates.env.globals["airline_name"] = airline_display_name
 templates.env.globals["share_escape"] = _share_escape
 templates.env.globals["share_detour"] = _share_detour
+_vj_boot, _vv_boot = _vibes_data()
+templates.env.globals["vibes_json"] = _vj_boot
+templates.env.globals["vibes_v"] = _vv_boot
 app.mount("/static", StaticFiles(directory=str(_PKG / "static")), name="static")
 
 
