@@ -155,7 +155,7 @@
       '<span class="ymap-drawer-caret" aria-hidden="true">▾</span>' +
       "</button>" +
       '<button type="button" class="ymap-clear-btn" hidden title="Clear all visited and avoid stamps">Clear map</button>' +
-      '<span class="v ymap-save">—</span>' +
+      '<span class="v ymap-save">Ready :)</span>' +
       '<span class="ymap-warn"></span>';
     root.appendChild(meta);
 
@@ -250,7 +250,7 @@
       "</div>" +
       '<div class="ymap-stat ymap-stat-sync">' +
       '<span class="k">Sync</span>' +
-      '<span class="v ymap-save">—</span>' +
+      '<span class="v ymap-save">Ready :)</span>' +
       '<span class="ymap-warn"></span>' +
       "</div>" +
       '<button type="button" class="ymap-clear-btn" hidden title="Clear all visited and avoid stamps">Clear map</button>';
