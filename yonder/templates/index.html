@@ -1719,11 +1719,18 @@
         var originEl2 = document.getElementById("criteria-origin");
         var hidOrigin2 = document.getElementById("explore-origin");
 
+        // Track whether the user has manually typed an origin (vs server default)
+        var originUserModified = false;
+        if (originEl2) {
+          originEl2.addEventListener("input", function () {
+            originUserModified = true;
+          });
+        }
+
         function resolveOriginThenSubmit() {
-          // Already have an origin — skip GPS entirely
-          var existing = (originEl2 && originEl2.value || "").trim();
-          if (existing) { doSubmit(); return; }
-          // Already asked this session — skip
+          // User explicitly typed an origin — respect it, skip GPS
+          if (originUserModified) { doSubmit(); return; }
+          // Already answered this session — skip
           if (sessionStorage.getItem("yonder_gps_asked")) { doSubmit(); return; }
           // No geolocation support — skip
           if (!navigator.geolocation) { doSubmit(); return; }
