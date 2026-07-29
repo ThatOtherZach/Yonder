@@ -6,36 +6,36 @@
   "use strict";
 
   var VIBES = [
-    { id: "chaos", label: "Chaos", color: "#e11d48" },
-    { id: "wild", label: "Wild", color: "#f43f5e" },
-    { id: "party", label: "Party", color: "#ec4899" },
-    { id: "romance", label: "Romance", color: "#d946ef" },
-    { id: "neon", label: "Neon", color: "#c026d3" },
-    { id: "night", label: "Night", color: "#9333ea" },
-    { id: "soul", label: "Soul", color: "#7c3aed" },
-    { id: "art", label: "Art", color: "#6366f1" },
-    { id: "culture", label: "Culture", color: "#4f46e5" },
-    { id: "city", label: "City", color: "#2563eb" },
-    { id: "future", label: "Future", color: "#0284c7" },
-    { id: "ocean", label: "Ocean", color: "#0891b2" },
-    { id: "islands", label: "Islands", color: "#0d9488" },
-    { id: "beach", label: "Beach", color: "#14b8a6" },
-    { id: "jungle", label: "Jungle", color: "#16a34a" },
-    { id: "nature", label: "Nature", color: "#22c55e" },
-    { id: "mountains", label: "Mountains", color: "#65a30d" },
-    { id: "adventure", label: "Adventure", color: "#84cc16" },
-    { id: "trains", label: "Trains", color: "#ca8a04" },
-    { id: "food", label: "Food", color: "#eab308" },
-    { id: "street", label: "Street", color: "#f59e0b" },
-    { id: "desert", label: "Desert", color: "#f97316" },
-    { id: "sun", label: "Sun", color: "#ea580c" },
-    { id: "luxury", label: "Luxury", color: "#d97706" },
-    { id: "spa", label: "Spa", color: "#b45309" },
-    { id: "cozy", label: "Cozy", color: "#a16207" },
-    { id: "history", label: "History", color: "#92400e" },
-    { id: "snow", label: "Snow", color: "#64748b" },
-    { id: "quiet", label: "Quiet", color: "#475569" },
-    { id: "cheap", label: "Cheap", color: "#0f766e" },
+    { id: "chaos",     label: "Chaos",     color: "#e11d48", emoji: "💥" },
+    { id: "wild",      label: "Wild",      color: "#f43f5e", emoji: "🦁" },
+    { id: "party",     label: "Party",     color: "#ec4899", emoji: "🎉" },
+    { id: "romance",   label: "Romance",   color: "#d946ef", emoji: "💕" },
+    { id: "neon",      label: "Neon",      color: "#c026d3", emoji: "⚡" },
+    { id: "night",     label: "Night",     color: "#9333ea", emoji: "🌙" },
+    { id: "soul",      label: "Soul",      color: "#7c3aed", emoji: "🎵" },
+    { id: "art",       label: "Art",       color: "#6366f1", emoji: "🎨" },
+    { id: "culture",   label: "Culture",   color: "#4f46e5", emoji: "🏛️" },
+    { id: "city",      label: "City",      color: "#2563eb", emoji: "🏙️" },
+    { id: "future",    label: "Future",    color: "#0284c7", emoji: "🚀" },
+    { id: "ocean",     label: "Ocean",     color: "#0891b2", emoji: "🌊" },
+    { id: "islands",   label: "Islands",   color: "#0d9488", emoji: "🏝️" },
+    { id: "beach",     label: "Beach",     color: "#14b8a6", emoji: "🏖️" },
+    { id: "jungle",    label: "Jungle",    color: "#16a34a", emoji: "🌿" },
+    { id: "nature",    label: "Nature",    color: "#22c55e", emoji: "🌲" },
+    { id: "mountains", label: "Mountains", color: "#65a30d", emoji: "⛰️" },
+    { id: "adventure", label: "Adventure", color: "#84cc16", emoji: "🧗" },
+    { id: "trains",    label: "Trains",    color: "#ca8a04", emoji: "🚂" },
+    { id: "food",      label: "Food",      color: "#eab308", emoji: "🍜" },
+    { id: "street",    label: "Street",    color: "#f59e0b", emoji: "🛵" },
+    { id: "desert",    label: "Desert",    color: "#f97316", emoji: "🏜️" },
+    { id: "sun",       label: "Sun",       color: "#ea580c", emoji: "☀️" },
+    { id: "luxury",    label: "Luxury",    color: "#d97706", emoji: "💎" },
+    { id: "spa",       label: "Spa",       color: "#b45309", emoji: "🧖" },
+    { id: "cozy",      label: "Cozy",      color: "#a16207", emoji: "🧣" },
+    { id: "history",   label: "History",   color: "#92400e", emoji: "🏺" },
+    { id: "snow",      label: "Snow",      color: "#64748b", emoji: "❄️" },
+    { id: "quiet",     label: "Quiet",     color: "#475569", emoji: "🌾" },
+    { id: "cheap",     label: "Cheap",     color: "#0f766e", emoji: "💸" },
   ];
 
   /**
@@ -784,14 +784,20 @@
       });
     }
 
+    var nameRow = host.querySelector(".vibe-name-row");
+
     function syncUi() {
       var vibe = currentVibe();
       var show = vibe.color;
       hueCursor.style.left = h * 100 + "%";
       hueCursor.style.backgroundColor = show;
       nameOut.textContent = vibe.label;
-      nameOut.style.color = show;
-      nameSwatch.style.backgroundColor = show;
+      nameOut.style.color = "#ffffff";
+      nameSwatch.textContent = vibe.emoji || "";
+      if (nameRow) {
+        nameRow.style.backgroundColor = show;
+        nameRow.style.borderColor = show;
+      }
       hueEl.setAttribute("aria-valuenow", String(Math.round(h * 100)));
       hueEl.setAttribute("aria-valuetext", vibe.label);
       hidden.value = vibe.id;
