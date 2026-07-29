@@ -2,9 +2,24 @@
 {% block title %}{{ share.title }} · Yonder{% endblock %}
 {% block extra_css %}
     .trip-share {
-      max-width: 40rem;
+      max-width: 72rem;
       margin: 0 auto;
     }
+    /* Two-column grid: left = pass, right = notes */
+    .trip-body {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (min-width: 720px) {
+      .trip-body {
+        grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+        gap: 2rem;
+      }
+    }
+    .trip-col-pass { min-width: 0; }
+    .trip-col-notes { min-width: 0; }
     .trip-share .share-url {
       display: flex;
       flex-wrap: wrap;
@@ -137,6 +152,10 @@
     </p>
   </header>
   <main class="trip-share">
+    <div class="trip-body">
+
+    {# ── Left column: QR + share link + boarding pass ── #}
+    <div class="trip-col-pass">
     <div class="trip-qr-big">
       {% if qr_src %}
       <a class="bp-qr" href="{{ share_url }}" title="Open this trip">
@@ -269,15 +288,18 @@
         <p class="muted">Unknown share type.</p>
       </div>
     {% endif %}
+    </div>{# end .trip-col-pass #}
 
-    {# ——— Field notes ——— #}
+    {# ── Right column: field notes ── #}
+    <div class="trip-col-notes">
     {% if place_books %}
-      {# For escape: one note for the destination #}
+      {# Escape: one note for the destination #}
       {% if share.kind == 'escape' %}
         {% set q = (share.payload or {}).get('query') or {} %}
         {% set pb = place_books.get((q.destination or '').upper()) %}
         {% if pb %}
-        <div class="place-book" style="margin-top:1.25rem">
+        {% include "_field_note_card.html" ignore missing %}
+        <div class="place-book">
           <span class="pb-tag">Field note</span>
           <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
           {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
@@ -306,10 +328,9 @@
         </div>
         {% endif %}
 
-      {# For detour: one note per stop that has a cached brief #}
+      {# Detour: one note per stop, deduped #}
       {% elif share.kind == 'detour' %}
         {% set it = (share.payload or {}).get('itinerary') or {} %}
-        {# Primary stop first, then leg destinations — deduplicated #}
         {% set shown = namespace(iatas=[]) %}
         {% set all_iatas = namespace(list=[]) %}
         {% if it.stop_iata %}{% set all_iatas.list = all_iatas.list + [it.stop_iata] %}{% endif %}
@@ -319,7 +340,7 @@
           {% set pb = place_books.get(code) %}
           {% if pb and code not in shown.iatas %}
             {% set shown.iatas = shown.iatas + [code] %}
-        <div class="place-book" style="margin-top:1.25rem">
+        <div class="place-book"{% if not loop.first %} style="margin-top:0.75rem"{% endif %}>
           <span class="pb-tag">Field note · {{ iata }}</span>
           <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
           {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
@@ -350,6 +371,9 @@
         {% endfor %}
       {% endif %}
     {% endif %}
+    </div>{# end .trip-col-notes #}
+
+    </div>{# end .trip-body #}
 
     <p class="muted" style="margin-top:1.25rem;font-size:0.85rem">
       <a href="/">← Back to Yonder</a>
