@@ -1722,38 +1722,48 @@
         // Track whether the user has manually typed an origin (vs server default)
         var originUserModified = false;
         if (originEl2) {
-          originEl2.addEventListener("input", function () {
-            originUserModified = true;
-          });
+          originEl2.addEventListener("input", function () { originUserModified = true; });
+        }
+
+        // GPS cache for the page session: null = not yet tried, false = denied/unavailable, "XYZ" = IATA
+        var gpsOriginCache = null;
+
+        function applyGpsOriginIfAway(iata) {
+          if (!iata) return;
+          var home = (originEl2 && originEl2.value || "").trim().toUpperCase();
+          if (iata === home) return; // at home airport — no change needed
+          // Away from home: swap origin to current location
+          if (originEl2) originEl2.value = iata;
+          if (hidOrigin2) hidOrigin2.value = iata;
         }
 
         function resolveOriginThenSubmit() {
-          // User explicitly typed an origin — respect it, skip GPS
+          // User explicitly typed an origin — always respect it
           if (originUserModified) { doSubmit(); return; }
-          // Already answered this session — skip
-          if (sessionStorage.getItem("yonder_gps_asked")) { doSubmit(); return; }
           // No geolocation support — skip
           if (!navigator.geolocation) { doSubmit(); return; }
+          // Already fetched this page session — reuse
+          if (gpsOriginCache !== null) {
+            applyGpsOriginIfAway(gpsOriginCache);
+            doSubmit();
+            return;
+          }
 
-          sessionStorage.setItem("yonder_gps_asked", "1");
           btn.disabled = true;
           btn.textContent = "Locating…";
 
           navigator.geolocation.getCurrentPosition(
             function (pos) {
-              var lat = pos.coords.latitude;
-              var lon = pos.coords.longitude;
-              fetch("/api/nearest-airport?lat=" + lat + "&lon=" + lon, {
-                credentials: "same-origin",
-              })
+              fetch(
+                "/api/nearest-airport?lat=" + pos.coords.latitude + "&lon=" + pos.coords.longitude,
+                { credentials: "same-origin" }
+              )
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
-                  if (data && data.ok && data.iata) {
-                    if (originEl2) originEl2.value = data.iata;
-                    if (hidOrigin2) hidOrigin2.value = data.iata;
-                  }
+                  gpsOriginCache = (data && data.ok && data.iata) ? data.iata : false;
+                  applyGpsOriginIfAway(gpsOriginCache);
                 })
-                .catch(function () {})
+                .catch(function () { gpsOriginCache = false; })
                 .finally(function () {
                   btn.disabled = false;
                   btn.textContent = "Go";
@@ -1761,7 +1771,8 @@
                 });
             },
             function () {
-              // Denied or error — proceed without origin
+              // Denied or timed out — remember and proceed as-is
+              gpsOriginCache = false;
               btn.disabled = false;
               btn.textContent = "Go";
               doSubmit();
