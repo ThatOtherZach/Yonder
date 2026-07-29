@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import time
 import uuid
@@ -408,3 +409,257 @@ def update_from_itinerary(
         return None
     meta = {**existing.trip_meta, **(trip_meta or {})}
     return save_itinerary(itinerary, trip_meta=meta, replace_id=saved_id)
+
+
+def escape_offer_to_itinerary(
+    *,
+    query: dict[str, Any],
+    offer: dict[str, Any],
+    ask: str = "",
+    vibe: str | None = None,
+) -> dict[str, Any]:
+    """Normalize an Escape fare into the same itinerary shape Detour saves use."""
+    origin = str(query.get("origin") or "").upper()
+    dest = str(query.get("destination") or "").upper()
+    currency = (
+        str(offer.get("currency") or query.get("currency") or "USD")
+    ).upper()
+    price = offer.get("price")
+    title = f"{origin} → {dest}" if origin and dest else "Escape flight"
+    leg = {
+        "from_iata": origin,
+        "to_iata": dest,
+        "depart_date": query.get("depart_date"),
+        "offer": offer,
+        "google_flights_url": offer.get("google_flights_url"),
+    }
+    return {
+        "kind": "escape",
+        "title": title,
+        "currency": currency,
+        "total_price": price,
+        "display_price": offer.get("display_price"),
+        "display_price_base": offer.get("display_price_base"),
+        "price_glyph": offer.get("price_glyph"),
+        "price_tone": offer.get("price_tone"),
+        "legs": [leg],
+        "google_flights_url": offer.get("google_flights_url"),
+        "kayak_url": offer.get("kayak_url"),
+        "why": ask[:280] if ask else "",
+        "vibe": vibe,
+        "notes": [
+            "Escape straight-shot fare signal",
+            f"Provider: {offer.get('provider') or '—'}",
+        ],
+    }
+
+
+def similar_saves(
+    prompt: str,
+    *,
+    origin: str | None = None,
+    vibe: str | None = None,
+    limit: int = 8,
+) -> list[SavedItinerary]:
+    """v1 keyword retrieval — only over explicit user Saves (never raw searches)."""
+    tokens = {
+        t
+        for t in re.findall(r"[a-z0-9]{3,}", (prompt or "").lower())
+        if t not in _STOP_WORDS
+    }
+    origin_u = (origin or "").strip().upper() or None
+    vibe_l = (vibe or "").strip().lower() or None
+    items = list_saved(limit=100)
+    scored: list[tuple[float, SavedItinerary]] = []
+    for s in items:
+        score = 0.0
+        text = (s.trip_prompt or s.title or "").lower()
+        if not text and not s.origin:
+            continue
+        words = set(re.findall(r"[a-z0-9]{3,}", text))
+        if tokens:
+            overlap = len(tokens & words) / max(1, len(tokens))
+            score += overlap * 4.0
+        if origin_u and (s.origin or "").upper() == origin_u:
+            score += 2.0
+        if vibe_l and (s.vibe or "").lower() == vibe_l:
+            score += 1.5
+        # Prefer saved destinations that look intentional
+        if s.kind in ("escape", "getaway", "stopover", "detour"):
+            score += 0.25
+        if score <= 0:
+            continue
+        scored.append((score, s))
+    scored.sort(key=lambda x: (-x[0], -x[1].saved_at))
+    return [s for _, s in scored[: max(1, min(20, limit))]]
+
+
+def seed_cities_from_saves(saves: list[SavedItinerary]) -> list[dict[str, str]]:
+    """Unique stop/destination hints for invent seeding."""
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for s in saves:
+        code = (s.stop_iata or s.destination or "").upper()
+        if not code or len(code) != 3 or code in seen:
+            continue
+        seen.add(code)
+        out.append(
+            {
+                "iata": code,
+                "city": s.stop_city or code,
+                "kind": s.kind or "",
+                "why": f"from prior Save: {(s.title or '')[:80]}",
+            }
+        )
+    return out
+
+
+def ranking_from_saves(
+    *,
+    vibe: str | None = None,
+    origin: str | None = None,
+    visited: list[str] | None = None,
+    avoid: list[str] | None = None,
+) -> dict[str, Any]:
+    """★ Save metrics for ranking dataset-completion chips (not chip content).
+
+    Chips themselves fill prompt slots (shape, map, timing, vibe constraints).
+    Saves tell us which completed patterns + dest seeds work for this vibe /
+    origin / passport context — used to re-order and lightly seed invent.
+    """
+    from yonder.countries import country_for_iata
+
+    vibe_l = (vibe or "").strip().lower() or None
+    origin_u = (origin or "").strip().upper() or None
+    visited_set = {c.upper() for c in (visited or []) if c}
+    avoid_set = {c.upper() for c in (avoid or []) if c}
+    items = list_saved(limit=100)
+
+    # Pattern keys align with client dataset-completion chips
+    pattern_w: dict[str, float] = {
+        "getaway_new": 0.0,
+        "stopover": 0.0,
+        "escape_city": 0.0,
+        "timed": 0.0,
+        "map_aware": 0.0,
+        "budget_col": 0.0,
+    }
+    dest_scores: dict[str, float] = {}
+    dest_city: dict[str, str] = {}
+    n_match = 0
+
+    for s in items:
+        kind = (s.kind or "").lower()
+        text = f"{s.trip_prompt or ''} {s.title or ''}".lower()
+        vibe_hit = bool(
+            vibe_l
+            and (
+                (s.vibe or "").lower() == vibe_l
+                or vibe_l in text
+            )
+        )
+        origin_hit = bool(origin_u and (s.origin or "").upper() == origin_u)
+        if not vibe_hit and not origin_hit and vibe_l:
+            continue
+        n_match += 1
+        w = 1.0
+        if vibe_hit:
+            w += 2.0
+        if origin_hit:
+            w += 1.0
+        # Recency mild boost
+        age_days = max(0.0, (time.time() - float(s.saved_at or 0)) / 86400.0)
+        w *= max(0.35, 1.0 - min(0.65, age_days / 180.0))
+
+        if kind in ("getaway", "round_trip", "escape") or "getaway" in text:
+            pattern_w["getaway_new"] += w
+        if kind in ("stopover", "detour") or "stopover" in text or "via" in text:
+            pattern_w["stopover"] += w
+        if kind == "escape" or "→" in (s.title or "") or " to " in text:
+            pattern_w["escape_city"] += w * 0.8
+        if re.search(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|20\d{2})\b", text):
+            pattern_w["timed"] += w * 0.6
+        if "not been" in text or "haven't been" in text or "somewhere new" in text:
+            pattern_w["map_aware"] += w
+        if any(x in text for x in ("cheap", "budget", "col", "cost of living", "affordable")):
+            pattern_w["budget_col"] += w
+
+        dest = (s.stop_iata or s.destination or "").upper()
+        if len(dest) == 3 and dest.isalpha():
+            cc = country_for_iata(dest) or ""
+            if cc and cc in avoid_set:
+                continue
+            # Soft seed: destinations that worked (even if visited — return trips)
+            dest_scores[dest] = dest_scores.get(dest, 0.0) + w
+            if s.stop_city:
+                dest_city[dest] = s.stop_city
+
+    # Normalize pattern weights to ~0..3 for client sort keys
+    mx = max(pattern_w.values()) if pattern_w else 0.0
+    if mx > 0:
+        pattern_w = {k: round(3.0 * v / mx, 3) for k, v in pattern_w.items()}
+
+    seeds = sorted(dest_scores.items(), key=lambda x: -x[1])[:6]
+    seed_list = [
+        {
+            "iata": code,
+            "city": dest_city.get(code) or code,
+            "weight": round(sc, 3),
+            "visited": bool(
+                (country_for_iata(code) or "") in visited_set
+            ),
+        }
+        for code, sc in seeds
+    ]
+
+    return {
+        "vibe": vibe_l,
+        "origin": origin_u,
+        "save_count": n_match,
+        "pattern_weights": pattern_w,
+        "dest_seeds": seed_list,
+    }
+
+
+def suggest_chips_from_saves(
+    *,
+    vibe: str | None = None,
+    origin: str | None = None,
+    visited: list[str] | None = None,
+    avoid: list[str] | None = None,
+    limit: int = 2,
+) -> list[dict[str, Any]]:
+    """Legacy no-op — chips are dataset-completion on the client; use ranking_from_saves."""
+    _ = (vibe, origin, visited, avoid, limit)
+    return []
+
+
+_STOP_WORDS = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "with",
+        "from",
+        "that",
+        "this",
+        "want",
+        "need",
+        "somewhere",
+        "anywhere",
+        "flight",
+        "flights",
+        "trip",
+        "travel",
+        "cheap",
+        "please",
+        "days",
+        "week",
+        "into",
+        "over",
+        "just",
+        "like",
+        "have",
+        "been",
+    }
+)
