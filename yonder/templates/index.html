@@ -958,7 +958,7 @@
     <div class="results-panel" id="escape-results" data-result-kind="escape">
     {% if escape_result %}
       <div class="card" id="escape-results-card">
-        <h2>Straight shots · Escape</h2>
+        <h2>Direct Escape{% if escape_result.offers and escape_result.offers|length != 1 %}s{% endif %}</h2>
         <p class="sub">
           {% if escape_dest_theme %}
             {{ escape_dest_theme.label }}
