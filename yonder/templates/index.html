@@ -1239,7 +1239,7 @@
                   <span class="price-amt">{{ o.display_price_base or o.display_price or ('~' ~ o.currency ~ ' ' ~ '%.0f'|format(o.price)) }}</span>{% if o.price_glyph %}<span class="price-sign {{ o.price_tone or 'neutral' }} sign">{{ o.price_glyph }}</span>{% endif %}
                 </div>
               </div>
-              <div class="bp-stub-meta">{{ o.provider }}</div>
+
               {% set share = share_escape(request, escape_result, o, esc_vibe) %}
               {% if share and share.qr_src %}
               <div class="bp-stub-qr">
