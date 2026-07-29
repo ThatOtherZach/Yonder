@@ -241,6 +241,9 @@
       border-color: var(--brass);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 20%, transparent);
     }
+    .examples-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.55rem; }
+    .examples-row .examples { flex: 1 1 auto; flex-wrap: wrap; margin-top: 0; }
+    .examples-row .toggle-switch { flex-shrink: 0; margin-left: auto; }
     .examples { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.55rem; }
     .examples button, .examples .ex {
       background: var(--paper);
@@ -929,10 +932,12 @@
           ></div>
         </div>
 
-        <div class="examples examples-set" id="explore-examples" aria-live="polite" title="Pills complete missing search details (vibe + map + timing). Saves re-rank what surfaces.">
-          {# Dataset-completion chips; Save metrics only re-order #}
+        <div class="examples-row">
+          <div class="examples examples-set" id="explore-examples" aria-live="polite" title="Pills complete missing search details (vibe + map + timing). Saves re-rank what surfaces.">
+            {# Dataset-completion chips; Save metrics only re-order #}
+          </div>
           {% if testing %}
-          <label class="toggle-switch" title="Fake demo fares" style="margin-left:auto;align-self:center;">
+          <label class="toggle-switch" title="Fake demo fares">
             <input type="checkbox" name="mock" value="true" id="explore-mock" {% if form is defined and form.mock %}checked{% endif %} />
             <span class="toggle-track"></span>
             Demo
