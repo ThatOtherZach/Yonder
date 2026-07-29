@@ -660,33 +660,65 @@
     .results-criteria input:disabled {
       opacity: 0.38;
     }
-    /* Stop days: two inputs with a dash inline */
+    /* Stop days: two boxed inputs with a dash inline */
     .criteria-stop-range {
       display: flex;
-      align-items: center;
-      gap: 0.35rem;
+      align-items: flex-end;
+      gap: 0.4rem;
+      margin-top: 0.15rem;
     }
     .stop-input-group {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 0.1rem;
+      gap: 0.22rem;
     }
     .stop-sub-label {
-      font-size: 0.6rem;
+      font-size: 0.56rem;
       font-weight: 700;
-      letter-spacing: 0.07em;
+      letter-spacing: 0.09em;
       text-transform: uppercase;
       color: var(--muted);
-      opacity: 0.7;
+      opacity: 0.65;
       line-height: 1;
     }
     .criteria-stop-range input[type="number"] {
+      width: 2.1rem;
+      height: 1.7rem;
       font-size: 0.95rem;
       font-weight: 700;
-      color: var(--muted);
+      color: var(--ink);
+      text-align: center;
+      background: var(--paper, #fff);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 0;
+      -moz-appearance: textfield;
+      appearance: textfield;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
     }
-    .criteria-stop-range .stop-sep { font-size: 0.85rem; color: var(--muted); }
+    .criteria-stop-range input[type="number"]::-webkit-outer-spin-button,
+    .criteria-stop-range input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .criteria-stop-range input[type="number"]:hover:not(:disabled) {
+      border-color: var(--muted);
+    }
+    .criteria-stop-range input[type="number"]:focus {
+      text-decoration: none;
+      border-color: var(--sky-bright, var(--sky));
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--sky-bright, var(--sky)) 22%, transparent);
+    }
+    .criteria-stop-range input[type="number"]:disabled {
+      background: transparent;
+    }
+    .criteria-stop-range .stop-sep {
+      font-size: 0.85rem;
+      color: var(--muted);
+      opacity: 0.6;
+      padding-bottom: 0.35rem;
+    }
     .results-criteria .criteria-hint {
       display: flex;
       flex-direction: column;
