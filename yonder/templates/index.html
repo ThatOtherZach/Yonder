@@ -1028,7 +1028,8 @@
     <div class="results-panel" id="escape-results" data-result-kind="escape"
       data-signal-id="{{ (ep.get('trip_meta') or {}).get('signal_id', '') if ep else '' }}"
       data-signal-dest="{{ (ep.get('trip_meta') or {}).get('destination', '') if ep else '' }}"
-      data-signal-vibe="{{ (ep.get('trip_meta') or {}).get('vibe', '') if ep else '' }}">
+      data-signal-vibe="{{ (ep.get('trip_meta') or {}).get('vibe', '') if ep else '' }}"
+      data-mock="{{ 'true' if (ep.get('trip_meta') or {}).get('mock') else '' }}">
     {% if escape_result %}
       <div class="card" id="escape-results-card">
         <h2>Direct Escape{% if escape_result.offers and escape_result.offers|length != 1 %}s{% endif %}</h2>
@@ -2027,6 +2028,8 @@
               query = JSON.parse(qEl.textContent);
             } catch (e) { return; }
             var ask = b.getAttribute("data-ask") || (ta && ta.value) || "";
+            var escPanel2 = document.getElementById("escape-results");
+            var escapeMock = !!(escPanel2 && escPanel2.getAttribute("data-mock") === "true");
             postSave({
               kind: "escape",
               ask: ask,
@@ -2042,6 +2045,7 @@
                 chip_id: attr.chip_id,
                 chip_source: attr.chip_source,
                 search_id: attr.search_id,
+                mock: escapeMock,
               },
             }, b);
           });
@@ -2079,6 +2083,11 @@
         try {
           var ctx = signalContext(el);
           if (!ctx.signal_id && !ctx.dest) return; // nothing to attribute
+          // Skip engagement signals for mock/demo-data results
+          var escPanel = document.getElementById("escape-results");
+          var isMock = (escPanel && escPanel.getAttribute("data-mock") === "true") ||
+                       !!(pageAttribution().tripMeta || {}).mock;
+          if (isMock) return;
           fetch("/api/signal-event", {
             method: "POST",
             credentials: "same-origin",
