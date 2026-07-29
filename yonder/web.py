@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from datetime import date
 from pathlib import Path
 from urllib.parse import quote
@@ -53,6 +55,20 @@ from yonder.themes import theme_css_vars, theme_for_iata
 from yonder.types import CabinClass, SearchQuery
 from yonder.share import create_share, dump_obj, get_share, qr_png_data_uri, qr_svg_for_url
 from yonder.vibe_theme import VIBE_EMOJI, resolve_vibe, vibe_theme
+
+_VIBES_PATH = Path(__file__).parent / "vibes.json"
+_vibes_json: str | None = None
+_vibes_v: str | None = None
+
+
+def _vibes_data() -> tuple[str, str]:
+    """Return (vibes_json_str, content_hash) — loaded once and cached."""
+    global _vibes_json, _vibes_v
+    if _vibes_json is None:
+        raw = _VIBES_PATH.read_text(encoding="utf-8")
+        _vibes_json = json.dumps(json.loads(raw), separators=(",", ":"))
+        _vibes_v = hashlib.sha1(_vibes_json.encode()).hexdigest()[:8]
+    return _vibes_json, _vibes_v
 
 
 def _share_pack(request: Request, *, kind: str, title: str, payload: dict) -> dict:
@@ -165,7 +181,10 @@ def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
     avoid_codes = settings.avoid_country_list()
     visited_codes = settings.visited_country_list()
     vt = vibe_theme(vibe) if vibe else None
+    vibes_json, vibes_v = _vibes_data()
     return {
+        "vibes_json": vibes_json,
+        "vibes_v": vibes_v,
         "providers": settings.configured_providers(),
         "grok_ready": settings.grok_ready(),
         "testing": bool(settings.testing),
