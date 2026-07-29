@@ -921,13 +921,6 @@
             >{{ det_text or esc_text }}</textarea>
             <button type="submit" id="explore-submit" class="btn-vibe-go">Go</button>
           </div>
-          {% if testing %}
-          <label class="toggle-switch" title="Fake demo fares" style="padding:0.1rem 0.55rem 0.35rem;">
-            <input type="checkbox" name="mock" value="true" id="explore-mock" {% if form is defined and form.mock %}checked{% endif %} />
-            <span class="toggle-track"></span>
-            Demo
-          </label>
-          {% endif %}
           <div
             data-vibe-slider
             data-input-id="explore-vibe"
@@ -938,6 +931,13 @@
 
         <div class="examples examples-set" id="explore-examples" aria-live="polite" title="Pills complete missing search details (vibe + map + timing). Saves re-rank what surfaces.">
           {# Dataset-completion chips; Save metrics only re-order #}
+          {% if testing %}
+          <label class="toggle-switch" title="Fake demo fares" style="margin-left:auto;align-self:center;">
+            <input type="checkbox" name="mock" value="true" id="explore-mock" {% if form is defined and form.mock %}checked{% endif %} />
+            <span class="toggle-track"></span>
+            Demo
+          </label>
+          {% endif %}
         </div>
 
         <div class="compose-atlas">
