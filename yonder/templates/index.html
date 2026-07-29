@@ -560,7 +560,6 @@
       flex-direction: column;
       gap: 0;
       margin: 0.9rem 0 1.1rem;
-      max-width: 52rem;
       background: var(--white);
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -668,15 +667,30 @@
     }
     .criteria-stop-range span { font-size: 0.85em; }
     .results-criteria .criteria-hint {
+      display: flex;
+      flex-direction: column;
+      gap: 0.22rem;
       font-size: 0.74rem;
       color: var(--muted);
       font-weight: 400;
       letter-spacing: 0;
       text-transform: none;
       flex: 1 1 6rem;
-      align-self: center;
-      padding: 0.5rem 0.75rem;
+      align-self: stretch;
+      justify-content: center;
+      padding: 0.45rem 0.75rem;
     }
+    .criteria-hint .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      width: fit-content;
+    }
+    .criteria-hint .check input { margin: 0; cursor: pointer; }
     .results-criteria .btn-refresh {
       margin-left: auto;
       align-self: center;
@@ -895,23 +909,7 @@
           ></div>
         </div>
 
-        {% if escape_parsed %}
-        <div class="parsed-box" id="escape-parsed">
-          <strong style="color:var(--text)">Heard:</strong>
-          {{ place(escape_parsed.origin) }} → {{ place(escape_parsed.destination) }}
-          · {{ escape_parsed.depart_date | fmt_date }}
-          {% if escape_parsed.return_date %}· return {{ escape_parsed.return_date | fmt_date }}{% endif %}
-          · {{ escape_parsed.currency }}
-          {% if esc_vibe %}· {{ esc_vibe }} vibes{% endif %}
-        </div>
-        {% endif %}
-
         <div class="compose-actions">
-          {% if testing %}
-          <label class="check" title="Fake demo fares">
-            <input type="checkbox" name="mock" value="true" id="explore-mock" {% if form is defined and form.mock %}checked{% endif %} /> Test Data
-          </label>
-          {% endif %}
           <p class="fine-print" id="compose-fine" style="margin:0;flex:1 1 auto">
             Currency: <strong>{{ cur }}</strong> · daily budget &amp; stop days in <a href="/settings">Settings</a>
             · stopovers = two tickets
@@ -975,7 +973,18 @@
               value="{{ criteria_max }}" {% if not has_detour %}disabled{% endif %} />
           </div>
         </label>
-        <span class="criteria-hint">Tweaks reprice · stop days apply to Detour</span>
+        <span class="criteria-hint">
+          {% if escape_parsed %}
+            <span>Routing: {{ place(escape_parsed.origin) }} → {{ place(escape_parsed.destination) }} · {{ escape_parsed.depart_date | fmt_date }}{% if escape_parsed.return_date %} · return {{ escape_parsed.return_date | fmt_date }}{% endif %} · {{ escape_parsed.currency }}{% if esc_vibe %} · {{ esc_vibe }} vibes{% endif %}</span>
+          {% else %}
+            <span>Tweaks reprice · stop days apply to Detour</span>
+          {% endif %}
+          {% if testing %}
+            <label class="check" title="Fake demo fares">
+              <input type="checkbox" name="mock" value="true" id="explore-mock" form="explore-form" {% if form is defined and form.mock %}checked{% endif %} /> Test Data
+            </label>
+          {% endif %}
+        </span>
         <button type="button" class="btn-refresh" id="criteria-refresh"
           title="Re-run with these criteria">Refresh</button>
       </div>
