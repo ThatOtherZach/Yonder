@@ -2,6 +2,9 @@
  * Yonder field atlas — zoomable country map (lounge-integrated UI).
  * Click cycles unmarked → visited → avoid → clear. Autosaves to /api/travel-map.
  *
+ * Visited order is stamp order (not alphabetical). First visited country is
+ * Home origin when Settings HOME_IATA is blank.
+ *
  * Mount via:
  *   <div data-yonder-map data-theme="phosphor|amber"
  *        data-visited="CA,JP" data-avoid="RU"></div>
@@ -134,7 +137,7 @@
     var label = el("div", "ymap-compact-label");
     label.appendChild(el("span", "ymap-compact-k", isDetour ? "No-land map" : "Passport map"));
     label.appendChild(
-      el("span", "ymap-compact-hint", "Tap country · green visited · red avoid")
+      el("span", "ymap-compact-hint", "Tap · first green stamp = Home · red = avoid")
     );
     bar.appendChild(label);
     bar.appendChild(this._makeZoomTools());
@@ -340,38 +343,87 @@
     this.paintAll();
   };
 
-  YonderMap.prototype.chipLabel = function (code) {
-    return (this.names[code] || code) + " (" + code + ")";
+  YonderMap.prototype.chipLabel = function (code, isHome) {
+    var base = (this.names[code] || code) + " (" + code + ")";
+    return isHome ? "Home · " + base : base;
+  };
+
+  /** Visited codes in stamp order (Set insertion order — never alphabetized). */
+  YonderMap.prototype.orderedVisited = function () {
+    return Array.from(this.visited);
+  };
+
+  /** Avoid codes in stamp order. */
+  YonderMap.prototype.orderedAvoid = function () {
+    return Array.from(this.avoid);
+  };
+
+  /**
+   * Resolve home IATA: explicit Settings HOME_IATA wins; else first visited
+   * country with a known primary airport; else currency/USA fallback.
+   */
+  YonderMap.prototype.resolveHomeIata = function (visitedOrdered) {
+    var t = global.FS_TRAVEL || {};
+    var locked = String(t.home_iata_setting || "")
+      .trim()
+      .toUpperCase();
+    if (locked.length === 3 && /^[A-Z]{3}$/.test(locked)) return locked;
+    // First stamp = home (selection order)
+    var list = visitedOrdered || this.orderedVisited();
+    var prim = t.primary_iata || {};
+    for (var i = 0; i < list.length; i++) {
+      var iata = prim[list[i]];
+      if (iata) return String(iata).toUpperCase();
+    }
+    // Fall back to server-resolved home, then currency/USA
+    var fb = String(t.home_iata || t.home_iata_fallback || "JFK")
+      .trim()
+      .toUpperCase();
+    return fb.length === 3 ? fb : "JFK";
   };
 
   YonderMap.prototype.renderChips = function () {
     var self = this;
+    var visitedList = this.orderedVisited();
+    var homeCode = visitedList.length ? visitedList[0] : null;
+    var homeLocked = !!(
+      global.FS_TRAVEL &&
+      String(global.FS_TRAVEL.home_iata_setting || "").trim().length === 3
+    );
 
-    function fill(container, set, cls, emptyText) {
+    function fill(container, list, cls, emptyText, markHome) {
       container.innerHTML = "";
-      Array.from(set)
-        .sort()
-        .forEach(function (code) {
-          var b = el("button", "chip " + cls, self.chipLabel(code));
-          b.type = "button";
-          b.title = "Click to advance state";
-          b.addEventListener("click", function () {
-            self.cycle(code);
-          });
-          container.appendChild(b);
+      list.forEach(function (code, idx) {
+        var isHome = markHome && !homeLocked && idx === 0 && code === homeCode;
+        var b = el("button", "chip " + cls + (isHome ? " is-home" : ""), self.chipLabel(code, isHome));
+        b.type = "button";
+        b.title = isHome
+          ? "Home (first stamp) — click to advance state"
+          : "Click to advance state";
+        b.addEventListener("click", function () {
+          self.cycle(code);
         });
-      if (!set.size) {
+        container.appendChild(b);
+      });
+      if (!list.length) {
         container.appendChild(el("span", "empty", emptyText));
       }
     }
 
-    fill(this.visitedChips, this.visited, "visited", "No visited countries yet");
-    fill(this.avoidChips, this.avoid, "avoid", "No avoid countries");
+    fill(
+      this.visitedChips,
+      visitedList,
+      "visited",
+      "No visited countries yet — first stamp is Home",
+      true
+    );
+    fill(this.avoidChips, this.orderedAvoid(), "avoid", "No avoid countries", false);
   };
 
   YonderMap.prototype.syncUi = function () {
-    var v = Array.from(this.visited).sort();
-    var a = Array.from(this.avoid).sort();
+    // Preserve stamp order — do NOT alphabetize (first visited = Home)
+    var v = this.orderedVisited();
+    var a = this.orderedAvoid();
     if (this.visitedCountEl) this.visitedCountEl.textContent = String(v.length);
     if (this.avoidCountEl) this.avoidCountEl.textContent = String(a.length);
     if (this.warnEl) {
@@ -393,6 +445,7 @@
     }
     this.renderChips();
 
+    var homeIata = this.resolveHomeIata(v);
     if (global.FS_TRAVEL) {
       global.FS_TRAVEL.visited = v;
       global.FS_TRAVEL.avoid = a;
@@ -406,6 +459,33 @@
           return this.names[c] || c;
         }.bind(this)
       );
+      global.FS_TRAVEL.home_iata = homeIata;
+      if (v.length) {
+        global.FS_TRAVEL.home_country = v[0];
+        global.FS_TRAVEL.home_country_name = this.names[v[0]] || v[0];
+      } else {
+        global.FS_TRAVEL.home_country = "";
+        global.FS_TRAVEL.home_country_name = "";
+      }
+    }
+    // Let compose suggestion chips re-roll from visited/avoid stamps + home
+    try {
+      var detail = {
+        visited: v.slice(),
+        avoid: a.slice(),
+        visited_names: (global.FS_TRAVEL && global.FS_TRAVEL.visited_names) || v.slice(),
+        avoid_names: (global.FS_TRAVEL && global.FS_TRAVEL.avoid_names) || a.slice(),
+        home_iata: homeIata,
+        home_country: v.length ? v[0] : "",
+      };
+      this.root.dispatchEvent(
+        new CustomEvent("yonder:mapchange", { bubbles: true, detail: detail })
+      );
+      document.dispatchEvent(
+        new CustomEvent("yonder:mapchange", { bubbles: true, detail: detail })
+      );
+    } catch (e) {
+      /* ignore */
     }
   };
 
@@ -478,9 +558,10 @@
 
   YonderMap.prototype.save = async function () {
     var self = this;
+    // Stamp order preserved — first visited is Home on the server
     var body = {
-      visited: Array.from(this.visited).sort(),
-      avoid: Array.from(this.avoid).sort(),
+      visited: this.orderedVisited(),
+      avoid: this.orderedAvoid(),
     };
     try {
       var r = await fetch(SAVE_URL, {

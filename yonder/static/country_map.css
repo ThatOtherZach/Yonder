@@ -494,6 +494,10 @@
   box-shadow: none;
 }
 
+.ymap-chips .chip.visited.is-home {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--vibe-now, var(--sky-bright, #22c55e)) 55%, transparent);
+  font-weight: 700;
+}
 .ymap-chips .chip.visited {
   border-color: var(--ymap-visited-border);
   color: var(--ymap-visited);

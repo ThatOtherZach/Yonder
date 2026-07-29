@@ -9,12 +9,13 @@ from pydantic import BaseModel, Field
 
 from yonder.config import Settings, get_settings
 from yonder.countries import (
+    city_for_iata,
+    country_for_iata,
     format_place,
     format_route,
     is_avoided_iata,
     normalize_avoid_list,
     normalize_country_list,
-    country_for_iata,
 )
 from yonder.currency import convert_offer
 from yonder.engine import search_flights
@@ -530,6 +531,7 @@ async def plan_adventure(
     *,
     settings: Settings | None = None,
     include_mock: bool = False,
+    cancel_id: str | None = None,
 ) -> AdventureResult:
     settings = settings or get_settings()
     trip_kind = (req.trip_kind or "detour").lower().strip()
@@ -568,6 +570,14 @@ async def plan_adventure(
         if not key or key in seen_dest:
             continue
         seen_dest.add(key)
+        # Fill missing city/country so boarding passes never show bare "DPS"
+        code = (idea.iata or "").upper()
+        city = (idea.city or "").strip()
+        if not city or city.upper() == code:
+            city = city_for_iata(code) or city or code
+        cc = (idea.country or country_for_iata(code) or "").upper() or None
+        if city != idea.city or cc != idea.country:
+            idea = idea.model_copy(update={"city": city, "country": cc})
         unique_ideas.append(idea)
     ideas = unique_ideas
     errors: list[str] = []
@@ -579,11 +589,13 @@ async def plan_adventure(
             f"({req.origin} round-trip). Candidates are destinations, not mid-route stops."
         )
 
-    # Hard latency budget — COL via Grok (sum hotel+food+transit+culture) vs Settings bag
+    # Soft aim for COL pacing; Skip (cancel_id) ends pricing early. No hard kill.
     import time as _time
 
-    budget = float(getattr(settings, "search_budget_seconds", 30.0) or 30.0)
-    deadline = _time.monotonic() + max(5.0, budget - 1.0)
+    from yonder.search_cancel import is_cancelled
+
+    aim, _mx = settings.search_timing()
+    soft_deadline = _time.monotonic() + max(5.0, aim - 1.0)
     ground_batch: dict = {}
     bag_daily, bag_tol, _bag_parts = settings.col_budget()
     try:
@@ -593,7 +605,7 @@ async def plan_adventure(
             (i.iata, i.country, i.city)
             for i in ideas[: max(1, int(req.max_candidates or 5))]
         ]
-        col_timeout = min(7.0, max(3.0, budget * 0.25))
+        col_timeout = min(7.0, max(3.0, aim * 0.25))
         try:
             ground_batch = await asyncio.wait_for(
                 estimate_batch_for_stops(
@@ -613,7 +625,7 @@ async def plan_adventure(
                 )
             else:
                 errors.append(
-                    "Grok COL attached (set Settings day bag to score under/over budget)"
+                    "Grok COL attached (set Settings cost/day to score under/over budget)"
                 )
         except asyncio.TimeoutError:
             ground_batch = await estimate_batch_for_stops(
@@ -644,7 +656,7 @@ async def plan_adventure(
     except Exception as col_outer:  # noqa: BLE001
         ground_batch = {}
         errors.append(f"COL skipped: {str(col_outer)[:72]}")
-    errors.append("30s budget: skipped AviationStack enrich + direct baseline")
+    errors.append(f"Soft aim ~{aim:.0f}s: skipped AviationStack enrich + direct baseline")
 
     async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as http:
         only = await pick_pricing_provider(settings, http, include_mock)
@@ -660,7 +672,7 @@ async def plan_adventure(
             )
 
         async def price_stopover(idea: StopoverIdea) -> AdventureItinerary | None:
-            if _time.monotonic() >= deadline:
+            if cancel_id and is_cancelled(cancel_id):
                 return None
             stay = max(req.min_stop_days, min(req.max_stop_days, idea.stay_days))
             leg2_date = req.depart_date + timedelta(days=stay)
@@ -867,26 +879,25 @@ async def plan_adventure(
                 )
             )
 
-        # At most five ideas priced per search
+        # At most five ideas priced per search — sequential so Skip can stop mid-list
         ideas = ideas[: max(2, min(5, req.max_candidates))]
-        remaining = max(1.0, deadline - _time.monotonic())
-        try:
-            stop_results = await asyncio.wait_for(
-                asyncio.gather(
-                    *(price_stopover(i) for i in ideas),
-                    return_exceptions=True,
-                ),
-                timeout=remaining,
-            )
-        except asyncio.TimeoutError:
-            stop_results = []
-            errors.append("Hit 30s budget while pricing stopovers — showing what finished")
-        for it in stop_results:
-            if isinstance(it, Exception):
-                errors.append(f"Stopover pricing error: {it}")
+        for idea in ideas:
+            if cancel_id and is_cancelled(cancel_id):
+                errors.append("Skipped early — showing options priced so far")
+                break
+            try:
+                it = await price_stopover(idea)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"Stopover pricing error: {exc}")
                 continue
             if it is not None:
                 itineraries.append(it)
+        if (
+            not (cancel_id and is_cancelled(cancel_id))
+            and _time.monotonic() > soft_deadline
+            and itineraries
+        ):
+            errors.append(f"Past soft aim (~{aim:.0f}s) — still finished pricing")
 
     complete = [i for i in itineraries if i.total_price is not None]
     # Rank cheapest → most expensive; one package per destination city
