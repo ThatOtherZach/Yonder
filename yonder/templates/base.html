@@ -506,6 +506,76 @@
     .place-book .pb-story-body.is-loading .pb-loading-msg {
       margin: 0.35rem 0 0.5rem;
     }
+    .pb-fast-facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin: 0.45rem 0 0.55rem;
+    }
+    .pb-fact {
+      display: inline-block;
+      font-size: 0.78rem;
+      font-weight: 650;
+      padding: 0.22rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--paper-2, #f4f1ea);
+      color: var(--ink);
+    }
+    .pb-loading-msg {
+      margin: 0.35rem 0 0;
+      font-size: 0.9rem;
+      color: var(--muted);
+      font-style: italic;
+    }
+    .pb-vibe-line {
+      margin: 0.55rem 0 0;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      color: var(--ink);
+    }
+    .pb-vibe-line .pb-vibe-label {
+      display: block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+    .pb-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-top: 0.75rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--paper-2, #f4f1ea);
+      color: var(--ink);
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+    }
+    .pb-toggle:hover {
+      border-color: color-mix(in srgb, var(--sky-bright) 45%, var(--line));
+    }
+    .pb-toggle .pb-chevron {
+      display: inline-block;
+      transition: transform 0.15s ease;
+      font-size: 0.75em;
+    }
+    .field-note-slot.is-expanded .pb-toggle .pb-chevron {
+      transform: rotate(180deg);
+    }
+    .pb-details[hidden] { display: none !important; }
+    .pb-details {
+      margin-top: 0.75rem;
+      padding-top: 0.65rem;
+      border-top: 1px dashed var(--line);
+    }
 
     /* —— Boarding passes (shared: flights / adventures / saved) —— */
     .pass-stack {

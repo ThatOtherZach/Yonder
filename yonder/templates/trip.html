@@ -2,7 +2,7 @@
 {% block title %}{{ share.title }} · Yonder{% endblock %}
 {% block extra_css %}
     .trip-share {
-      max-width: 42rem;
+      max-width: 52rem;
       margin: 0 auto;
     }
     /* Compact share bar: small QR inline with the URL */
@@ -26,9 +26,39 @@
       border: 1px solid var(--line);
       box-shadow: var(--shadow-sm);
       display: block;
+      cursor: zoom-in;
     }
     .trip-share-bar .bp-qr img,
     .trip-share-bar .bp-qr svg {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      display: block;
+    }
+    /* QR lightbox */
+    .qr-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(0,0,0,0.55);
+      align-items: center;
+      justify-content: center;
+      cursor: zoom-out;
+    }
+    .qr-overlay.is-open { display: flex; }
+    .qr-overlay-inner {
+      background: #fff;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 8px 48px rgba(0,0,0,0.28);
+      width: min(80vw, 320px);
+      height: min(80vw, 320px);
+    }
+    .qr-overlay-inner img,
+    .qr-overlay-inner svg {
       width: 100%;
       height: 100%;
       object-fit: contain;
@@ -56,73 +86,6 @@
       font-size: 0.9rem;
       margin: 0 0 1rem;
     }
-    /* Field-note additions (pb-* classes used only on this page) */
-    .place-book .pb-fast-facts {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.35rem 0.5rem;
-      margin: 0.55rem 0 0.7rem;
-    }
-    .place-book .pb-fact {
-      display: inline-block;
-      padding: 0.2rem 0.55rem;
-      border-radius: 999px;
-      background: var(--paper);
-      border: 1px solid var(--line);
-      font-size: 0.8rem;
-      color: var(--ink-soft);
-    }
-    .place-book .pb-vibe-line {
-      font-size: 0.93rem;
-      color: var(--ink-soft);
-      margin: 0.3rem 0 0.6rem;
-      line-height: 1.45;
-    }
-    .place-book .pb-vibe-label {
-      display: inline-block;
-      font-size: 0.68rem;
-      font-weight: 700;
-      letter-spacing: 0.07em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-right: 0.45rem;
-      vertical-align: 0.1em;
-    }
-    .place-book .pb-toggle {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-      width: 100%;
-      padding: 0.55rem 0 0;
-      border: none;
-      border-top: 1px solid var(--line);
-      background: none;
-      cursor: pointer;
-      font-size: 0.82rem;
-      color: var(--muted);
-      text-align: left;
-      margin-top: 0.75rem;
-    }
-    .place-book .pb-toggle:hover { color: var(--ink); }
-    .place-book .pb-toggle .pb-toggle-label { flex: 1; }
-    .place-book .pb-chevron {
-      font-size: 0.75rem;
-      transition: transform 0.15s;
-      display: inline-block;
-    }
-    .place-book .pb-toggle[aria-expanded="true"] .pb-chevron {
-      transform: rotate(180deg);
-    }
-    .place-book .pb-details {
-      margin-top: 0.85rem;
-    }
-    .place-book .pb-mesh-grid {
-      display: grid;
-      gap: 0.85rem;
-    }
-    @media (min-width: 480px) {
-      .place-book .pb-mesh-grid { grid-template-columns: 1fr 1fr; gap: 1rem 1.25rem; }
-    }
 {% endblock %}
 {% block body %}
   {% if not share %}
@@ -143,15 +106,26 @@
     </p>
   </header>
   <main class="trip-share">
+    {# QR lightbox overlay #}
+    <div class="qr-overlay" id="qr-overlay" role="dialog" aria-modal="true" aria-label="QR code enlarged">
+      <div class="qr-overlay-inner">
+        {% if qr_src %}
+        <img src="{{ qr_src }}" alt="QR code" />
+        {% else %}
+        {{ qr_svg | safe }}
+        {% endif %}
+      </div>
+    </div>
+
     {# ── Compact share bar: small QR + URL + copy ── #}
     <div class="trip-share-bar">
-      <a class="bp-qr" href="{{ share_url }}" title="Open this trip">
+      <button type="button" class="bp-qr" id="qr-thumb" aria-label="Enlarge QR code" title="Click to enlarge">
         {% if qr_src %}
         <img src="{{ qr_src }}" alt="QR code" width="60" height="60" />
         {% else %}
         {{ qr_svg | safe }}
         {% endif %}
-      </a>
+      </button>
       <div class="trip-share-bar-url">
         <code id="share-url-text">{{ share_url }}</code>
         <button type="button" class="btn secondary" id="copy-share-url" style="padding:0.35rem 0.7rem;font-size:0.82rem;white-space:nowrap">Copy link</button>
@@ -383,11 +357,28 @@
         });
       }
 
+      // QR lightbox
+      var qrThumb = document.getElementById("qr-thumb");
+      var qrOverlay = document.getElementById("qr-overlay");
+      if (qrThumb && qrOverlay) {
+        qrThumb.addEventListener("click", function () {
+          qrOverlay.classList.add("is-open");
+        });
+        qrOverlay.addEventListener("click", function () {
+          qrOverlay.classList.remove("is-open");
+        });
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") qrOverlay.classList.remove("is-open");
+        });
+      }
+
       // Field note expand / collapse
       document.querySelectorAll(".place-book .pb-toggle").forEach(function (toggle) {
-        var details = toggle.nextElementSibling;
+        var slot = toggle.closest(".place-book");
+        var details = slot && slot.querySelector(".pb-details");
         toggle.addEventListener("click", function () {
-          var expanded = toggle.getAttribute("aria-expanded") === "true";
+          var expanded = slot && slot.classList.contains("is-expanded");
+          if (slot) slot.classList.toggle("is-expanded", !expanded);
           toggle.setAttribute("aria-expanded", String(!expanded));
           if (details) {
             if (expanded) { details.setAttribute("hidden", ""); }
