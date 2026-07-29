@@ -10,6 +10,7 @@ daily_costs_cache.db
 saved_itineraries.db
 shared_trips.db
 place_book_cache.db
+attribution.db
 *.egg-info/
 dist/
 build/

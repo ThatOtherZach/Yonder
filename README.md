@@ -1,8 +1,8 @@
 # Yonder
 
-**Go yonder.** A vibey personal travel planner — multi-provider flight signals, mandatory trip vibes, passport map stamps, Detour stopovers, boarding-pass results with shareable QR codes, place notes, and deal history.
+**Go yonder.** A vibe-first travel gamble app — multi-provider fare signals, mandatory trip vibes, passport map as identity (no account required), Detour stopovers, boarding-pass results with shareable QR codes, field notes, and deal history.
 
-Not a booking engine. Not for commercial resale. Scan free/cheap pricing APIs in parallel, compare, then book where you trust.
+Not a booking engine. Not for commercial resale. Scan free/cheap pricing APIs in parallel, compare, then book where you trust (outbound links support affiliate-style attribution).
 
 ## Modes
 
@@ -11,18 +11,20 @@ Not a booking engine. Not for commercial resale. Scan free/cheap pricing APIs in
 | **Escape** | Plain-English point A→B. Grok parses the trip (one traveler, economy). Providers return **one cheapest fare signal** for that destination. |
 | **Detour** | Multi-day stopovers or open getaways (“somewhere new”, food/COL/safe). Grok invents candidate cities; APIs price legs. **One package per destination city**, up to five cities, cheapest first. |
 
-Both modes share **one compose card** with an in-card **Escape | Detour** toggle (no full page reload):
+**One compose card, one Go button** — no need to pick Escape vs Detour before typing. Intent is inferred from the prompt (+ vibe + passport map). Results can mix both shapes and filter with **All | Escape | Detour | Clear**.
 
 1. **Prompt** — free text  
 2. **Vibe slider** (required) — rainbow hue → named vibe; **random vibe on each fresh page load** (kept only after a live search)  
-3. **Go button** — beside the text box, tinted to the current vibe (**Plan Escape** / **Find Detour**)  
-4. **Passport map** — click countries: open → visited → avoid (max 10 avoid). Autosaves. **Clear map** appears when more than one country is stamped  
+3. **Suggestion pills** — complete missing search data (shape, map, timing, budget tone); ★ Saves only **re-rank** which pills surface  
+4. **Go** — posts to `POST /explore` (intent gate → Escape, Detour, or mix)  
+5. **Depart** — optional; used for getaways / stopovers  
+6. **Passport map** — open → visited → avoid (max 10 avoid). **First green stamp = home** (selection order). **Clear map** when more than one country is stamped  
 
 ### Architecture in one line
 
-**Grok translates intent → structured package → providers price without Grok → UI shows boarding passes.**
+**Grok translates intent → structured package(s) → providers price without Grok → UI shows boarding passes. Soft aim ~30s for fares; Skip after ~42s returns partials. If you wait (or stream after Skip), field notes load with culture/food/vibe prose tinted by your prompt + vibe. COL lives inside the field-note card. ★ Save is the durable quality signal (seeds invent + ranks pills). Book links go through `/out` for affiliate attribution.**
 
-Optional COL enrichment: Grok estimates a lean day bag (hotel + food + transit + culture) per stop; scored against your **Settings** day bag + over-budget % band. If the bag is all zeros, budget is omitted from the Grok prompt and ranking is off.
+Optional COL enrichment: Grok estimates a lean day bag (hotel + food + transit + culture) per stop; scored against your **Settings** cost/day + over/under % band. Leave cost/day at **0** to show COL without under/over ranking (budget omitted from the Grok prompt).
 
 ## How pricing works (honest)
 
@@ -128,7 +130,7 @@ Grok does **not** invent fares. It:
 Default **origin** when you don’t name a city (Settings → **Home airport**):
 
 1. `HOME_IATA` if set (e.g. `YVR`)  
-2. Else primary airport of the **first passport-map country**  
+2. Else primary airport of the **first passport-map country** (stamp **order** — first green stamp = home)  
 3. Else country implied by **default currency** (CAD→YVR, USD→JFK, …)  
 4. Else **USA / JFK**
 
@@ -136,41 +138,58 @@ Default **origin** when you don’t name a city (Settings → **Home airport**):
 
 | Path | Purpose |
 |------|---------|
-| `/` or `/?mode=escape` | Unified compose — Escape active |
-| `/?mode=detour` | Unified compose — Detour active |
-| `/saved` | Saved boarding passes + QR share |
-| `/settings` | Keys, home airport, day bag, Detour knobs, Test Data |
-| `/t/{kind}/{slug}/{id}` | **Shareable trip page** (QR target; slug embeds route/dates/fare) |
-| `/t/{id}` | Short share form (same payload) |
-| `GET /adventure` | Redirects to `/?mode=detour` |
-| `POST /ask` | Escape search |
-| `POST /adventure` | Detour planning |
-| `POST /api/travel-map` | Autosave visited/avoid from the passport map |
-| `POST /api/saved` | Save itinerary JSON |
+| `/` | Explore compose (intent-routed) |
+| `/saved` | Saved boarding passes + QR share (Escape + Detour) |
+| `/settings` | Keys, home airport, daily budget + %, Detour knobs, search timing, affiliate tag, Test Data |
+| `/t/{kind}/{slug}/{id}` | **Shareable trip page** (QR target) |
+| `/t/{id}` | Short share form |
+| `POST /explore` | **Unified Go** — decision gate → Escape / Detour / mix |
+| `POST /ask` | Force Escape path (legacy / soft force) |
+| `POST /adventure` | Force Detour path (legacy / soft force) |
+| `POST /api/travel-map` | Autosave visited/avoid |
+| `POST /api/saved` | ★ Save Escape or Detour (only durable preference write) |
+| `POST /api/results-clear` | Clear last Escape + Detour snapshots (UI **Clear**) |
+| `POST /api/search-cancel` | Progress **Skip** — wrap up with partials |
+| `GET  /api/suggest` | Save-based ranking for suggestion pills |
+| `GET  /api/place-brief` | Stream one field note (tone from prompt + vibe) |
+| `GET  /out` | Affiliate-friendly book-link redirect + funnel log |
 
-### Compose (shared Escape / Detour)
+### Compose & results
 
-- One card: **Escape | Detour** toggle, **textarea** + vibe-colored **Go**  
-- Under the text: **rainbow hue slider** + vibe name  
-- Vibe is **required**; random on each cold load; locked only after a live search re-render  
-- Detour needs **depart** date. Stop length / option count live under **Settings → Detour defaults** (defaults: 3–5 days, up to **5** cities)  
-- **Escape**: one cheapest fare for the destination  
-- **Detour**: one package per destination city (≤5 cities), cheapest first  
-- **Hard ~30s budget** for Escape/Detour (progress UI ~32s). Grok invent is capped so seed fallback still has time for fares  
+- One card: **textarea** + vibe-colored **Go** → `/explore`  
+- Under the text: **rainbow hue slider** + vibe name; **Depart** optional  
+- **Dataset-completion pills** under the vibe (getaway / stopover / timed / map-aware / budget…); ★ Saves re-rank patterns + soft dest seeds  
+- Vibe **required**; random on cold load; locked after a live search  
+- Intent gate: pure Escape / pure Detour / **mix** (Escape first, then Detour with fewer candidates)  
+- Results: **All | Escape | Detour | Clear**  
+- **Criteria bar** on results: **From** (IATA), **min/max stop days**, **Refresh** (fast reprice with board seeds)  
+- After search: auto-scroll to results  
+- **Escape**: one cheapest fare; **★ Save** writes `kind=escape`  
+- **Detour**: one package per city (≤5; ≤3 when mixing)  
+- Prior ★ Saves seed invent when prompts look similar (keyword + origin + vibe)  
+- **Soft aim ~30s** (`SEARCH_BUDGET_SECONDS`); **Skip** after ~42s (`SEARCH_MAX_SECONDS`) for partials — without Skip, search can run longer  
+
+### Timing & field notes
+
+- Fares first; **Skip** = cash out early with what’s priced  
+- **Field notes** (culture / food / vibe / optional fast-fact chips + closer): same structure always; prose tinted by **user prompt + trip vibe**  
+- If notes weren’t ready on first paint (e.g. after Skip), slots show *Writing field note…* and stream via `/api/place-brief`  
+- **COL** sits **inside** the field-note card (ground spend, vs home, your budget, all-in) — same grid design as culture/food  
 
 ### Passport map
 
 - Zoom / pan (wheel, +/−, ↺)  
 - Click cycle: **open → visited → avoid → clear**  
+- **Stamp order preserved** — first visited country = **home** when `HOME_IATA` is blank  
 - Avoid list capped at **10**  
-- **Clear map** button when **more than one** country is stamped (visited + avoid)  
+- **Clear map** when **more than one** country is stamped  
 - Open countries can tint with the active vibe color  
 
 ### Cost of living (Detour)
 
-- Grok (or cache/fallback) estimates **hotel + food + transit + culture** per stop (sum = daily)  
-- Compared to your Settings day bag total with **over-budget %** band (under / within / over)  
-- If all bag fields are **0**, COL estimates still show but **no under/over ranking**, and the bag is **not** sent in the Grok prompt  
+- **Your budget** (Settings): one **cost / day** + **over/under %** (no city default; **0** = ranking off)  
+- **Destination COL**: Grok/cache/fallback lean day bag per stop  
+- Shown in the field-note card; under / within / over vs Settings band  
 
 ### Share / QR
 
@@ -213,9 +232,14 @@ python -m yonder.cli serve --host 127.0.0.1 --port 8787
 ```
 GET  /api/providers
 GET  /api/search?origin=YVR&destination=NRT&depart=2026-09-15&return_date=2026-09-28&currency=CAD&mock=true
-POST /api/travel-map   # JSON { "visited": ["CA","JP"], "avoid": ["RU"] }
-POST /api/saved        # save itinerary
-GET  /t/{kind}/{slug}/{id}  # shared trip page
+POST /api/travel-map      # JSON { "visited": ["CA","JP"], "avoid": ["RU"] }
+POST /api/saved           # ★ Save itinerary (durable preference)
+POST /api/results-clear   # wipe last Escape + Detour snapshots
+POST /api/search-cancel   # { "search_id": "…" } — Skip
+GET  /api/suggest?vibe=food&origin=YVR
+GET  /api/place-brief?iata=DPS&prompt=…&vibe=food
+GET  /out?u=https://…&click_id=…   # book redirect + attribution
+GET  /t/{kind}/{slug}/{id}         # shared trip page
 ```
 
 ## Architecture
@@ -225,27 +249,32 @@ yonder/
   types.py              # SearchQuery, FlightOffer (normalized)
   engine.py             # parallel fan-out + merge; one cheapest Escape fare
   adventure.py          # Detour planning; one package per destination city
-  encyclopedia.py       # short place briefs (field notes)
-  grok.py               # NL parse, detour invent, COL batch prompts
+  intent.py             # Escape / Detour / mix decision gate
+  encyclopedia.py       # field notes (tone-aware cache + stream API)
+  grok.py               # NL parse, invent, place_brief, COL prompts
   daily_costs.py        # COL compare vs Settings bag / cache
-  share.py              # shareable trips + QR PNG generation (segno)
-  last_search.py        # persist last Escape + Detour snapshots
+  countries.py          # IATA city/country labels, home resolution helpers
+  share.py              # shareable trips + QR PNG (segno)
+  last_search.py        # last Escape + Detour snapshots (+ clear)
+  search_cancel.py      # Skip cancel flags
+  attribution.py        # funnel events + outbound URL stamping
+  saved.py              # ★ Saves + ranking_from_saves for pills
   web.py                # FastAPI UI + JSON
   cli.py                # Typer CLI (`yonder`)
   static/
-    country_map.js      # passport map + clear-map
+    country_map.js      # passport map; stamp order = home
     country_map.css
-    vibe_slider.js      # mandatory hue vibe control
-    progress.js         # search progress overlay
+    vibe_slider.js      # vibe control + dataset-completion pills
+    progress.js         # progress overlay + Skip + story phase hints
     iso_numeric_to_a2.json
   templates/
-    base.html           # lounge chrome, boarding-pass + QR CSS
-    index.html          # unified Escape/Detour compose + results
+    base.html           # lounge chrome, boarding-pass + field-note CSS
+    index.html          # compose, pills, results toolbar, field notes
     trip.html           # standalone share page
     saved.html
     settings.html
   providers/
-    base.py             # adapter interface
+    base.py
     amadeus.py
     travelpayouts.py
     duffel.py
@@ -266,9 +295,11 @@ Add a new source by dropping a file in `providers/` and registering it in `provi
 | File | Purpose |
 |------|---------|
 | `price_history.db` | Fare signal history / deal labels |
-| `saved_itineraries.db` | Saved trips |
+| `saved_itineraries.db` | ★ Saves (preference learning + pill ranking) |
 | `shared_trips.db` | QR / shareable trip payloads |
 | `daily_costs_cache.db` | Cost-of-stay cache |
+| `place_book_cache.db` | Field-note cache (place + tone fingerprint) |
+| `attribution.db` | Funnel / outbound click events (local product metrics) |
 | `.last_search.json` | Last Escape + Detour result panels |
 | `.env` | Your keys (never commit) |
 
