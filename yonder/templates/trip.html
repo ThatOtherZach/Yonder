@@ -2,7 +2,7 @@
 {% block title %}{{ share.title }} · Yonder{% endblock %}
 {% block extra_css %}
     .trip-share {
-      max-width: 68rem;
+      max-width: 42rem;
       margin: 0 auto;
     }
     /* Compact share bar: small QR inline with the URL */
@@ -50,34 +50,6 @@
       color: var(--ink-soft);
       word-break: break-all;
       white-space: normal;
-    }
-    /* Two-column grid: pass left, notes right */
-    .trip-body {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 1.5rem;
-      align-items: start;
-    }
-    @media (min-width: 720px) {
-      .trip-body {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 2rem;
-        align-items: stretch;
-      }
-    }
-    .trip-col-pass  { min-width: 0; }
-    .trip-col-notes {
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .trip-col-notes .place-book {
-      flex: 1;
-      margin: 0;
-    }
-    .trip-col-notes .place-book + .place-book {
-      margin-top: 0.75rem;
-      flex: none;
     }
     .trip-meta {
       color: var(--muted);
@@ -186,9 +158,6 @@
       </div>
     </div>
 
-    <div class="trip-body">
-    {# ── Left column: boarding pass ── #}
-    <div class="trip-col-pass">
     {% if share.kind == 'escape' %}
       {% set q = p.query or {} %}
       {% set o = p.offer or {} %}
@@ -307,10 +276,7 @@
         <p class="muted">Unknown share type.</p>
       </div>
     {% endif %}
-    </div>{# end .trip-col-pass #}
-
-    {# ── Right column: field notes ── #}
-    <div class="trip-col-notes">
+    {# ——— Field notes ——— #}
     {% if place_books %}
       {# Escape: one note for the destination #}
       {% if share.kind == 'escape' %}
@@ -390,10 +356,6 @@
         {% endfor %}
       {% endif %}
     {% endif %}
-    </div>{# end .trip-col-notes #}
-
-    </div>{# end .trip-body #}
-
     <p class="muted" style="margin-top:1.25rem;font-size:0.85rem">
       <a href="/">← Back to Yonder</a>
       {% if share.kind == 'detour' %} · <a href="/saved">Saved</a>{% endif %}
