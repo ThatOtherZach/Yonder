@@ -52,6 +52,19 @@
     }
   },
   {
+    "id": "whimsical",
+    "label": "Whimsical",
+    "color": "#e879f9",
+    "emoji": "🎠",
+    "traits": {
+      "adj": "whimsical",
+      "chip": "Whimsical",
+      "getaway": "whimsical few days — unexpected streets, odd museums, playful city",
+      "stop": "whimsical charming city stopover",
+      "escape": "city full of quirks and happy surprises"
+    }
+  },
+  {
     "id": "neon",
     "label": "Neon",
     "color": "#c026d3",
@@ -312,6 +325,19 @@
     }
   },
   {
+    "id": "nostalgic",
+    "label": "Nostalgic",
+    "color": "#c06000",
+    "emoji": "🕯️",
+    "traits": {
+      "adj": "nostalgic",
+      "chip": "Nostalgic",
+      "getaway": "nostalgic few days — old cafes, vinyl shops, feeling like another era",
+      "stop": "nostalgic character-filled city stopover",
+      "escape": "city frozen in the best decade, full of warmth and memory"
+    }
+  },
+  {
     "id": "spa",
     "label": "Spa",
     "color": "#b45309",
@@ -377,6 +403,19 @@
     }
   },
   {
+    "id": "gritty",
+    "label": "Gritty",
+    "color": "#44403c",
+    "emoji": "🏗️",
+    "traits": {
+      "adj": "gritty",
+      "chip": "Gritty",
+      "getaway": "gritty urban few days — real neighborhoods, local dives, no Instagram bait",
+      "stop": "gritty authentic city stopover",
+      "escape": "city with edge — underrated, ungentrified, real"
+    }
+  },
+  {
     "id": "cheap",
     "label": "Cheap",
     "color": "#0f766e",
@@ -400,6 +439,19 @@
       "getaway": "fiery intense few days — heat, energy, never boring",
       "stop": "high-energy city stopover",
       "escape": "electric city that burns bright"
+    }
+  },
+  {
+    "id": "velvet",
+    "label": "Velvet",
+    "color": "#881337",
+    "emoji": "🎭",
+    "traits": {
+      "adj": "velvet-dark",
+      "chip": "Velvet",
+      "getaway": "rich velvet few days — low-lit bars, live jazz, deep colour",
+      "stop": "velvet-city stopover with atmosphere and edge",
+      "escape": "city with depth, dark elegance, and underground culture"
     }
   },
   {
@@ -481,6 +533,32 @@
     }
   },
   {
+    "id": "warmnights",
+    "label": "Warm Nights",
+    "color": "#9d174d",
+    "emoji": "🌴",
+    "traits": {
+      "adj": "warm-night",
+      "chip": "Warm Nights",
+      "getaway": "warm-night few days — open-air dinners, humid air, slow evenings",
+      "stop": "warm tropical-night city stopover",
+      "escape": "city where the nights are as good as the days"
+    }
+  },
+  {
+    "id": "tender",
+    "label": "Tender",
+    "color": "#fbcfe8",
+    "emoji": "🪷",
+    "traits": {
+      "adj": "tender",
+      "chip": "Tender",
+      "getaway": "tender gentle few days — soft light, kind pace, nothing rushed",
+      "stop": "tender quiet-city stopover",
+      "escape": "gentle unhurried city where everything feels a little softer"
+    }
+  },
+  {
     "id": "dream",
     "label": "Dream",
     "color": "#c084fc",
@@ -520,6 +598,19 @@
     }
   },
   {
+    "id": "moody",
+    "label": "Moody",
+    "color": "#4c1d95",
+    "emoji": "🌧️",
+    "traits": {
+      "adj": "moody",
+      "chip": "Moody",
+      "getaway": "moody atmospheric few days — grey skies, old stone, depth",
+      "stop": "moody atmospheric city stopover",
+      "escape": "brooding city with rain and character"
+    }
+  },
+  {
     "id": "indie",
     "label": "Indie",
     "color": "#7e22ce",
@@ -543,6 +634,19 @@
       "getaway": "lavender-calm few days — countryside, fields, gentle air",
       "stop": "calm rural-edge city stopover",
       "escape": "calm pastoral destination, soft and scenic"
+    }
+  },
+  {
+    "id": "vivid",
+    "label": "Vivid",
+    "color": "#f0abfc",
+    "emoji": "🦚",
+    "traits": {
+      "adj": "vivid",
+      "chip": "Vivid",
+      "getaway": "vivid few days — bold colour, bright art, saturated everything",
+      "stop": "vivid colourful city stopover",
+      "escape": "city that looks good in every photo — colour everywhere"
     }
   },
   {
@@ -585,6 +689,19 @@
     }
   },
   {
+    "id": "sleepy",
+    "label": "Sleepy",
+    "color": "#a78bfa",
+    "emoji": "🌛",
+    "traits": {
+      "adj": "sleepy",
+      "chip": "Sleepy",
+      "getaway": "sleepy slow few days — long mornings, bookshops, afternoon naps",
+      "stop": "sleepy low-key town stopover",
+      "escape": "unhurried destination where the pace matches a long exhale"
+    }
+  },
+  {
     "id": "retro",
     "label": "Retro",
     "color": "#60a5fa",
@@ -595,6 +712,19 @@
       "getaway": "retro few days — vintage scenes, old cinemas, 70s diners",
       "stop": "retro-flavoured city stopover",
       "escape": "city dripping with retro nostalgia"
+    }
+  },
+  {
+    "id": "seasalt",
+    "label": "Sea Salt",
+    "color": "#bae6fd",
+    "emoji": "🐚",
+    "traits": {
+      "adj": "sea-salt",
+      "chip": "Sea Salt",
+      "getaway": "sea-salt few days — salty air, harbour walks, fresh fish",
+      "stop": "sea-salt coastal town stopover",
+      "escape": "working harbour town, salt in the air"
     }
   },
   {
@@ -611,6 +741,19 @@
     }
   },
   {
+    "id": "stormy",
+    "label": "Stormy",
+    "color": "#172554",
+    "emoji": "⛈️",
+    "traits": {
+      "adj": "stormy",
+      "chip": "Stormy",
+      "getaway": "stormy dramatic few days — weather with personality, coats not sunscreen",
+      "stop": "stormy dramatic coastal city stopover",
+      "escape": "city with dramatic weather and moody skies"
+    }
+  },
+  {
     "id": "lakeside",
     "label": "Lakeside",
     "color": "#1d4ed8",
@@ -624,6 +767,19 @@
     }
   },
   {
+    "id": "electric",
+    "label": "Electric",
+    "color": "#3b82f6",
+    "emoji": "💡",
+    "traits": {
+      "adj": "electric",
+      "chip": "Electric",
+      "getaway": "electric few days — buzzing energy, ideas in the air, creative scene",
+      "stop": "electric creative city stopover",
+      "escape": "city running at full voltage — art, tech, energy"
+    }
+  },
+  {
     "id": "fog",
     "label": "Fog",
     "color": "#94a3b8",
@@ -634,6 +790,19 @@
       "getaway": "misty moody few days — grey skies, atmospheric streets",
       "stop": "moody foggy-city stopover",
       "escape": "atmospheric grey city with character"
+    }
+  },
+  {
+    "id": "rugged",
+    "label": "Rugged",
+    "color": "#78716c",
+    "emoji": "🪨",
+    "traits": {
+      "adj": "rugged",
+      "chip": "Rugged",
+      "getaway": "rugged outdoor few days — rock, wind, dramatic landscape",
+      "stop": "rugged highland or coastal city stopover",
+      "escape": "destination with serious landscape, not gentle hills"
     }
   },
   {
@@ -660,6 +829,19 @@
       "getaway": "breezy coastal few days — open water and salt air",
       "stop": "sailing-town stopover",
       "escape": "coastal sailing town long weekend"
+    }
+  },
+  {
+    "id": "crisp",
+    "label": "Crisp",
+    "color": "#a5f3fc",
+    "emoji": "🫧",
+    "traits": {
+      "adj": "crisp",
+      "chip": "Crisp",
+      "getaway": "crisp clean few days — sharp air, clear skies, nothing heavy",
+      "stop": "crisp clean coastal or mountain stopover",
+      "escape": "destination where the air is actually fresh"
     }
   },
   {
@@ -699,6 +881,19 @@
       "getaway": "tropical few days — lush, warm, colourful markets",
       "stop": "tropical city stopover",
       "escape": "tropical destination with heat and colour"
+    }
+  },
+  {
+    "id": "serene",
+    "label": "Serene",
+    "color": "#6ee7b7",
+    "emoji": "🕊️",
+    "traits": {
+      "adj": "serene",
+      "chip": "Serene",
+      "getaway": "serene few days — still water, silence between sounds, low crowds",
+      "stop": "serene calm-city stopover away from tourist mobs",
+      "escape": "calm peaceful destination, low noise, high peace"
     }
   },
   {
@@ -767,6 +962,19 @@
     }
   },
   {
+    "id": "lush",
+    "label": "Lush",
+    "color": "#064e3b",
+    "emoji": "🌺",
+    "traits": {
+      "adj": "lush",
+      "chip": "Lush",
+      "getaway": "lush saturated few days — overflowing green, flowers, growth",
+      "stop": "lush tropical-edge city stopover",
+      "escape": "destination dripping with vegetation and colour"
+    }
+  },
+  {
     "id": "savanna",
     "label": "Savanna",
     "color": "#a3e635",
@@ -806,6 +1014,32 @@
     }
   },
   {
+    "id": "feral",
+    "label": "Feral",
+    "color": "#365314",
+    "emoji": "🐾",
+    "traits": {
+      "adj": "feral",
+      "chip": "Feral",
+      "getaway": "feral few days — off-trail, no itinerary, raw nature",
+      "stop": "feral wild-edge stopover, rougher than average",
+      "escape": "destination where nature is still in charge"
+    }
+  },
+  {
+    "id": "untamed",
+    "label": "Untamed",
+    "color": "#3d6b21",
+    "emoji": "🦅",
+    "traits": {
+      "adj": "untamed",
+      "chip": "Untamed",
+      "getaway": "untamed few days — open landscape, no crowds, raw geography",
+      "stop": "untamed edge-of-wild stopover",
+      "escape": "remote wild place, off the tourist track"
+    }
+  },
+  {
     "id": "golden",
     "label": "Golden",
     "color": "#fcd34d",
@@ -816,6 +1050,32 @@
       "getaway": "golden few days — sun-soaked plazas, late lunches, good wine",
       "stop": "golden-hour city stopover",
       "escape": "golden warm city break with long evenings"
+    }
+  },
+  {
+    "id": "luminous",
+    "label": "Luminous",
+    "color": "#fef9c3",
+    "emoji": "💫",
+    "traits": {
+      "adj": "luminous",
+      "chip": "Luminous",
+      "getaway": "luminous light-filled few days — bright piazzas, white buildings, clear sky",
+      "stop": "luminous bright city stopover",
+      "escape": "city that is all light and open air"
+    }
+  },
+  {
+    "id": "opulent",
+    "label": "Opulent",
+    "color": "#b89b00",
+    "emoji": "👑",
+    "traits": {
+      "adj": "opulent",
+      "chip": "Opulent",
+      "getaway": "opulent few days — grand lobbies, fine dining, serious indulgence",
+      "stop": "opulent high-end city stopover",
+      "escape": "city built for excess — palaces, marble, the whole thing"
     }
   },
   {
@@ -845,6 +1105,32 @@
     }
   },
   {
+    "id": "goldenhour",
+    "label": "Golden Hour",
+    "color": "#fd8b3e",
+    "emoji": "🌇",
+    "traits": {
+      "adj": "golden-hour",
+      "chip": "Golden Hour",
+      "getaway": "golden-hour few days — rooftops at 6pm, that light that makes everything glow",
+      "stop": "golden-hour city stopover, catch that light",
+      "escape": "city that shows its best face at golden hour"
+    }
+  },
+  {
+    "id": "hazy",
+    "label": "Hazy",
+    "color": "#fed7aa",
+    "emoji": "🌤️",
+    "traits": {
+      "adj": "hazy",
+      "chip": "Hazy",
+      "getaway": "hazy warm few days — gauzy light, midday heat, slow afternoons",
+      "stop": "hazy warm-climate city stopover",
+      "escape": "somewhere hazy and warm where time blurs pleasantly"
+    }
+  },
+  {
     "id": "spice",
     "label": "Spice",
     "color": "#c2410c",
@@ -868,6 +1154,45 @@
       "getaway": "canyon few days — red rock, dramatic cliffs, big sky",
       "stop": "canyon-country city stopover",
       "escape": "canyon or red-rock destination"
+    }
+  },
+  {
+    "id": "ancient",
+    "label": "Ancient",
+    "color": "#7c2d12",
+    "emoji": "🗿",
+    "traits": {
+      "adj": "ancient",
+      "chip": "Ancient",
+      "getaway": "ancient few days — ruins, old stones, civilisations you had to look up",
+      "stop": "ancient ruins-rich city stopover",
+      "escape": "city older than memory — temples, monuments, deep time"
+    }
+  },
+  {
+    "id": "sacred",
+    "label": "Sacred",
+    "color": "#560d0d",
+    "emoji": "⛩️",
+    "traits": {
+      "adj": "sacred",
+      "chip": "Sacred",
+      "getaway": "sacred few days — temples, pilgrimage routes, quiet reverence",
+      "stop": "sacred spiritual city stopover",
+      "escape": "city of shrines and spiritual weight"
+    }
+  },
+  {
+    "id": "raw",
+    "label": "Raw",
+    "color": "#9e6543",
+    "emoji": "🪵",
+    "traits": {
+      "adj": "raw",
+      "chip": "Raw",
+      "getaway": "raw unpolished few days — working port, real locals, no tourist sheen",
+      "stop": "raw unpolished city stopover, the real version",
+      "escape": "city without the gloss — authentic, rough, alive"
     }
   },
   {

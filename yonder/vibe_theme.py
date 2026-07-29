@@ -34,6 +34,13 @@ VIBE_EMOJI: dict[str, str] = {
     "forest": "🌳", "valley": "🏞️", "meadow": "🌾", "canopy": "🎋", "savanna": "🦒",
     "wellbeing": "🧘", "golf": "⛳", "golden": "🏅", "dunes": "🐪", "glow": "🌅",
     "spice": "🌶️", "canyon": "🏜️", "road": "🛣️", "folklore": "🧙",
+    # adjective & hybrid vibes
+    "whimsical": "🎠", "velvet": "🎭", "warmnights": "🌴", "tender": "🪷",
+    "moody": "🌧️", "vivid": "🦚", "sleepy": "🌛", "stormy": "⛈️",
+    "electric": "💡", "seasalt": "🐚", "crisp": "🫧", "serene": "🕊️",
+    "lush": "🌺", "feral": "🐾", "untamed": "🦅", "luminous": "💫",
+    "opulent": "👑", "goldenhour": "🌇", "hazy": "🌤️", "nostalgic": "🕯️",
+    "ancient": "🗿", "sacred": "⛩️", "raw": "🪵", "rugged": "🪨", "gritty": "🏗️",
 }
 
 
