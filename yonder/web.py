@@ -1372,6 +1372,75 @@ async def explore_run(request: Request) -> HTMLResponse:
 
         has_esc = bool(escape_override.get("result"))
         has_det = bool(detour_override.get("result"))
+
+        # Vibe-learning: tier-1 "searched" signal per destination that came back.
+        # IDs are generated up front and returned in data-signal-* attributes so
+        # follow-up engagement events can upgrade them; the DB write itself runs
+        # in a thread executor and never blocks the response. MOCK mode no-ops
+        # inside vibe_signals so demo fares never pollute the store.
+        try:
+            import uuid as _uuid
+
+            from yonder.vibe_signals import record_search
+            _loop = asyncio.get_running_loop()
+            _sess = click_id or None
+            if has_esc:
+                esc_tm = escape_override.get("trip_meta") or {}
+                esc_dest = str(
+                    esc_tm.get("destination")
+                    or (escape_override.get("form") or {}).get("destination")
+                    or ""
+                ).upper()
+                esc_res = escape_override.get("result")
+                esc_n = len(getattr(esc_res, "offers", None) or [])
+                if len(esc_dest) == 3 and esc_dest.isalpha() and esc_n:
+                    esc_sig = _uuid.uuid4().hex
+                    _loop.run_in_executor(
+                        None,
+                        lambda d=esc_dest, n=esc_n, s=esc_sig: record_search(
+                            vibe=vibe,
+                            origin=home_iata,
+                            dest_iata=d,
+                            search_type="escape",
+                            result_count=n,
+                            prompt=prompt,
+                            session_hash=_sess,
+                            signal_id=s,
+                        ),
+                    )
+                    esc_tm["signal_id"] = esc_sig
+                    escape_override["trip_meta"] = esc_tm
+            if has_det:
+                det_res = detour_override.get("result")
+                det_tm = detour_override.get("trip_meta") or {}
+                its = list(getattr(det_res, "itineraries", None) or [])[:5]
+                sig_map: dict[str, str] = {}
+                for it in its:
+                    dest = str(getattr(it, "stop_iata", "") or "").upper()
+                    if len(dest) != 3 or not dest.isalpha() or dest in sig_map:
+                        continue
+                    sid = _uuid.uuid4().hex
+                    sig_map[dest] = sid
+                    _loop.run_in_executor(
+                        None,
+                        lambda d=dest, s=sid: record_search(
+                            vibe=vibe,
+                            origin=home_iata,
+                            dest_iata=d,
+                            search_type="detour",
+                            result_count=len(its),
+                            prompt=prompt,
+                            session_hash=_sess,
+                            signal_id=s,
+                        ),
+                    )
+                if sig_map:
+                    det_tm["signal_ids"] = sig_map
+                    det_tm["signal_id"] = next(iter(sig_map.values()))
+                    detour_override["trip_meta"] = det_tm
+        except Exception:
+            pass
+
         if not has_esc and not has_det:
             raise ValueError(
                 "; ".join(errors) if errors else "Nothing priced — try again or Test Data."
@@ -1848,7 +1917,44 @@ async def saved_list_page(
             )
         except Exception:
             card["share"] = None
-    return templates.TemplateResponse(
+
+    # Vibe-learning: visiting /saved is a tier-2 "reviewed" re-engagement signal
+    # for the saved destinations — gated to once per session per destination.
+    import uuid as _uuid
+
+    sess = (request.cookies.get("yv_sess") or "").strip()[:64]
+    need_cookie = not sess
+    if need_cookie:
+        sess = _uuid.uuid4().hex[:32]
+    try:
+        from yonder.vibe_signals import REVIEWED, upsert_signal
+
+        loop = asyncio.get_running_loop()
+        for s in items:
+            dest = str(s.stop_iata or s.destination or "").upper()
+            if len(dest) != 3 or not dest.isalpha():
+                continue
+            key = (sess, dest)
+            if key in _REVIEWED_SEEN:
+                continue
+            _REVIEWED_SEEN.add(key)
+            loop.run_in_executor(
+                None,
+                lambda d=dest, v=(s.vibe or None), o=(s.origin or None): upsert_signal(
+                    dest_iata=d,
+                    vibe=v,
+                    origin=o,
+                    signal_strength=REVIEWED,
+                    search_type="review",
+                    session_hash=sess,
+                ),
+            )
+        if len(_REVIEWED_SEEN) > 5000:
+            _REVIEWED_SEEN.clear()
+    except Exception:
+        pass
+
+    response = templates.TemplateResponse(
         request,
         "saved.html",
         {
@@ -1860,6 +1966,13 @@ async def saved_list_page(
             "error": err,
         },
     )
+    if need_cookie:
+        response.set_cookie("yv_sess", sess, httponly=True, samesite="lax")
+    return response
+
+
+# (session, dest) pairs already given a tier-2 review signal this process
+_REVIEWED_SEEN: set[tuple[str, str]] = set()
 
 
 @app.post("/api/saved")
@@ -1934,6 +2047,28 @@ async def api_save_itinerary(request: Request):
             search_id=str(trip_meta.get("search_id") or "") or None,
             saved_id=saved.id,
             dest=str(saved.stop_iata or saved.destination or "") or None,
+        )
+    except Exception:
+        pass
+    # Vibe-learning: ★ Save is the tier-4 signal (upgrade the search's row)
+    try:
+        from yonder.vibe_signals import SAVED, upsert_signal
+
+        _dest4 = str(saved.stop_iata or saved.destination or "").upper() or None
+        _sig4 = str(trip_meta.get("signal_id") or "").strip() or None
+        sig_map4 = trip_meta.get("signal_ids")
+        if isinstance(sig_map4, dict) and _dest4 and sig_map4.get(_dest4):
+            _sig4 = str(sig_map4[_dest4])
+        asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: upsert_signal(
+                signal_id=_sig4,
+                dest_iata=_dest4,
+                vibe=str(trip_meta.get("vibe") or "") or None,
+                origin=str(trip_meta.get("origin") or saved.origin or "") or None,
+                signal_strength=SAVED,
+                search_type="save",
+            ),
         )
     except Exception:
         pass
@@ -2057,6 +2192,68 @@ async def api_search_cancel(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "missing search_id"}, status_code=400)
     ok = request_cancel(sid)
     return JSONResponse({"ok": ok, "search_id": sid})
+
+
+@app.post("/api/signal-event")
+async def api_signal_event(request: Request) -> JSONResponse:
+    """Vibe-learning engagement events (tier 2–3) — fire-and-forget like /api/funnel.
+
+    Idempotent: only ever upgrades a signal's strength, never downgrades.
+    """
+    from yonder.vibe_signals import upsert_signal
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "invalid JSON"}, status_code=400)
+    event_type = str(body.get("event_type") or "engaged").strip()[:16] or "engaged"
+    try:
+        strength = int(body.get("strength") or 3)
+    except (TypeError, ValueError):
+        strength = 3
+    # Tier 4 (saved) is only written server-side from ★ Save
+    strength = max(1, min(3, strength))
+    signal_id = str(body.get("signal_id") or "").strip()[:64] or None
+    dest = str(body.get("dest_iata") or body.get("dest") or "").strip().upper()[:3] or None
+    vibe = str(body.get("vibe") or "").strip().lower()[:40] or None
+    if not signal_id and not dest:
+        return JSONResponse(
+            {"ok": False, "error": "need signal_id or dest_iata"}, status_code=400
+        )
+    try:
+        sid = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: upsert_signal(
+                signal_id=signal_id,
+                dest_iata=dest,
+                vibe=vibe,
+                origin=str(body.get("origin") or "").strip().upper()[:3] or None,
+                signal_strength=strength,
+                search_type=event_type,
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)[:120]}, status_code=500)
+    return JSONResponse({"ok": True, "signal_id": sid})
+
+
+@app.get("/api/vibe-stats")
+async def api_vibe_stats(
+    vibe: str = Query(""),
+    limit: int = Query(10, ge=1, le=100),
+    group: str = Query(""),
+) -> JSONResponse:
+    """Top destinations per vibe from accumulated usage signals."""
+    from yonder.vibe_signals import top_for_vibe
+
+    v = (vibe or "").strip().lower() or "adventure"
+    by_country = (group or "").strip().lower() in ("country", "cc", "1", "true")
+    top = top_for_vibe(v, limit=limit, group_by_country=by_country)
+    return JSONResponse(
+        {"ok": True, "vibe": v, "grouped_by_country": by_country, "top": top}
+    )
 
 
 @app.post("/api/funnel")

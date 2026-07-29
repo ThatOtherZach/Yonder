@@ -992,7 +992,10 @@
     {% endif %}
 
     {# ——— Escape results (card layout matches Detour boarding passes) ——— #}
-    <div class="results-panel" id="escape-results" data-result-kind="escape">
+    <div class="results-panel" id="escape-results" data-result-kind="escape"
+      data-signal-id="{{ (ep.get('trip_meta') or {}).get('signal_id', '') if ep else '' }}"
+      data-signal-dest="{{ (ep.get('trip_meta') or {}).get('destination', '') if ep else '' }}"
+      data-signal-vibe="{{ (ep.get('trip_meta') or {}).get('vibe', '') if ep else '' }}">
     {% if escape_result %}
       <div class="card" id="escape-results-card">
         <h2>Direct Escape{% if escape_result.offers and escape_result.offers|length != 1 %}s{% endif %}</h2>
@@ -1748,6 +1751,8 @@
                   .map(function (x) { return x.trim(); })
                   .filter(Boolean),
               });
+              // Chip pill triggering a search = tier-3 engagement with current results
+              sendSignal("chip", btn);
               if (typeof form.requestSubmit === "function") form.requestSubmit();
               else form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
             });
@@ -2011,6 +2016,73 @@
       }
 
       /** Route Google/Kayak book clicks through /out for affiliate funnel logs */
+      /* ——— Vibe-learning signal events (tier 3 "engaged") ——— */
+      function signalContext(el) {
+        // Resolve { signal_id, dest, vibe } from the nearest results context
+        var tripMeta = pageAttribution().tripMeta || {};
+        var ctx = {
+          signal_id: "",
+          dest: "",
+          vibe: tripMeta.vibe || (vibeInput && vibeInput.value) || "",
+        };
+        var pass = el && el.closest ? el.closest(".boarding-pass") : null;
+        var dest = pass
+          ? (pass.getAttribute("data-stop-iata") || pass.getAttribute("data-dest-iata") || "").toUpperCase()
+          : "";
+        var escPanel = document.getElementById("escape-results");
+        if (el && el.closest && el.closest("#escape-results") && escPanel) {
+          ctx.signal_id = escPanel.getAttribute("data-signal-id") || "";
+          ctx.dest = dest || (escPanel.getAttribute("data-signal-dest") || "").toUpperCase();
+          ctx.vibe = escPanel.getAttribute("data-signal-vibe") || ctx.vibe;
+        } else {
+          var ids = tripMeta.signal_ids || {};
+          ctx.signal_id = (dest && ids[dest]) || tripMeta.signal_id || "";
+          ctx.dest = dest || (tripMeta.destination || "").toUpperCase();
+        }
+        return ctx;
+      }
+
+      function sendSignal(eventType, el) {
+        try {
+          var ctx = signalContext(el);
+          if (!ctx.signal_id && !ctx.dest) return; // nothing to attribute
+          fetch("/api/signal-event", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({
+              signal_id: ctx.signal_id || null,
+              dest_iata: ctx.dest || null,
+              vibe: ctx.vibe || null,
+              event_type: eventType,
+              strength: 3,
+            }),
+          }).catch(function () {});
+        } catch (e) { /* fire-and-forget */ }
+      }
+
+      function bootSignalEvents() {
+        // Delegated so links/toggles injected later (streamed field notes) count too
+        document.addEventListener(
+          "click",
+          function (e) {
+            if (!e.target || !e.target.closest) return;
+            var t = e.target.closest(
+              ".results-panel a.btn.secondary[target='_blank'], " +
+              ".results-panel a[data-outbound='1'], " +
+              ".results-panel .bp-stub-qr a, " +
+              ".results-panel .pb-toggle"
+            );
+            if (!t) return;
+            var type = "outbound";
+            if (t.classList.contains("pb-toggle")) type = "expand";
+            else if (t.closest(".bp-stub-qr")) type = "qr_share";
+            sendSignal(type, t);
+          },
+          true
+        );
+      }
+
       function bootOutboundLinks() {
         var attr = pageAttribution();
         document.querySelectorAll('a[href^="http"]').forEach(function (a) {
@@ -2300,6 +2372,7 @@
         bootForm();
         bootSave();
         bootOutboundLinks();
+        bootSignalEvents();
         bootResultsFilter();
         bootCriteriaRefresh();
         bindFieldNoteToggles(document);

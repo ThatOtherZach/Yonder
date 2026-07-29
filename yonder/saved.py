@@ -612,6 +612,23 @@ def ranking_from_saves(
             if s.stop_city:
                 dest_city[dest] = s.stop_city
 
+    # Vibe-learning blend: accumulated usage signals (searches, clicks, reviews)
+    # nudge destination seeds — weighted lower than explicit ★ Saves.
+    signal_dest_count = 0
+    if vibe_l:
+        try:
+            from yonder.vibe_signals import scores_for_vibe
+
+            sig_scores = scores_for_vibe(vibe_l)
+            for code, sc in sig_scores.items():
+                cc = country_for_iata(code) or ""
+                if cc and cc in avoid_set:
+                    continue
+                dest_scores[code] = dest_scores.get(code, 0.0) + 0.5 * float(sc)
+                signal_dest_count += 1
+        except Exception:
+            pass
+
     # Normalize pattern weights to ~0..3 for client sort keys
     mx = max(pattern_w.values()) if pattern_w else 0.0
     if mx > 0:
@@ -634,6 +651,7 @@ def ranking_from_saves(
         "vibe": vibe_l,
         "origin": origin_u,
         "save_count": n_match,
+        "signal_dest_count": signal_dest_count,
         "pattern_weights": pattern_w,
         "dest_seeds": seed_list,
     }

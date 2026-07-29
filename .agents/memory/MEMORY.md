@@ -1,0 +1,1 @@
+- [Vibe signal store semantics](vibe-signals-store.md) — upgrade-only tiers, MOCK env guard inside the module, hourly lazy recompute (force it when testing).
