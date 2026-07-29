@@ -99,6 +99,36 @@ class PlaceBrief:
         }
 
 
+def _tone_key(user_prompt: str | None, trip_vibe: str | None) -> str:
+    """Short fingerprint so cache can keep tone-specific notes without exploding keys."""
+    import hashlib
+    import re
+
+    vibe = (trip_vibe or "").strip().lower()[:24]
+    # Lightweight bag of words from the user prompt (ignore short stopwords)
+    words = re.findall(r"[a-z]{4,}", (user_prompt or "").lower())
+    stop = {
+        "that",
+        "this",
+        "with",
+        "from",
+        "want",
+        "have",
+        "been",
+        "somewhere",
+        "trip",
+        "days",
+        "week",
+        "city",
+        "place",
+    }
+    sig = " ".join(w for w in words[:12] if w not in stop)
+    raw = f"{vibe}|{sig}"
+    if not raw.strip("|"):
+        return ""
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
+
+
 async def get_place_brief(
     settings: Settings,
     *,
@@ -106,12 +136,22 @@ async def get_place_brief(
     country: str | None = None,
     city: str | None = None,
     role: str = "destination",
+    user_prompt: str | None = None,
+    trip_vibe: str | None = None,
 ) -> PlaceBrief | None:
-    """Cache-first place brief. Returns None on miss without Grok or on hard failure."""
-    key = cache_key(iata, country, city)
-    if not key.strip("|"):
+    """Cache-first place brief. Returns None on miss without Grok or on hard failure.
+
+    Structure is always the same; user_prompt + trip_vibe only tint the prose.
+    """
+    base = cache_key(iata, country, city)
+    if not base.strip("|"):
         return None
+    tone = _tone_key(user_prompt, trip_vibe)
+    # Prefer tone-specific cache; fall back to generic for cold hits
+    key = f"{base}|t:{tone}" if tone else base
     hit = get_cached(key)
+    if not hit and tone:
+        hit = get_cached(base)
     if hit:
         return PlaceBrief(
             title=str(hit.get("title") or city or iata or country or "Somewhere"),
@@ -139,10 +179,15 @@ async def get_place_brief(
                 country=country,
                 city=city,
                 role=role,
+                user_prompt=user_prompt,
+                trip_vibe=trip_vibe,
             )
         if not payload:
             return None
         put_cached(key, payload)
+        # Also seed generic cache if empty (helps cold paths)
+        if tone and not get_cached(base):
+            put_cached(base, payload)
         return PlaceBrief(
             title=str(payload.get("title") or city or iata or "Somewhere"),
             subtitle=str(payload.get("subtitle") or ""),
@@ -165,25 +210,84 @@ async def briefs_for_stops(
     stops: list[tuple[str | None, str | None, str | None]],
     *,
     max_n: int = 4,
+    cache_only: bool = False,
+    cancel_id: str | None = None,
+    user_prompt: str | None = None,
+    trip_vibe: str | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Map stop iata → brief dict. Caps live Grok calls."""
+    """Map stop iata → brief dict. Caps live Grok calls.
+
+    cache_only: disk hits only (Skip / fares-only path).
+    cancel_id: stop live Grok if user hit Skip mid-enrichment.
+    user_prompt / trip_vibe: color prose only — same field structure.
+    """
+    from yonder.search_cancel import is_cancelled
+
     out: dict[str, dict[str, Any]] = {}
     live = 0
+    tone = _tone_key(user_prompt, trip_vibe)
     for iata, country, city in stops:
+        if cancel_id and is_cancelled(cancel_id):
+            break
         code = (iata or "").upper()
         if not code or code in out:
             continue
-        key = cache_key(iata, country, city)
-        hit = get_cached(key)
+        base = cache_key(iata, country, city)
+        # Prefer tone-keyed cache, then generic
+        hit = None
+        if tone:
+            hit = get_cached(f"{base}|t:{tone}")
+        if not hit:
+            hit = get_cached(base)
         if hit:
-            out[code] = {**hit, "iata": code, "country": country, "from_cache": True}
+            out[code] = {
+                **hit,
+                "iata": code,
+                "country": country,
+                "city": city,
+                "from_cache": True,
+            }
             continue
-        if live >= max_n:
+        if cache_only or live >= max_n:
             continue
+        if cancel_id and is_cancelled(cancel_id):
+            break
         brief = await get_place_brief(
-            settings, iata=iata, country=country, city=city, role="stopover"
+            settings,
+            iata=iata,
+            country=country,
+            city=city,
+            role="stopover",
+            user_prompt=user_prompt,
+            trip_vibe=trip_vibe,
         )
         if brief:
-            out[code] = brief.to_dict()
-            live += 1
+            d = brief.to_dict()
+            d["city"] = city
+            out[code] = d
+            if not brief.from_cache:
+                live += 1
+    return out
+
+
+def stops_from_itineraries(
+    itineraries: list[Any] | None, *, limit: int = 8
+) -> list[tuple[str | None, str | None, str | None]]:
+    """(iata, country, city) for Detour boarding passes."""
+    out: list[tuple[str | None, str | None, str | None]] = []
+    seen: set[str] = set()
+    for it in itineraries or []:
+        code = (getattr(it, "stop_iata", None) or "").upper()
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        out.append(
+            (
+                code,
+                getattr(it, "theme_country", None) or getattr(it, "stop_country", None),
+                getattr(it, "stop_city", None),
+            )
+        )
+        if len(out) >= limit:
+            break
     return out

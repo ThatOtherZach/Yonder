@@ -80,7 +80,7 @@
     { at: 22, label: "Pricing the direct baseline" },
     { at: 38, label: "Pricing stopover legs" },
     { at: 72, label: "Scoring adventures" },
-    { at: 88, label: "Writing the brief" },
+    { at: 88, label: "Writing field notes" },
     { at: 96, label: "Landing…" },
   ];
 
@@ -88,8 +88,15 @@
     { at: 0, label: "Reading your request" },
     { at: 15, label: "Calling flight providers" },
     { at: 55, label: "Merging results" },
-    { at: 78, label: "Grok is judging the options" },
+    { at: 78, label: "Writing field notes" },
     { at: 94, label: "Landing…" },
+  ];
+
+  var STORY_LINES = [
+    "Still here? Cooking field notes…",
+    "Culture + food + vibe cards loading…",
+    "Skip takes fares only — wait for the story…",
+    "Writing place notes worth reading…",
   ];
 
   function travelLists() {
@@ -200,7 +207,8 @@
       '    <span id="fs-progress-elapsed">0s</span>' +
       "  </div>" +
       '  <div class="fs-progress-msg" id="fs-progress-msg"></div>' +
-      '  <div class="fs-progress-hint">Long searches are normal — multi-leg pricing hits the APIs a lot.</div>' +
+      '  <div class="fs-progress-hint" id="fs-progress-hint">Aiming for a quick search — APIs may take longer.</div>' +
+      '  <button type="button" class="fs-progress-skip" id="fs-progress-skip" hidden>Skip</button>' +
       "</div>";
     document.body.appendChild(el);
     return el;
@@ -230,13 +238,25 @@
   function ProgressController(opts) {
     opts = opts || {};
     this.mode = opts.mode || "adventure"; // adventure | search
-    this.expectedMs = opts.expectedMs || (this.mode === "adventure" ? 120000 : 45000);
+    this.expectedMs = opts.expectedMs || 30000;
+    // When Skip appears (default 42s). 0 = never auto-show.
+    this.skipAfterMs =
+      opts.skipAfterMs != null
+        ? opts.skipAfterMs
+        : opts.maxMs != null
+          ? opts.maxMs
+          : 42000;
+    this.searchId = opts.searchId || "";
+    this.onSkip = typeof opts.onSkip === "function" ? opts.onSkip : null;
     this.lines = opts.lines || buildLines(this.mode);
     this.stages = opts.stages || (this.mode === "adventure" ? STAGES_ADV : STAGES_SEARCH);
     this.title = opts.title || (this.mode === "adventure" ? "Plotting adventures…" : "Scanning flights…");
     this._timers = [];
     this._start = 0;
     this._msgIdx = 0;
+    this._skipped = false;
+    this._skipShown = false;
+    this._storyHint = false;
   }
 
   ProgressController.prototype.start = function () {
@@ -250,9 +270,29 @@
     document.getElementById("fs-progress-msg").textContent = this.lines[0] || "Working…";
     document.getElementById("fs-progress-stage").textContent = this.stages[0].label;
     document.getElementById("fs-progress-emoji").textContent = EMOJIS[0];
+    var hint = document.getElementById("fs-progress-hint");
+    if (hint) {
+      var aimS = Math.round(this.expectedMs / 1000);
+      var skipS = Math.round(this.skipAfterMs / 1000);
+      hint.textContent =
+        "Aiming for ~" +
+        aimS +
+        "s. After " +
+        skipS +
+        "s you can Skip for fares only — wait longer for field notes.";
+    }
+    var skipBtn = document.getElementById("fs-progress-skip");
+    if (skipBtn) {
+      skipBtn.hidden = true;
+      skipBtn.disabled = false;
+      skipBtn.textContent = "Skip";
+      skipBtn.onclick = null;
+    }
 
     this._start = Date.now();
     this._msgIdx = 0;
+    this._skipped = false;
+    this._skipShown = false;
     var self = this;
 
     this._timers.push(
@@ -265,6 +305,27 @@
         document.getElementById("fs-progress-elapsed").textContent =
           Math.floor(elapsed / 1000) + "s";
         document.getElementById("fs-progress-stage").textContent = stageFor(p, self.stages);
+        if (
+          !self._skipShown &&
+          self.skipAfterMs > 0 &&
+          elapsed >= self.skipAfterMs
+        ) {
+          self._showSkip();
+        }
+        // After soft aim / skip window: nudge that field notes may be cooking
+        if (
+          !self._skipped &&
+          self.skipAfterMs > 0 &&
+          elapsed >= self.skipAfterMs &&
+          !self._storyHint
+        ) {
+          self._storyHint = true;
+          var hintEl = document.getElementById("fs-progress-hint");
+          if (hintEl) {
+            hintEl.textContent =
+              "Skip = fares now. Stay and we’ll add culture / food / vibe field notes.";
+          }
+        }
       }, 200)
     );
 
@@ -275,12 +336,66 @@
         var msgEl = document.getElementById("fs-progress-msg");
         msgEl.classList.remove("pop");
         void msgEl.offsetWidth;
-        msgEl.textContent = self.lines[self._msgIdx];
+        var line = self.lines[self._msgIdx];
+        // After skip button is available, interleave story lines
+        if (
+          self._skipShown &&
+          !self._skipped &&
+          STORY_LINES.length &&
+          self._msgIdx % 2 === 0
+        ) {
+          line = STORY_LINES[(self._msgIdx / 2) % STORY_LINES.length];
+        }
+        msgEl.textContent = line;
         msgEl.classList.add("pop");
         document.getElementById("fs-progress-emoji").textContent =
           EMOJIS[self._msgIdx % EMOJIS.length];
       }, 2800)
     );
+  };
+
+  ProgressController.prototype._showSkip = function () {
+    var btn = document.getElementById("fs-progress-skip");
+    if (!btn || this._skipShown) return;
+    this._skipShown = true;
+    btn.hidden = false;
+    var self = this;
+    btn.onclick = function () {
+      self.skip();
+    };
+  };
+
+  ProgressController.prototype.skip = function () {
+    if (this._skipped) return;
+    this._skipped = true;
+    var btn = document.getElementById("fs-progress-skip");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Wrapping up…";
+    }
+    var msg = document.getElementById("fs-progress-msg");
+    if (msg) msg.textContent = "Skip — finishing with what we have…";
+    var stage = document.getElementById("fs-progress-stage");
+    if (stage) stage.textContent = "Wrapping up";
+    if (this.onSkip) {
+      try {
+        this.onSkip(this.searchId);
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    if (this.searchId) {
+      try {
+        fetch("/api/search-cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ search_id: this.searchId }),
+        }).catch(function () {});
+      } catch (e) {
+        /* ignore */
+      }
+    }
   };
 
   ProgressController.prototype.finish = function () {
@@ -318,26 +433,40 @@
     if (!options.lines) {
       options.lines = buildLines(options.mode || "adventure");
     }
+
+    // Soft aim / Skip-after from Settings (travel_ctx) when not overridden
+    var t = global.FS_TRAVEL || {};
+    if (options.expectedMs == null && t.search_aim_seconds) {
+      options.expectedMs = Math.round(Number(t.search_aim_seconds) * 1000);
+    }
+    if (options.skipAfterMs == null && options.maxMs == null && t.search_max_seconds) {
+      options.skipAfterMs = Math.round(Number(t.search_max_seconds) * 1000);
+    }
+    if (options.expectedMs == null) options.expectedMs = 30000;
+    if (options.skipAfterMs == null) options.skipAfterMs = 42000;
+
+    // Per-run id so Skip can finish the job with partial results
+    var searchId =
+      options.searchId ||
+      "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    options.searchId = searchId;
+
     var progress = new ProgressController(options);
     progress.start();
 
     var action = form.getAttribute("action") || window.location.pathname;
     var method = (form.getAttribute("method") || "POST").toUpperCase();
     var body = new FormData(form);
+    body.set("search_id", searchId);
 
-    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    var timeoutMs = options.timeoutMs || 300000;
-    var timeoutId = setTimeout(function () {
-      if (ctrl) ctrl.abort();
-    }, timeoutMs);
-
+    // No client hard kill — wait as long as the server needs unless user Skips
+    // (Skip signals cancel; we still wait for the HTML response with partials)
     var fetchOpts = {
       method: method,
       body: method === "GET" ? undefined : body,
       credentials: "same-origin",
       headers: { Accept: "text/html" },
     };
-    if (ctrl) fetchOpts.signal = ctrl.signal;
 
     var url = action;
     if (method === "GET") {
@@ -348,7 +477,6 @@
 
     return fetch(url, fetchOpts)
       .then(function (res) {
-        clearTimeout(timeoutId);
         if (!res.ok && res.status >= 500) {
           return res.text().then(function (t) {
             throw new Error("Server error " + res.status + (t ? ": " + t.slice(0, 200) : ""));
@@ -372,11 +500,8 @@
         });
       })
       .catch(function (err) {
-        clearTimeout(timeoutId);
         var msg =
-          err && err.name === "AbortError"
-            ? "Timed out waiting for results. Try fewer detours, or check Include mock for a faster dry run."
-            : "Request failed: " + (err && err.message ? err.message : String(err));
+          "Request failed: " + (err && err.message ? err.message : String(err));
         progress.fail(msg);
         var btn = form.querySelector('[type="submit"]');
         if (btn) {

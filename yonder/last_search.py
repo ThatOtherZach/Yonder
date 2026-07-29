@@ -79,6 +79,31 @@ def load_last(mode: str) -> dict[str, Any] | None:
     return raw if isinstance(raw, dict) else None
 
 
+def clear_last(mode: str | None = None) -> None:
+    """Drop last-search snapshot(s). mode=None clears both Escape and Detour."""
+    with _LOCK:
+        if mode is None:
+            try:
+                if STORE_PATH.exists():
+                    STORE_PATH.unlink()
+            except Exception:
+                pass
+            return
+        m = (mode or "").strip().lower()
+        if m not in MODES:
+            return
+        store = _read_store()
+        if m in store:
+            store.pop(m, None)
+            try:
+                if store:
+                    _write_store(store)
+                elif STORE_PATH.exists():
+                    STORE_PATH.unlink()
+            except Exception:
+                pass
+
+
 def hydrate_escape(snap: dict[str, Any]) -> dict[str, Any]:
     """Rebuild template context pieces for Escape from a snapshot."""
     from yonder.grok import GrokAnalysis, ParsedTrip

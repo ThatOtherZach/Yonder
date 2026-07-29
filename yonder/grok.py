@@ -121,7 +121,10 @@ class GrokClient:
             "Use IATA airport codes (3 letters). Prefer major commercial airports. "
             "If the user names a city with multiple airports, pick the most common one and note it in assumptions. "
             "Resolve relative dates using the provided 'today'.\n"
-            "ORIGIN: If the user does not name a from/origin city, use default_origin exactly.\n"
+            "ORIGIN: Prefer default_origin. Use it when the user omits a from-city, "
+            "or only says 'From XXX' with a 3-letter code that may be a UI template — "
+            "if default_origin is set, origin MUST be default_origin unless the user "
+            "clearly names a different city in words (e.g. 'from New York', 'leaving Miami').\n"
             "PASSPORT RULES (hard constraints — ground truth is the ISO2 lists, not prose):\n"
             "- NEVER set destination in avoid_countries (ISO2).\n"
             "- If the user wants somewhere new / not been / nowhere I've been / unexplored / "
@@ -314,15 +317,28 @@ class GrokClient:
         country: str | None = None,
         city: str | None = None,
         role: str = "destination",
+        user_prompt: str | None = None,
+        trip_vibe: str | None = None,
     ) -> dict[str, Any]:
-        """Tiny culture card for Place Book. Keep tokens low."""
+        """Tiny culture card for Place Book. Keep tokens low.
+
+        Structure is fixed (culture/food/vibe/…). Tone layers the user's query
+        + trip vibe on top of the default field-note voice — do not invent new fields.
+        """
         system = (
-            "You write micro travel notes for a modern airport-app encyclopedia. "
-            "Voice: Rick Steves practicality, Bourdain hunger, Hunter S. Thompson heat — "
-            "one beer with all three. No filler, no marketing. STRICT JSON only:\n"
-            '{"title":"Name","subtitle":"≤8 words","facts":["≤12 words","…"],'
+            "You write micro travel field notes for a vibe-first travel app. "
+            "STRUCTURE is fixed — always the same JSON keys; never add sections.\n"
+            "BASE VOICE: Rick Steves practicality, Bourdain hunger, Hunter S. Thompson heat — "
+            "one beer with all three. No filler, no marketing brochure.\n"
+            "TONE LAYER: If user_prompt and/or trip_vibe are provided, color the prose to "
+            "match that traveler's energy (cheap/chaotic/romantic/food-obsessed/quiet/etc.) "
+            "while keeping the same structure and length. Echo their vibe, don't quote them.\n"
+            "STRICT JSON only:\n"
+            '{"title":"Name","subtitle":"≤8 words",'
+            '"facts":["≤6 word punchy fact","…"],'
             '"culture":"1-2 sentences","food":"1 sentence","vibe":"1 sentence",'
-            '"caution":"optional 1 sentence or empty","era_note":"one cheeky closer ≤12 words"}'
+            '"caution":"optional 1 sentence or empty","era_note":"one cheeky closer ≤12 words"}\n'
+            "facts are optional FAST FACT chips (max 3, each ≤6 words). Prefer culture/food/vibe."
         )
         user = json.dumps(
             {
@@ -331,10 +347,12 @@ class GrokClient:
                 "country_iso2": (country or "").upper() or None,
                 "city": city or None,
                 "max_facts": 3,
+                "trip_vibe": (trip_vibe or "").strip().lower() or None,
+                "user_prompt": ((user_prompt or "").strip()[:400] or None),
             },
             default=str,
         )
-        text = await self._chat(system, user, temperature=0.45)
+        text = await self._chat(system, user, temperature=0.5)
         try:
             return _extract_json(text)
         except Exception:
