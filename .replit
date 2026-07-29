@@ -13,6 +13,9 @@ DEFAULT_CURRENCY = "USD"
 PROVIDER_MODE = "smart"
 TESTING = "true"
 XAI_MODEL = "grok-4.5"
+DETOUR_MAX_CANDIDATES = "5"
+SEARCH_BUDGET_SECONDS = "30.0"
+SEARCH_MAX_SECONDS = "42.0"
 
 [workflows]
 runButton = "Project"

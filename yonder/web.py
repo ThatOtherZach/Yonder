@@ -119,6 +119,15 @@ def _dest_theme(destination: str) -> dict:
 
 app = FastAPI(title="Yonder", description="Personal travel planner — flights, adventures, itineraries")
 _PKG = Path(__file__).parent
+
+# One-time migration: move any COL/country values stored in .env into user_prefs.db
+try:
+    from yonder.settings_store import read_env as _read_env
+    from yonder.user_prefs import migrate_from_env as _migrate_prefs
+
+    _migrate_prefs(_read_env())
+except Exception:
+    pass
 templates = Jinja2Templates(directory=str(_PKG / "templates"))
 templates.env.globals["place"] = format_place
 templates.env.globals["route"] = format_route
@@ -2190,15 +2199,15 @@ async def api_travel_map(request: Request) -> JSONResponse:
     avoid_set = set(avoid)
     visited = [c for c in visited if c not in avoid_set]
 
-    updates = {
-        "AVOID_COUNTRIES": ",".join(avoid),
-        "VISITED_COUNTRIES": ",".join(visited),
-    }
-    # write_env treats "" as "keep existing" for secrets — force clear empty lists
-    clear_keys = {k for k, v in updates.items() if not v}
-
     try:
-        write_env(updates, clear_keys=clear_keys)
+        from yonder.user_prefs import set_prefs as _set_prefs
+
+        _set_prefs(
+            {
+                "avoid_countries": ",".join(avoid),
+                "visited_countries": ",".join(visited),
+            }
+        )
         reload_settings()
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
@@ -2275,38 +2284,39 @@ async def settings_save(request: Request) -> RedirectResponse:
         except ValueError:
             updates[key] = default
 
-    # Single daily $ field is authoritative; zero legacy component split on save
+    # --- User preferences (stored in user_prefs.db, not .env) ---
+    from yonder.user_prefs import set_prefs as _set_prefs
+
+    user_pref_updates: dict[str, str] = {}
+
     _col_num("COL_EXPECTED_DAILY")
     _col_num("COL_TOLERANCE_PCT", default="25", hi=100.0)
-    updates["COL_HOTEL"] = "0"
-    updates["COL_FOOD"] = "0"
-    updates["COL_TRANSIT"] = "0"
-    updates["COL_CULTURE"] = "0"
+    for pref_key in ("COL_EXPECTED_DAILY", "COL_TOLERANCE_PCT"):
+        if pref_key in updates:
+            user_pref_updates[pref_key.lower()] = updates.pop(pref_key)
+    # Zero legacy component fields in .env (they now live in user_prefs)
+    for legacy in ("COL_HOTEL", "COL_FOOD", "COL_TRANSIT", "COL_CULTURE"):
+        updates.pop(legacy, None)
 
-    # Country map / multi-select → normalize ISO2 lists
-    avoid_multi = form.getlist("AVOID_COUNTRIES_MULTI") if hasattr(form, "getlist") else []
-    if avoid_multi:
-        updates["AVOID_COUNTRIES"] = ",".join(
-            normalize_avoid_list([str(x) for x in avoid_multi])
-        )
-    elif "AVOID_COUNTRIES" in updates:
-        updates["AVOID_COUNTRIES"] = ",".join(
-            normalize_avoid_list(updates.get("AVOID_COUNTRIES") or "")
-        )
+    # Detour stop-length preferences → user_prefs.db
+    for dk, default, lo, hi in (
+        ("DETOUR_MIN_STOP_DAYS", "4", 1, 21),
+        ("DETOUR_MAX_STOP_DAYS", "5", 1, 30),
+    ):
+        if dk in updates:
+            try:
+                v = max(lo, min(hi, int(float(str(updates[dk]).strip() or default))))
+            except (ValueError, TypeError):
+                v = int(default)
+            user_pref_updates[dk.lower()] = str(v)
+            updates.pop(dk, None)
 
-    if "VISITED_COUNTRIES" in updates:
-        avoid_set = set(
-            normalize_avoid_list(updates.get("AVOID_COUNTRIES") or "")
-        )
-        # Prefer form avoid; if only visited updated, still strip overlaps after avoid normalize above
-        if "AVOID_COUNTRIES" not in updates:
-            avoid_set = set(get_settings().avoid_country_list())
-        visited = normalize_country_list(
-            updates.get("VISITED_COUNTRIES") or "", max_n=250
-        )
-        updates["VISITED_COUNTRIES"] = ",".join(
-            c for c in visited if c not in avoid_set
-        )
+    # Remove country fields from env updates — managed via /api/travel-map
+    updates.pop("AVOID_COUNTRIES", None)
+    updates.pop("VISITED_COUNTRIES", None)
+
+    if user_pref_updates:
+        _set_prefs(user_pref_updates)
 
     if updates.get("AMADEUS_ENV"):
         env_val = updates["AMADEUS_ENV"].lower()

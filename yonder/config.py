@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     # When true, Search/Adventure may show "Test Data" (mock fares)
     testing: bool = False
     # Detour defaults (editable in Settings) — blank .env uses these
-    detour_min_stop_days: int = 3
+    detour_min_stop_days: int = 4
     detour_max_stop_days: int = 5
     # How many detour ideas to invent/price (results always capped at 5 cheapest)
     detour_max_candidates: int = 5
@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     @classmethod
     def _blank_int_defaults(cls, v: Any, info: Any) -> Any:
         defaults = {
-            "detour_min_stop_days": 3,
+            "detour_min_stop_days": 4,
             "detour_max_stop_days": 5,
             "detour_max_candidates": 5,
         }
@@ -274,11 +274,65 @@ class Settings(BaseSettings):
 
 
 @lru_cache
-def get_settings() -> Settings:
+def _load_base_settings() -> Settings:
+    """Load env/dotenv settings only (cached separately from user prefs)."""
     return Settings()
 
 
+def _merge_user_prefs(base: Settings) -> Settings:
+    """Return a copy of *base* with user-pref fields overwritten from user_prefs.db."""
+    try:
+        from yonder.user_prefs import get_all_prefs
+
+        prefs = get_all_prefs()
+
+        def _f(v: Any, default: float = 0.0) -> float:
+            try:
+                return max(0.0, float(v or default))
+            except (TypeError, ValueError):
+                return default
+
+        def _i(v: Any, default: int = 0) -> int:
+            try:
+                return max(0, int(float(v or default)))
+            except (TypeError, ValueError):
+                return default
+
+        return base.model_copy(
+            update={
+                "avoid_countries": prefs.get("avoid_countries", ""),
+                "visited_countries": prefs.get("visited_countries", ""),
+                "col_expected_daily": _f(prefs.get("col_expected_daily", "0")),
+                "col_tolerance_pct": _f(prefs.get("col_tolerance_pct", "25"), 25.0),
+                "col_hotel": _f(prefs.get("col_hotel", "0")),
+                "col_food": _f(prefs.get("col_food", "0")),
+                "col_transit": _f(prefs.get("col_transit", "0")),
+                "col_culture": _f(prefs.get("col_culture", "0")),
+                "detour_min_stop_days": _i(prefs.get("detour_min_stop_days", "4"), 4),
+                "detour_max_stop_days": _i(prefs.get("detour_max_stop_days", "5"), 5),
+            }
+        )
+    except Exception:
+        return base
+
+
+_merged_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """Settings with user prefs merged in. Cached until reload_settings()."""
+    global _merged_settings
+    if _merged_settings is None:
+        _merged_settings = _merge_user_prefs(_load_base_settings())
+    return _merged_settings
+
+
 def reload_settings() -> Settings:
-    """Drop cache so next read picks up .env changes."""
-    get_settings.cache_clear()
+    """Drop all caches so next read picks up .env and user-pref changes."""
+    global _merged_settings
+    _load_base_settings.cache_clear()
+    _merged_settings = None
+    from yonder.user_prefs import _invalidate as _inv_prefs
+
+    _inv_prefs()
     return get_settings()

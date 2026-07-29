@@ -26,35 +26,7 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
         "Default origin (e.g. YVR). Blank → first passport stamp (selection order) → currency country → USA",
         False,
     ),
-    (
-        "AVOID_COUNTRIES",
-        "Avoid countries (ISO2, max 10)",
-        "Comma-separated e.g. US,RU,CN — never used as adventure stopovers",
-        False,
-    ),
-    (
-        "VISITED_COUNTRIES",
-        "Visited countries (ISO2)",
-        "Personal passport map — edit on Search CRT map",
-        False,
-    ),
-    (
-        "COL_EXPECTED_DAILY",
-        "Expected COL per day",
-        "Your personal daily target (default currency). 0 = ranking off",
-        False,
-    ),
-    (
-        "COL_TOLERANCE_PCT",
-        "COL over-budget %",
-        "How far over the daily target still counts as OK (e.g. 25 = +25%)",
-        False,
-    ),
-    # Legacy component keys — kept so write_env can zero them; not shown in UI
-    ("COL_HOTEL", "COL hotel / night (legacy)", "Deprecated; use COL_EXPECTED_DAILY", False),
-    ("COL_FOOD", "COL food / day (legacy)", "Deprecated; use COL_EXPECTED_DAILY", False),
-    ("COL_TRANSIT", "COL transit / day (legacy)", "Deprecated; use COL_EXPECTED_DAILY", False),
-    ("COL_CULTURE", "COL culture / day (legacy)", "Deprecated; use COL_EXPECTED_DAILY", False),
+    # AVOID_COUNTRIES, VISITED_COUNTRIES, COL_* moved to user_prefs.db — not env vars.
     (
         "PROVIDER_MODE",
         "Provider routing mode",
@@ -67,18 +39,7 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
         "true = show Test Data (mock fares) on Escape/Detour · false = live only",
         False,
     ),
-    (
-        "DETOUR_MIN_STOP_DAYS",
-        "Detour min stop days",
-        "Shortest multi-day stopover stay (default 3)",
-        False,
-    ),
-    (
-        "DETOUR_MAX_STOP_DAYS",
-        "Detour max stop days",
-        "Longest multi-day stopover stay (default 5)",
-        False,
-    ),
+    # DETOUR_MIN_STOP_DAYS, DETOUR_MAX_STOP_DAYS moved to user_prefs.db.
     (
         "DETOUR_MAX_CANDIDATES",
         "Detour options to price",
@@ -239,8 +200,6 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
 
     # Numeric Detour defaults — never leave blank (Settings UI / pydantic ints)
     _detour_defaults = {
-        "DETOUR_MIN_STOP_DAYS": "3",
-        "DETOUR_MAX_STOP_DAYS": "5",
         "DETOUR_MAX_CANDIDATES": "5",
         "SEARCH_BUDGET_SECONDS": "30",
         "SEARCH_MAX_SECONDS": "42",
@@ -288,18 +247,8 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
             "Defaults",
             [
                 "DEFAULT_CURRENCY",
-                "COL_EXPECTED_DAILY",
-                "COL_TOLERANCE_PCT",
-                "COL_HOTEL",
-                "COL_FOOD",
-                "COL_TRANSIT",
-                "COL_CULTURE",
-                "AVOID_COUNTRIES",
-                "VISITED_COUNTRIES",
                 "PROVIDER_MODE",
                 "TESTING",
-                "DETOUR_MIN_STOP_DAYS",
-                "DETOUR_MAX_STOP_DAYS",
                 "DETOUR_MAX_CANDIDATES",
                 "SEARCH_BUDGET_SECONDS",
                 "SEARCH_MAX_SECONDS",
@@ -418,22 +367,78 @@ def settings_view() -> dict:
             for c in (env.get("VISITED_COUNTRIES") or "").replace(";", ",").split(",")
             if c.strip() and len(c.strip()) == 2
         ][:250],
-        "col_hotel": env.get("COL_HOTEL") or "0",
-        "col_food": env.get("COL_FOOD") or "0",
-        "col_transit": env.get("COL_TRANSIT") or "0",
-        "col_culture": env.get("COL_CULTURE") or "0",
-        # Prefer total; migrate old component-only .env into the single field for display
-        "col_expected_daily": _effective_col_daily(env),
-        "col_tolerance_pct": env.get("COL_TOLERANCE_PCT") or "25",
         "provider_mode": (env.get("PROVIDER_MODE") or "smart").lower(),
         "testing": str(env.get("TESTING") or "false").strip().lower()
         in ("1", "true", "yes", "on"),
-        "detour_min_stop_days": env.get("DETOUR_MIN_STOP_DAYS") or "3",
-        "detour_max_stop_days": env.get("DETOUR_MAX_STOP_DAYS") or "5",
         "detour_max_candidates": env.get("DETOUR_MAX_CANDIDATES") or "5",
         "search_budget_seconds": env.get("SEARCH_BUDGET_SECONDS") or "30",
         "search_max_seconds": env.get("SEARCH_MAX_SECONDS") or "42",
         "affiliate_tag": env.get("AFFILIATE_TAG") or "",
         "affiliate_tag_live": str(env.get("AFFILIATE_TAG_LIVE") or "false").strip().lower()
         in ("1", "true", "yes", "on"),
+        # User prefs loaded from user_prefs.db
+        **_user_prefs_view(),
+    }
+
+
+def _user_prefs_view() -> dict:
+    """UI-safe snapshot of user preferences from user_prefs.db."""
+    try:
+        from yonder.user_prefs import get_all_prefs
+
+        prefs = get_all_prefs()
+    except Exception:
+        from yonder.user_prefs import PREF_DEFAULTS
+
+        prefs = dict(PREF_DEFAULTS)
+
+    def _f(key: str, default: str = "0") -> str:
+        return prefs.get(key) or default
+
+    raw_col = _f("col_expected_daily", "0")
+    # Migrate: if col_expected_daily is 0, sum legacy component fields
+    try:
+        total = float(raw_col)
+    except ValueError:
+        total = 0.0
+    if total <= 0:
+        try:
+            total = sum(
+                float(prefs.get(k) or "0")
+                for k in ("col_hotel", "col_food", "col_transit", "col_culture")
+            )
+        except ValueError:
+            total = 0.0
+
+    if total <= 0:
+        col_display = "0"
+    elif abs(total - round(total)) < 1e-9:
+        col_display = str(int(round(total)))
+    else:
+        col_display = str(round(total, 2))
+
+    visited_list = [
+        c.strip().upper()
+        for c in (prefs.get("visited_countries") or "").replace(";", ",").split(",")
+        if c.strip() and len(c.strip()) == 2
+    ]
+    avoid_list = [
+        c.strip().upper()
+        for c in (prefs.get("avoid_countries") or "").replace(";", ",").split(",")
+        if c.strip()
+    ][:10]
+
+    return {
+        "col_expected_daily": col_display,
+        "col_tolerance_pct": _f("col_tolerance_pct", "25"),
+        "col_hotel": _f("col_hotel", "0"),
+        "col_food": _f("col_food", "0"),
+        "col_transit": _f("col_transit", "0"),
+        "col_culture": _f("col_culture", "0"),
+        "detour_min_stop_days": _f("detour_min_stop_days", "4"),
+        "detour_max_stop_days": _f("detour_max_stop_days", "5"),
+        "visited_countries": prefs.get("visited_countries") or "",
+        "avoid_countries": prefs.get("avoid_countries") or "",
+        "visited_list": visited_list,
+        "avoid_list": avoid_list,
     }
