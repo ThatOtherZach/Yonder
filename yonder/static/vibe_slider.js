@@ -1087,7 +1087,7 @@
       host.style.setProperty("--vibe-now", color);
     }
 
-    function paintGoButtons(color) {
+    function paintGoButtons(color, emoji) {
       var form = host.closest("form");
       var root = form || document;
       root.querySelectorAll(".btn-vibe-go").forEach(function (btn) {
@@ -1095,6 +1095,7 @@
         btn.style.borderColor = color;
         btn.style.color = contrastInk(color);
         btn.style.boxShadow = "0 2px 12px " + color + "55";
+        if (emoji) btn.textContent = "Find " + emoji;
       });
     }
 
@@ -1117,7 +1118,7 @@
       hidden.value = vibe.id;
       hidden.disabled = false;
       applyPageTheme(show);
-      paintGoButtons(show);
+      paintGoButtons(show, vibe.emoji);
       applyMap(show);
       try {
         var detail = { id: vibe.id, label: vibe.label, color: vibe.color };

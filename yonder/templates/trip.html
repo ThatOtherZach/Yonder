@@ -235,14 +235,14 @@
         </div>
         <div class="bp-stub">
           <div>
-            <div class="bp-stub-label">Trip total</div>
+            <div class="bp-stub-label">Total</div>
             <div class="bp-stub-price">
               {% if it.total_price is not none %}
               {{ it.display_price_base or it.display_price or ('~' ~ it.currency ~ ' ' ~ '%.0f'|format(it.total_price)) }}
               {% else %}—{% endif %}
             </div>
           </div>
-          <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }}d stop{% else %}multi-leg{% endif %}</div>
+          <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }} Day Stop{% else %}multi-leg{% endif %}</div>
         </div>
       </article>
     {% else %}

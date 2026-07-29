@@ -798,7 +798,7 @@ async def plan_adventure(
                 err_bits = [x for x in (leg1.error, leg2.error) if x]
                 title = (
                     f"{format_place(req.origin)} ↺ "
-                    f"{format_place(idea.iata, idea.city)} ({stay}d getaway)"
+                    f"{format_place(idea.iata, idea.city)} ({stay} Days)"
                     if getaway
                     else (
                         f"{format_place(req.origin)} → "
@@ -862,7 +862,7 @@ async def plan_adventure(
 
             title = (
                 f"{format_place(req.origin)} ↺ "
-                f"{format_place(idea.iata, idea.city)} ({stay}d getaway)"
+                f"{format_place(idea.iata, idea.city)} ({stay} Days)"
                 if getaway
                 else (
                     f"{format_place(req.origin)} → "

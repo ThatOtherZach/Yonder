@@ -52,7 +52,7 @@ from yonder.settings_store import MANAGED_KEYS, settings_view, write_env
 from yonder.themes import theme_css_vars, theme_for_iata
 from yonder.types import CabinClass, SearchQuery
 from yonder.share import create_share, dump_obj, get_share, qr_png_data_uri, qr_svg_for_url
-from yonder.vibe_theme import resolve_vibe, vibe_theme
+from yonder.vibe_theme import VIBE_EMOJI, resolve_vibe, vibe_theme
 
 
 def _share_pack(request: Request, *, kind: str, title: str, payload: dict) -> dict:
@@ -150,6 +150,7 @@ def _fmt_date(value: object) -> str:
 
 
 templates.env.filters["fmt_date"] = _fmt_date
+templates.env.filters["vibe_emoji"] = lambda vibe_id: VIBE_EMOJI.get((vibe_id or "").strip().lower(), "")
 templates.env.globals["place"] = format_place
 templates.env.globals["route"] = format_route
 templates.env.globals["airline_site_label"] = airline_site_label

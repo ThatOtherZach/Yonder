@@ -154,7 +154,7 @@
       "</span>" +
       '<span class="ymap-drawer-caret" aria-hidden="true">▾</span>' +
       "</button>" +
-      '<button type="button" class="ymap-clear-btn" hidden title="Clear all visited and avoid stamps">Clear map</button>' +
+      '<button type="button" class="ymap-clear-btn" hidden title="Clear all visited and avoid stamps">Reset Map</button>' +
       '<span class="v ymap-save">Ready :)</span>' +
       '<span class="ymap-warn"></span>';
     root.appendChild(meta);
@@ -253,7 +253,7 @@
       '<span class="v ymap-save">Ready :)</span>' +
       '<span class="ymap-warn"></span>' +
       "</div>" +
-      '<button type="button" class="ymap-clear-btn" hidden title="Clear all visited and avoid stamps">Clear map</button>';
+      '<button type="button" class="ymap-clear-btn" hidden title="Clear all visited and avoid stamps">Reset Map</button>';
     footer.appendChild(stats);
     this.visitedCountEl = stats.querySelector(".ymap-visited-count");
     this.avoidCountEl = stats.querySelector(".ymap-avoid-count");
@@ -440,7 +440,7 @@
         "aria-label",
         stamped > 1
           ? "Clear all " + stamped + " map stamps"
-          : "Clear map (need more than one country)"
+          : "Reset Map (need more than one country)"
       );
     }
     this.renderChips();

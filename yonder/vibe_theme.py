@@ -80,6 +80,23 @@ VIBE_PALETTE: list[tuple[str, str, str]] = [
 
 _BY_ID: dict[str, tuple[str, str, str]] = {v[0]: v for v in VIBE_PALETTE}
 
+VIBE_EMOJI: dict[str, str] = {
+    "chaos": "💥", "wild": "🦁", "party": "🎉", "romance": "💕", "neon": "⚡",
+    "night": "🌙", "soul": "🎵", "art": "🎨", "culture": "🏛️", "city": "🏙️",
+    "future": "🚀", "ocean": "🌊", "islands": "🏝️", "beach": "🏖️", "jungle": "🌿",
+    "nature": "🌲", "mountains": "⛰️", "adventure": "🧗", "trains": "🚂", "food": "🍜",
+    "street": "🛵", "desert": "🏜️", "sun": "☀️", "luxury": "💎", "spa": "🧖",
+    "cozy": "🧣", "history": "🏺", "snow": "❄️", "quiet": "🌾", "cheap": "💸",
+    "fire": "🔥", "ember": "🌋", "rose": "🌹", "blush": "🌸", "petal": "🌷",
+    "carnival": "🎡", "festival": "🎪", "dream": "💭", "magic": "✨", "gothic": "🦇",
+    "indie": "🎸", "lavender": "💜", "dusk": "🌆", "twilight": "🌃", "cosmic": "🌌",
+    "retro": "📼", "navy": "🧭", "lakeside": "🚣", "fog": "🌫️", "flow": "🌬️",
+    "sail": "⛵", "reef": "🐡", "dive": "🤿", "tropical": "🦜", "botanic": "🌱",
+    "forest": "🌳", "valley": "🏞️", "meadow": "🌾", "canopy": "🎋", "savanna": "🦒",
+    "wellbeing": "🧘", "golf": "⛳", "golden": "🏅", "dunes": "🐪", "glow": "🌅",
+    "spice": "🌶️", "canyon": "🏜️", "road": "🛣️", "folklore": "🧙",
+}
+
 
 def _clamp(n: float, a: float = 0.0, b: float = 255.0) -> int:
     return int(max(a, min(b, round(n))))
@@ -117,7 +134,7 @@ def lighten(hex_color: str, amount: float = 0.82) -> str:
 
 
 def resolve_vibe(vibe_id: str | None) -> dict[str, str]:
-    """Return id, label, color for a vibe slug (fallback adventure)."""
+    """Return id, label, color, emoji for a vibe slug (fallback adventure)."""
     key = (vibe_id or "").strip().lower()
     if key not in _BY_ID:
         # try label match
@@ -128,7 +145,7 @@ def resolve_vibe(vibe_id: str | None) -> dict[str, str]:
         else:
             key = "adventure"
     vid, label, color = _BY_ID[key]
-    return {"id": vid, "label": label, "color": color}
+    return {"id": vid, "label": label, "color": color, "emoji": VIBE_EMOJI.get(vid, "")}
 
 
 def vibe_theme(vibe_id: str | None) -> dict[str, Any]:

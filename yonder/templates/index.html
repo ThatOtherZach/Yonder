@@ -81,7 +81,7 @@
       max-width: 8.5rem;
       margin: 0;
       padding: 0.65rem 0.85rem;
-      border-radius: 0 12px 0 0;
+      border-radius: 0;
       border: none;
       background: var(--vibe-now, var(--sky-bright));
       color: #fff;
@@ -357,7 +357,7 @@
       min-width: 0;
       font-family: var(--font-display);
       font-size: 1.05rem;
-      font-weight: 600;
+      font-weight: 700;
       letter-spacing: -0.01em;
       line-height: 1.15;
       border: none;
@@ -365,6 +365,7 @@
       padding: 0;
       margin: 0;
       color: #fff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.45), 0 0 8px rgba(0,0,0,0.2);
     }
     .vibe-hue:focus-visible {
       outline: 2px solid var(--sky-bright);
@@ -594,15 +595,15 @@
     }
     .results-toolbar .mode-tabs button[data-filter="clear"] {
       margin-left: auto;
-      color: var(--muted);
+      color: var(--bad, #c0392b);
       font-size: 0.78rem;
       font-weight: 500;
-      opacity: 0.75;
+      opacity: 0.8;
     }
     .results-toolbar .mode-tabs button[data-filter="clear"]:hover {
       opacity: 1;
       background: transparent;
-      color: var(--ink);
+      color: var(--bad, #c0392b);
     }
 
     /* Criteria inline strip */
@@ -663,12 +664,29 @@
     .criteria-stop-range {
       display: flex;
       align-items: center;
-      gap: 0.3rem;
+      gap: 0.35rem;
+    }
+    .stop-input-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.1rem;
+    }
+    .stop-sub-label {
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      opacity: 0.7;
+      line-height: 1;
+    }
+    .criteria-stop-range input[type="number"] {
       font-size: 0.95rem;
       font-weight: 700;
       color: var(--muted);
     }
-    .criteria-stop-range span { font-size: 0.85em; }
+    .criteria-stop-range .stop-sep { font-size: 0.85rem; color: var(--muted); }
     .results-criteria .criteria-hint {
       display: flex;
       flex-direction: column;
@@ -922,7 +940,7 @@
               required
               placeholder="Cheap to Japan in September… or get me out of town, somewhere new, good food…"
             >{{ det_text or esc_text }}</textarea>
-            <button type="submit" id="explore-submit" class="btn-vibe-go">Go</button>
+            <button type="submit" id="explore-submit" class="btn-vibe-go">Find ✈️</button>
           </div>
           <div
             data-vibe-slider
@@ -998,7 +1016,7 @@
         <button type="button" data-filter="clear" role="tab" aria-selected="false" title="Clear results and return to compose">Clear</button>
       </div>
       <div class="results-criteria" id="results-criteria" aria-label="Re-run criteria">
-        <label for="criteria-origin">From
+        <label for="criteria-origin">Depart
           <input id="criteria-origin" type="text" maxlength="3" pattern="[A-Za-z]{3}"
             value="{{ criteria_origin }}" title="Departure airport (currently {{ criteria_origin }})"
             autocomplete="off" spellcheck="false" />
@@ -1009,11 +1027,17 @@
         </span>
         <label {% if not has_detour %}title="Detour only"{% endif %}>Stop days
           <div class="criteria-stop-range">
-            <input id="criteria-min-stop" type="number" min="1" max="21" step="1"
-              value="{{ criteria_min }}" {% if not has_detour %}disabled{% endif %} />
-            <span>–</span>
-            <input id="criteria-max-stop" type="number" min="1" max="30" step="1"
-              value="{{ criteria_max }}" {% if not has_detour %}disabled{% endif %} />
+            <div class="stop-input-group">
+              <span class="stop-sub-label">Min</span>
+              <input id="criteria-min-stop" type="number" min="1" max="21" step="1"
+                value="{{ criteria_min }}" {% if not has_detour %}disabled{% endif %} />
+            </div>
+            <span class="stop-sep">–</span>
+            <div class="stop-input-group">
+              <span class="stop-sub-label">Max</span>
+              <input id="criteria-max-stop" type="number" min="1" max="30" step="1"
+                value="{{ criteria_max }}" {% if not has_detour %}disabled{% endif %} />
+            </div>
           </div>
         </label>
         <span class="criteria-hint">
@@ -1071,10 +1095,9 @@
           >
             <div class="bp-main">
               <div class="bp-top">
-                <span class="bp-label">Boarding pass · escape</span>
+                <span class="bp-label">Direct Escape</span>
                 <span class="bp-badge soft"{% if esc_theme.primary %} style="background:{{ esc_theme.primary }};color:#fff;border:none"{% endif %}>
-                  {% if esc_theme.flag_img %}<img class="flag-img" src="{{ esc_theme.flag_img }}" alt="" width="18" height="12" style="vertical-align:-1px;margin-right:0.25rem;border-radius:2px" loading="lazy" />{% endif %}
-                  {{ esc_theme.label or 'Escape' }}
+                  {% if esc_theme.flag_img %}<img class="flag-img" src="{{ esc_theme.flag_img }}" alt="" width="18" height="12" style="vertical-align:-1px;margin-right:0.25rem;border-radius:2px" loading="lazy" />{% elif esc_vibe %}{{ esc_vibe | vibe_emoji }} {% endif %}{{ esc_theme.label or 'Escape' }}
                 </span>
               </div>
               <div class="bp-route">
@@ -1086,7 +1109,7 @@
               {% if escape_parsed and escape_parsed.intent_summary %}
               <p class="bp-why">{{ escape_parsed.intent_summary }}</p>
               {% elif esc_vibe %}
-              <p class="bp-why">Vibe {{ esc_vibe }} · one traveler · economy</p>
+              <p class="bp-why">{{ esc_vibe | vibe_emoji }} {{ esc_vibe }} vibes · one traveler · economy</p>
               {% endif %}
               <div class="bp-legs">
                 <div class="bp-leg">
@@ -1178,7 +1201,7 @@
             </div>
             <div class="bp-stub">
               <div>
-                <div class="bp-stub-label">Trip total</div>
+                <div class="bp-stub-label">Total</div>
                 <div class="bp-stub-price price-with-sign">
                   <span class="price-amt">{{ o.display_price_base or o.display_price or ('~' ~ o.currency ~ ' ' ~ '%.0f'|format(o.price)) }}</span>{% if o.price_glyph %}<span class="price-sign {{ o.price_tone or 'neutral' }} sign">{{ o.price_glyph }}</span>{% endif %}
                 </div>
@@ -1229,7 +1252,7 @@
           <article class="boarding-pass is-adventure" data-stop-iata="{{ it.stop_iata or '' }}"{% if it.theme_primary %} style="--bp-accent: {{ it.theme_primary }}; border-color: color-mix(in srgb, {{ it.theme_primary }} 35%, var(--line));"{% endif %}>
             <div class="bp-main">
               <div class="bp-top">
-                <span class="bp-label">Boarding pass · {{ it.kind or 'detour' }}</span>
+                <span class="bp-label">Boarding pass · detour</span>
                 <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{{ it.theme_label or '#' ~ loop.index }}</span>
               </div>
               {% if it.legs and it.legs|length >= 1 %}
@@ -1375,7 +1398,7 @@
             </div>
             <div class="bp-stub">
               <div>
-                <div class="bp-stub-label">Trip total</div>
+                <div class="bp-stub-label">Total</div>
                 <div class="bp-stub-price price-with-sign">
                   {% if it.total_price is not none %}
                   <span class="price-amt">{{ it.display_price_base or it.display_price or ('~' ~ it.currency ~ ' ' ~ '%.0f'|format(it.total_price)) }}</span>{% if it.price_glyph %}<span class="price-sign {{ it.price_tone or 'neutral' }} sign">{{ it.price_glyph }}</span>{% endif %}
@@ -1384,7 +1407,7 @@
                   {% endif %}
                 </div>
               </div>
-              <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }}d stop{% else %}multi-leg{% endif %}</div>
+              <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }} Day Stop{% else %}multi-leg{% endif %}</div>
               {% set share = share_detour(request, it, detour_trip_meta) %}
               {% if share and share.qr_src %}
               <div class="bp-stub-qr">
