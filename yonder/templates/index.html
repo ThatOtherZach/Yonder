@@ -1208,7 +1208,7 @@
                 </div>
               </div>
               <div class="bp-stub-meta">{{ o.provider }}</div>
-              {% set share = share_escape(request, escape_result, o) %}
+              {% set share = share_escape(request, escape_result, o, esc_vibe) %}
               {% if share and share.qr_src %}
               <div class="bp-stub-qr">
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">

@@ -139,7 +139,7 @@
         <div class="bp-main">
           <div class="bp-top">
             <span class="bp-label">Boarding pass · signal</span>
-            <span class="bp-badge soft">Escape</span>
+            <span class="bp-badge soft"{% if share_vibe %} style="background:{{ share_vibe.color }};color:#fff;border:none"{% endif %}>{% if share_vibe %}{{ share_vibe.emoji }} {{ share_vibe.label }}{% else %}Escape{% endif %}</span>
           </div>
           <div class="bp-route">
             <span class="bp-iata">{{ q.origin or '—' }}</span>
@@ -180,7 +180,7 @@
         <div class="bp-main">
           <div class="bp-top">
             <span class="bp-label">Boarding pass · {{ it.kind or 'detour' }}</span>
-            <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{{ it.theme_label or 'Detour' }}</span>
+            <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{% if share_vibe %}{{ share_vibe.emoji }} {{ share_vibe.label }}{% else %}{{ it.theme_label or 'Detour' }}{% endif %}</span>
           </div>
           {% if legs|length >= 1 %}
           <div class="bp-route">

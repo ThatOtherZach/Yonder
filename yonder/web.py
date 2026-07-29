@@ -90,15 +90,18 @@ def _share_pack(request: Request, *, kind: str, title: str, payload: dict) -> di
     }
 
 
-def _share_escape(request: Request, result, offer) -> dict | None:
+def _share_escape(request: Request, result, offer, vibe: str | None = None) -> dict | None:
     try:
         q = result.query
         title = f"{q.origin} → {q.destination}"
+        payload = {"query": dump_obj(q), "offer": dump_obj(offer)}
+        if vibe:
+            payload["vibe"] = str(vibe).strip().lower()
         return _share_pack(
             request,
             kind="escape",
             title=title,
-            payload={"query": dump_obj(q), "offer": dump_obj(offer)},
+            payload=payload,
         )
     except Exception:
         return None
@@ -1885,6 +1888,23 @@ def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
                 if brief:
                     place_books[code] = brief
 
+    # Resolve vibe stored in the share payload (if any) for the badge
+    share_vibe: dict | None = None
+    raw_vibe: str | None = None
+    if share.kind == "escape":
+        raw_vibe = p.get("vibe") or (p.get("query") or {}).get("vibe")
+    elif share.kind == "detour":
+        it = p.get("itinerary") or {}
+        raw_vibe = (p.get("trip_meta") or {}).get("vibe") or next(
+            iter(it.get("vibe_tags") or []), None
+        )
+    if raw_vibe:
+        rv = resolve_vibe(str(raw_vibe))
+        key = str(raw_vibe).strip().lower()
+        # Only trust the resolution when it wasn't the "adventure" fallback
+        if rv["id"] == key or rv["label"].lower() == key:
+            share_vibe = rv
+
     return templates.TemplateResponse(
         request,
         "trip.html",
@@ -1898,6 +1918,7 @@ def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
             "qr_svg": qr_svg_for_url(url, scale=5),
             "kind_label": kind_label,
             "place_books": place_books,
+            "share_vibe": share_vibe,
         },
     )
 
