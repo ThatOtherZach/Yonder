@@ -633,7 +633,6 @@ async def explore_run(request: Request) -> HTMLResponse:
     import time as _time
 
     from yonder.intent import decide_shape, mix_candidate_cap
-    from yonder.saved import seed_cities_from_saves, similar_saves
     from yonder.grok import _guess_home_iata
     from datetime import timedelta
 
@@ -684,6 +683,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     chip_source = _s("chip_source")[:32] or "prompt"
     click_id = _s("click_id")[:64]
     seed_iatas_raw = _s("seed_iatas")
+    exclude_iatas_raw = _s("exclude_iatas")
     home_iata = settings.resolve_home_iata()
     origin_override = _s("origin").upper()
     if len(origin_override) == 3 and origin_override.isalpha():
@@ -694,11 +694,18 @@ async def explore_run(request: Request) -> HTMLResponse:
         depart = (date.today() + timedelta(days=45)).isoformat()
 
     from yonder.attribution import log_event, new_click_id
+    from yonder.last_search import load_first
     from yonder.search_cancel import clear as clear_search_cancel
     from yonder.search_cancel import is_cancelled
 
     if not click_id:
         click_id = new_click_id()
+
+    is_refresh = (chip_source or "").lower() in ("refresh",) or _s("refresh") in (
+        "1",
+        "true",
+        "yes",
+    )
 
     def _soft_remaining() -> float:
         """Seconds left in soft aim; after aim, still generous so work can finish."""
@@ -723,6 +730,33 @@ async def explore_run(request: Request) -> HTMLResponse:
                     "why": "from suggestion chip",
                 }
             )
+
+    # Cities already shown this session — Refresh asks for something new
+    exclude_iatas: set[str] = set()
+    save_ban: set[str] = set()
+    for part in exclude_iatas_raw.replace(";", ",").split(","):
+        code = part.strip().upper()
+        if len(code) == 3 and code.isalpha():
+            exclude_iatas.add(code)
+    # On refresh, board seeds are "already seen" — never re-seed them as invent targets
+    if is_refresh:
+        for s in chip_seeds:
+            exclude_iatas.add(s["iata"])
+        chip_seeds = []
+
+    # ★ Saves must NEVER reappear as invent/board destinations (hard ban).
+    # Always init save_ban above first so notes never UnboundLocalError.
+    try:
+        from yonder.saved import saved_destination_iatas
+
+        save_ban = saved_destination_iatas(limit=200) or set()
+    except Exception:  # noqa: BLE001
+        save_ban = set()
+    exclude_iatas |= save_ban
+    chip_seeds = [
+        h for h in chip_seeds if (h.get("iata") or "").upper() not in exclude_iatas
+    ]
+    seed_hints: list[dict] = []  # never invent-seed from Saves
 
     empty_esc = {
         "origin": home_iata,
@@ -763,11 +797,28 @@ async def explore_run(request: Request) -> HTMLResponse:
     notes: list[str] = [
         f"Intent: {decision.shape} ({decision.confidence:.0%}) — {decision.rationale}"
     ]
+    if save_ban:
+        notes.append(
+            "Excluding "
+            + str(len(save_ban))
+            + " ★ Saved city(ies): "
+            + ", ".join(sorted(save_ban)[:12])
+            + ("…" if len(save_ban) > 12 else "")
+        )
+    if is_refresh:
+        if exclude_iatas - save_ban:
+            notes.append(
+                "Refresh: also skipping already-shown "
+                + ", ".join(sorted(exclude_iatas - save_ban)[:10])
+            )
+        else:
+            notes.append("Refresh: rolling new candidates")
 
     escape_override: dict = {"ask": prompt, "form": empty_esc, "result": None}
     detour_override: dict = {"form": det_form, "result": None}
     errors: list[str] = []
     active_mode = "detour" if decision.shape == "detour" else "escape"
+    restored_first = False
 
     # Funnel: chip/prompt → search (affiliate path starts here)
     try:
@@ -784,23 +835,6 @@ async def explore_run(request: Request) -> HTMLResponse:
     except Exception:
         pass
 
-    # Similar past Saves → seed invent (Save-only preference learning)
-    sim = similar_saves(prompt, origin=home_iata, vibe=vibe, limit=6)
-    seed_hints = seed_cities_from_saves(sim)
-    # Chip seeds first (explicit user interest / re-run of a Save)
-    if chip_seeds:
-        seen = {h["iata"] for h in chip_seeds}
-        for h in seed_hints:
-            if h["iata"] not in seen:
-                chip_seeds.append(h)
-                seen.add(h["iata"])
-        seed_hints = chip_seeds
-        notes.append(f"Chip seeds: {', '.join(h['iata'] for h in chip_seeds[:4])}")
-        # Strong seeds → price fewer cold invent candidates (faster path)
-        max_cand = min(max_cand, 3)
-    elif seed_hints:
-        notes.append(f"Seeded from {len(seed_hints)} prior Save(s)")
-
     # Attribution bag stamped onto trip_meta for ★ Save + outbound links
     attr_meta = {
         "click_id": click_id,
@@ -810,7 +844,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     }
 
     async def _do_escape() -> None:
-        nonlocal escape_override, active_mode
+        nonlocal escape_override, active_mode, restored_first
         if search_id and is_cancelled(search_id):
             errors.append("Escape skipped — user hit Skip")
             return
@@ -823,8 +857,15 @@ async def explore_run(request: Request) -> HTMLResponse:
             return
         ask_for_grok = f"{prompt}\n\nTrip vibe: {vibe}."
         async with GrokClient(settings) as grok:
+            ask_esc = ask_for_grok
+            if is_refresh and exclude_iatas:
+                ask_esc = (
+                    f"{ask_for_grok}\n\n"
+                    f"Do NOT use these destinations (already shown): "
+                    f"{', '.join(sorted(exclude_iatas))}. Pick a different city."
+                )
             trip = await grok.parse_natural_language(
-                ask_for_grok,
+                ask_esc,
                 default_currency=currency,
                 default_origin=home_iata,
                 avoid_countries=avoid,
@@ -849,6 +890,40 @@ async def explore_run(request: Request) -> HTMLResponse:
                     f"Origin corrected {trip.origin}→{home_iata} (home wins over chip text)"
                 )
                 trip = trip.model_copy(update={"origin": home_iata.upper()})
+            # Refresh: if Grok reused a seen destination, try seed pool once
+            dest_u = (trip.destination or "").upper()
+            if is_refresh and dest_u in exclude_iatas:
+                from yonder.adventure import seed_ideas as _seed_esc
+                from yonder.adventure import AdventureRequest as _AR
+
+                try:
+                    pool = _seed_esc(
+                        _AR(
+                            origin=home_iata,
+                            destination=home_iata,
+                            depart_date=date.fromisoformat(depart),
+                            currency=currency,
+                            max_candidates=max_cand,
+                            vibe=vibe,
+                            prompt=prompt,
+                            avoid_countries=avoid,
+                            visited_countries=visited,
+                            trip_kind="getaway",
+                        ),
+                        exclude_iatas=exclude_iatas,
+                        shuffle=True,
+                    )
+                    if pool:
+                        trip = trip.model_copy(
+                            update={
+                                "destination": pool[0].iata.upper(),
+                                "assumptions": list(trip.assumptions or [])
+                                + [f"Refresh rolled destination away from {dest_u}"],
+                            }
+                        )
+                        notes.append(f"Refresh: new Escape dest {pool[0].iata}")
+                except Exception:
+                    pass
             trip = trip.model_copy(
                 update={"currency": currency, "adults": 1, "cabin": CabinClass.ECONOMY}
             )
@@ -928,6 +1003,35 @@ async def explore_run(request: Request) -> HTMLResponse:
                 "destination": query.destination,
             },
         }
+        # Escape refresh got nothing useful → first set
+        if is_refresh and (not result or not result.offers):
+            first_snap = load_first("escape")
+            if first_snap and first_snap.get("result"):
+                from yonder.last_search import hydrate_escape
+
+                restored = hydrate_escape(first_snap)
+                if restored.get("result") and restored["result"].offers:
+                    notes.append("No new Escape fare — back to first set")
+                    nonlocal restored_first
+                    restored_first = True
+                    escape_override = {
+                        "ask": restored.get("ask") or prompt,
+                        "form": restored.get("form") or form,
+                        "result": restored["result"],
+                        "parsed": restored.get("parsed"),
+                        "analysis": restored.get("analysis"),
+                        "dest_theme": restored.get("dest_theme"),
+                        "place_book": restored.get("place_book"),
+                        "attribution": attr_meta,
+                        "trip_meta": {
+                            **attr_meta,
+                            "prompt": prompt,
+                            "vibe": vibe,
+                        },
+                    }
+                    active_mode = "escape"
+                    return
+
         save_last(
             "escape",
             {
@@ -940,11 +1044,12 @@ async def explore_run(request: Request) -> HTMLResponse:
                 "place_book": place_book,
                 "attribution": attr_meta,
             },
+            pin_first=not is_refresh,
         )
         active_mode = "escape"
 
     async def _do_detour() -> None:
-        nonlocal detour_override, active_mode
+        nonlocal detour_override, active_mode, restored_first
         if search_id and is_cancelled(search_id):
             errors.append("Detour skipped — user hit Skip")
             return
@@ -972,26 +1077,9 @@ async def explore_run(request: Request) -> HTMLResponse:
                 trip_kind="getaway",
                 include_direct=False,
             )
-            local_ideas = seed_ideas(local_req)
-            # Prefer prior Save cities when seeds empty or for boosting
-            if seed_hints:
-                from yonder.adventure import StopoverIdea
-
-                for h in seed_hints:
-                    code = h["iata"]
-                    if any(i.iata == code for i in local_ideas):
-                        continue
-                    local_ideas.insert(
-                        0,
-                        StopoverIdea(
-                            iata=code,
-                            city=h.get("city") or code,
-                            stay_days=max(min_stop, min(max_stop, 4)),
-                            why=h.get("why") or "from prior Save",
-                            vibe_tags=[vibe] if vibe else [],
-                            source="save_seed",
-                        ),
-                    )
+            local_ideas = seed_ideas(
+                local_req, exclude_iatas=exclude_iatas, shuffle=is_refresh
+            )
             if not local_ideas:
                 msg = "No unvisited getaway cities left after passport map."
                 if reason:
@@ -999,18 +1087,20 @@ async def explore_run(request: Request) -> HTMLResponse:
                 raise ValueError(msg)
             return local_req, local_ideas[:max_cand]
 
-        # Fast path: chip/Save/refresh seeds already strong → skip cold Grok invent
-        use_fast_seeds = bool(chip_seeds) and chip_source in (
-            "save",
-            "chip",
-            "template",
-            "dataset",
-            "refresh",
+        # Dataset chip seeds only (never prior Saves). Refresh always invents fresh.
+        use_fast_seeds = (
+            bool(chip_seeds)
+            and not is_refresh
+            and chip_source in (
+                "chip",
+                "template",
+                "dataset",
+            )
         )
         if use_fast_seeds and chip_seeds:
             try:
                 req, ideas = _local_getaway_fallback("chip seeds")
-                notes.append("Fast path: invent from Save/chip seeds")
+                notes.append("Fast path: invent from chip seeds")
             except Exception as exc:  # noqa: BLE001
                 req, ideas = None, []
                 errors.append(f"Chip seed fallback: {exc}")
@@ -1020,12 +1110,18 @@ async def explore_run(request: Request) -> HTMLResponse:
             try:
                 # Soft invent cap; past aim still allow a full parse attempt
                 invent_timeout = min(22.0, max(8.0, remaining * 0.5 if remaining < 100 else 18.0))
-                if seed_hints:
-                    invent_timeout = min(invent_timeout, 12.0)
+                invent_prompt = prompt
+                if exclude_iatas:
+                    invent_prompt = (
+                        f"{prompt}\n\n"
+                        f"IMPORTANT: Do NOT propose these airports "
+                        f"(already saved or shown): "
+                        f"{', '.join(sorted(exclude_iatas)[:24])}. Pick different cities."
+                    )
                 async with GrokClient(settings) as grok:
                     req, ideas = await asyncio.wait_for(
                         grok.translate_adventure(
-                            prompt=prompt,
+                            prompt=invent_prompt,
                             form={
                                 "origin": home_iata,
                                 "destination": "",
@@ -1066,20 +1162,32 @@ async def explore_run(request: Request) -> HTMLResponse:
                     }
                 )
                 if not ideas:
-                    ideas = seed_ideas(req)
+                    ideas = seed_ideas(
+                        req, exclude_iatas=exclude_iatas, shuffle=is_refresh
+                    )
             except Exception as exc:  # noqa: BLE001
                 req, ideas = _local_getaway_fallback(str(exc)[:120])
         elif not use_fast_seeds:
             req, ideas = _local_getaway_fallback("Grok offline")
 
-        # Always prepend Save/chip seeds (flywheel)
-        if req is not None and seed_hints:
+        # Drop excluded cities (Saves + already-shown + refresh)
+        if req is not None and exclude_iatas and ideas:
+            ideas = [i for i in ideas if (i.iata or "").upper() not in exclude_iatas]
+            if not ideas:
+                ideas = seed_ideas(
+                    req, exclude_iatas=exclude_iatas, shuffle=True
+                )
+
+        # Optional non-Save chip seeds only (dataset pattern, not ★ Saves)
+        if req is not None and chip_seeds and not is_refresh:
             from yonder.adventure import StopoverIdea
 
             if not ideas:
-                ideas = seed_ideas(req)
-            for h in reversed(seed_hints):
+                ideas = seed_ideas(req, exclude_iatas=exclude_iatas)
+            for h in reversed(chip_seeds):
                 code = h["iata"]
+                if code in exclude_iatas:
+                    continue
                 if any(i.iata == code for i in ideas):
                     continue
                 ideas.insert(
@@ -1088,11 +1196,15 @@ async def explore_run(request: Request) -> HTMLResponse:
                         iata=code,
                         city=h.get("city") or code,
                         stay_days=max(min_stop, min(max_stop, 4)),
-                        why=h.get("why") or "from prior Save",
+                        why=h.get("why") or "from suggestion chip",
                         vibe_tags=[vibe] if vibe else [],
-                        source=h.get("kind") or "save_seed",
+                        source=h.get("kind") or "chip_seed",
                     ),
                 )
+        elif req is not None and not ideas:
+            ideas = seed_ideas(
+                req, exclude_iatas=exclude_iatas, shuffle=is_refresh
+            )
 
         assert req is not None
         if search_id and is_cancelled(search_id) and not ideas:
@@ -1105,7 +1217,31 @@ async def explore_run(request: Request) -> HTMLResponse:
             settings=settings,
             include_mock=mock,
             cancel_id=search_id or None,
+            exclude_iatas=exclude_iatas,
         )
+        # Refresh found nothing new → restore first result set
+        if is_refresh and not (result.itineraries or []):
+            first_snap = load_first("detour")
+            if first_snap and first_snap.get("result"):
+                from yonder.last_search import hydrate_detour
+
+                restored = hydrate_detour(first_snap)
+                if restored.get("result") and restored["result"].itineraries:
+                    result = restored["result"]
+                    place_books_restored = restored.get("place_books") or {}
+                    notes.append("No new cities left — back to first set")
+                    restored_first = True
+                    detour_override = {
+                        "form": restored.get("form") or det_form,
+                        "result": result,
+                        "trip_meta": restored.get("trip_meta") or {},
+                        "place_books": place_books_restored,
+                        "attribution": attr_meta,
+                    }
+                    if decision.shape != "mix":
+                        active_mode = "detour"
+                    return
+
         # Stamp vibe on itineraries
         vt = vibe_theme(vibe)
         try:
@@ -1187,6 +1323,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 "trip_meta": trip_meta,
                 "place_books": place_books,
             },
+            pin_first=not is_refresh,
         )
         if decision.shape != "mix":
             active_mode = "detour"
@@ -1866,6 +2003,48 @@ async def api_search_cancel(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "missing search_id"}, status_code=400)
     ok = request_cancel(sid)
     return JSONResponse({"ok": ok, "search_id": sid})
+
+
+@app.post("/api/funnel")
+async def api_funnel(request: Request) -> JSONResponse:
+    """Lightweight engagement events (e.g. field-note expand) — not Save-level learning."""
+    from yonder.attribution import log_event
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "invalid JSON"}, status_code=400)
+    event = str(body.get("event") or "").strip()[:64]
+    if not event:
+        return JSONResponse({"ok": False, "error": "missing event"}, status_code=400)
+    # Allowlist so random clients can't spam arbitrary event names forever
+    allowed = {
+        "field_note_expand",
+        "chip_click",
+        "criteria_refresh",
+        "outbound_intent",
+    }
+    if event not in allowed:
+        return JSONResponse({"ok": False, "error": "unknown event"}, status_code=400)
+    try:
+        eid = log_event(
+            event,
+            click_id=str(body.get("click_id") or "") or None,
+            chip_id=str(body.get("chip_id") or "") or None,
+            chip_source=str(body.get("chip_source") or "") or None,
+            vibe=str(body.get("vibe") or "") or None,
+            origin=str(body.get("origin") or "") or None,
+            search_id=str(body.get("search_id") or "") or None,
+            saved_id=str(body.get("saved_id") or "") or None,
+            dest=str(body.get("dest") or "")[:8] or None,
+            url=str(body.get("url") or "")[:500] or None,
+            meta={k: body[k] for k in ("meta",) if k in body},
+        )
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)[:120]}, status_code=500)
+    return JSONResponse({"ok": True, "id": eid})
 
 
 @app.get("/api/place-brief")

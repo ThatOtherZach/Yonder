@@ -495,7 +495,7 @@ def similar_saves(
 
 
 def seed_cities_from_saves(saves: list[SavedItinerary]) -> list[dict[str, str]]:
-    """Unique stop/destination hints for invent seeding."""
+    """Unique stop/destination hints for invent seeding (legacy — prefer exclude)."""
     out: list[dict[str, str]] = []
     seen: set[str] = set()
     for s in saves:
@@ -511,6 +511,24 @@ def seed_cities_from_saves(saves: list[SavedItinerary]) -> list[dict[str, str]]:
                 "why": f"from prior Save: {(s.title or '')[:80]}",
             }
         )
+    return out
+
+
+def saved_destination_iatas(*, limit: int = 200) -> set[str]:
+    """IATA codes the user has already ★ Saved — never re-offer on invent/board.
+
+    Prefer stop_iata (getaway X / stopover city). Only use destination when it
+    is not the same as origin (so getaway home=YVR is not banned as a hub).
+    """
+    out: set[str] = set()
+    for s in list_saved(limit=limit):
+        stop = (s.stop_iata or "").strip().upper()
+        dest = (s.destination or "").strip().upper()
+        origin = (s.origin or "").strip().upper()
+        if len(stop) == 3 and stop.isalpha():
+            out.add(stop)
+        if len(dest) == 3 and dest.isalpha() and dest != origin:
+            out.add(dest)
     return out
 
 

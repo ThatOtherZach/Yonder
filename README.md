@@ -22,7 +22,7 @@ Not a booking engine. Not for commercial resale. Scan free/cheap pricing APIs in
 
 ### Architecture in one line
 
-**Grok translates intent → structured package(s) → providers price without Grok → UI shows boarding passes. Soft aim ~30s for fares; Skip after ~42s returns partials. If you wait (or stream after Skip), field notes load with culture/food/vibe prose tinted by your prompt + vibe. COL lives inside the field-note card. ★ Save is the durable quality signal (seeds invent + ranks pills). Book links go through `/out` for affiliate attribution.**
+**Grok translates intent → structured package(s) → providers price without Grok → UI shows boarding passes. Soft aim ~30s for fares; Skip after ~42s returns partials. If you wait (or stream after Skip), field notes load with culture/food/vibe prose tinted by your prompt + vibe. COL lives inside the field-note card (behind **More** with culture/food/heads-up). ★ Save is the durable quality signal: it **re-ranks** suggestion pills and **hard-bans** those destinations from invent/board (never re-offers a city you already ★ Saved). Book links go through `/out` for affiliate attribution.**
 
 Optional COL enrichment: Grok estimates a lean day bag (hotel + food + transit + culture) per stop; scored against your **Settings** cost/day + over/under % band. Leave cost/day at **0** to show COL without under/over ranking (budget omitted from the Grok prompt).
 
@@ -150,7 +150,8 @@ Default **origin** when you don’t name a city (Settings → **Home airport**):
 | `POST /api/saved` | ★ Save Escape or Detour (only durable preference write) |
 | `POST /api/results-clear` | Clear last Escape + Detour snapshots (UI **Clear**) |
 | `POST /api/search-cancel` | Progress **Skip** — wrap up with partials |
-| `GET  /api/suggest` | Save-based ranking for suggestion pills |
+| `POST /api/funnel` | Light engagement events (e.g. field-note expand) |
+| `GET  /api/suggest` | Save-based ranking for suggestion pills (patterns only) |
 | `GET  /api/place-brief` | Stream one field note (tone from prompt + vibe) |
 | `GET  /out` | Affiliate-friendly book-link redirect + funnel log |
 
@@ -158,23 +159,27 @@ Default **origin** when you don’t name a city (Settings → **Home airport**):
 
 - One card: **textarea** + vibe-colored **Go** → `/explore`  
 - Under the text: **rainbow hue slider** + vibe name; **Depart** optional  
-- **Dataset-completion pills** under the vibe (getaway / stopover / timed / map-aware / budget…); ★ Saves re-rank patterns + soft dest seeds  
+- **Dataset-completion pills** under the vibe (getaway / stopover / timed / map-aware / budget…); ★ Saves only **re-rank which patterns** surface — they do **not** inject prior Save cities as chips or invent seeds  
 - Vibe **required**; random on cold load; locked after a live search  
 - Intent gate: pure Escape / pure Detour / **mix** (Escape first, then Detour with fewer candidates)  
 - Results: **All | Escape | Detour | Clear**  
-- **Criteria bar** on results: **From** (IATA), **min/max stop days**, **Refresh** (fast reprice with board seeds)  
+- **Criteria bar** on results: **From** (IATA), **min/max stop days**, **Refresh**  
+- **Refresh**: rolls **new** cities, excluding board destinations already shown this session; if nothing new prices, falls back to the **first result set** after Clear (pinned via `last_search`)  
 - After search: auto-scroll to results  
-- **Escape**: one cheapest fare; **★ Save** writes `kind=escape`  
+- **Escape** and **Detour** both use the same **boarding-pass** card chrome  
+- **Escape**: one cheapest fare; chip-driven “From JFK…” text never overrides **home** when the pill was dataset/template  
 - **Detour**: one package per city (≤5; ≤3 when mixing)  
-- Prior ★ Saves seed invent when prompts look similar (keyword + origin + vibe)  
+- **★ Saved destinations are hard-banned** from invent, seeds, and the final board (`saved_destination_iatas` → `exclude_iatas` through `seed_ideas` / `plan_adventure`)  
 - **Soft aim ~30s** (`SEARCH_BUDGET_SECONDS`); **Skip** after ~42s (`SEARCH_MAX_SECONDS`) for partials — without Skip, search can run longer  
 
 ### Timing & field notes
 
 - Fares first; **Skip** = cash out early with what’s priced  
-- **Field notes** (culture / food / vibe / optional fast-fact chips + closer): same structure always; prose tinted by **user prompt + trip vibe**  
+- **Field notes** keep a fixed structure; prose tinted by **user prompt + trip vibe**  
+- **Always visible**: title, subtitle, fast-fact chips, vibe line, closer  
+- **Behind More** (collapsed by default): culture, food, heads-up, and **COL** (ground spend, vs home, your budget, all-in)  
+- Expand is a light funnel signal only (`POST /api/funnel`) — not a preference write like ★ Save  
 - If notes weren’t ready on first paint (e.g. after Skip), slots show *Writing field note…* and stream via `/api/place-brief`  
-- **COL** sits **inside** the field-note card (ground spend, vs home, your budget, all-in) — same grid design as culture/food  
 
 ### Passport map
 
@@ -189,7 +194,15 @@ Default **origin** when you don’t name a city (Settings → **Home airport**):
 
 - **Your budget** (Settings): one **cost / day** + **over/under %** (no city default; **0** = ranking off)  
 - **Destination COL**: Grok/cache/fallback lean day bag per stop  
-- Shown in the field-note card; under / within / over vs Settings band  
+- Shown in the field-note card under **More**; under / within / over vs Settings band  
+
+### ★ Saves vs invent
+
+| Signal | What it does | What it does **not** do |
+|--------|----------------|-------------------------|
+| ★ **Save** | Durable preference; re-ranks pill **patterns**; hard-bans those IATAs on future boards | Re-show the same Save city as a new gamble |
+| **Pills** | Complete missing prompt slots (shape, map, timing, budget tone) from vibe + map | Replay “Save · city” chips |
+| **Refresh** | New candidates minus already-shown + Saves; else restore first set | Keep cycling the same five cities |
 
 ### Share / QR
 
@@ -236,11 +249,23 @@ POST /api/travel-map      # JSON { "visited": ["CA","JP"], "avoid": ["RU"] }
 POST /api/saved           # ★ Save itinerary (durable preference)
 POST /api/results-clear   # wipe last Escape + Detour snapshots
 POST /api/search-cancel   # { "search_id": "…" } — Skip
+POST /api/funnel          # light engagement (e.g. field-note expand)
 GET  /api/suggest?vibe=food&origin=YVR
 GET  /api/place-brief?iata=DPS&prompt=…&vibe=food
 GET  /out?u=https://…&click_id=…   # book redirect + attribution
 GET  /t/{kind}/{slug}/{id}         # shared trip page
 ```
+
+`POST /explore` also accepts (from the results criteria bar / Refresh):
+
+| Field | Role |
+|-------|------|
+| `origin` | Override home for this run |
+| `min_stop_days` / `max_stop_days` | Detour stay window |
+| `exclude_iatas` | Comma IATAs already on the board (Refresh) |
+| `refresh` / `chip_source=refresh` | New candidates; pin-first fallback if empty |
+| `search_id` | Correlates progress **Skip** cancel |
+| `seed_iatas` | Dataset-pill seeds only (never prior Saves) |
 
 ## Architecture
 
@@ -248,28 +273,28 @@ GET  /t/{kind}/{slug}/{id}         # shared trip page
 yonder/
   types.py              # SearchQuery, FlightOffer (normalized)
   engine.py             # parallel fan-out + merge; one cheapest Escape fare
-  adventure.py          # Detour planning; one package per destination city
+  adventure.py          # Detour planning; seed_ideas/plan_adventure exclude_iatas
   intent.py             # Escape / Detour / mix decision gate
   encyclopedia.py       # field notes (tone-aware cache + stream API)
   grok.py               # NL parse, invent, place_brief, COL prompts
   daily_costs.py        # COL compare vs Settings bag / cache
   countries.py          # IATA city/country labels, home resolution helpers
   share.py              # shareable trips + QR PNG (segno)
-  last_search.py        # last Escape + Detour snapshots (+ clear)
+  last_search.py        # last + first-pinned Escape/Detour snapshots (+ clear)
   search_cancel.py      # Skip cancel flags
   attribution.py        # funnel events + outbound URL stamping
-  saved.py              # ★ Saves + ranking_from_saves for pills
-  web.py                # FastAPI UI + JSON
+  saved.py              # ★ Saves, ranking_from_saves, saved_destination_iatas ban
+  web.py                # FastAPI UI + JSON; explore hard-ban + refresh fallback
   cli.py                # Typer CLI (`yonder`)
   static/
     country_map.js      # passport map; stamp order = home
     country_map.css
-    vibe_slider.js      # vibe control + dataset-completion pills
+    vibe_slider.js      # vibe control + dataset-completion pills (no Save city seeds)
     progress.js         # progress overlay + Skip + story phase hints
     iso_numeric_to_a2.json
   templates/
     base.html           # lounge chrome, boarding-pass + field-note CSS
-    index.html          # compose, pills, results toolbar, field notes
+    index.html          # compose, pills, results, collapsible field notes
     trip.html           # standalone share page
     saved.html
     settings.html
@@ -295,12 +320,12 @@ Add a new source by dropping a file in `providers/` and registering it in `provi
 | File | Purpose |
 |------|---------|
 | `price_history.db` | Fare signal history / deal labels |
-| `saved_itineraries.db` | ★ Saves (preference learning + pill ranking) |
+| `saved_itineraries.db` | ★ Saves (pill ranking + hard dest ban list) |
 | `shared_trips.db` | QR / shareable trip payloads |
 | `daily_costs_cache.db` | Cost-of-stay cache |
 | `place_book_cache.db` | Field-note cache (place + tone fingerprint) |
 | `attribution.db` | Funnel / outbound click events (local product metrics) |
-| `.last_search.json` | Last Escape + Detour result panels |
+| `.last_search.json` | Last Escape + Detour panels **and** first-set pins for Refresh fallback |
 | `.env` | Your keys (never commit) |
 
 ## Dependencies

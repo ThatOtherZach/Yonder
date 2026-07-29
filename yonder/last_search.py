@@ -53,16 +53,28 @@ def _write_store(data: dict[str, Any]) -> None:
     tmp.replace(STORE_PATH)
 
 
-def save_last(mode: str, payload: dict[str, Any]) -> None:
-    """Save a successful search snapshot for mode ('escape' | 'detour')."""
+def save_last(
+    mode: str,
+    payload: dict[str, Any],
+    *,
+    pin_first: bool = False,
+) -> None:
+    """Save a successful search snapshot for mode ('escape' | 'detour').
+
+    pin_first: also store as the session's first result set for this mode
+    (used when Refresh finds nothing new and should roll back).
+    """
     m = (mode or "").strip().lower()
     if m not in MODES:
         return
     snap = {k: _dump(v) for k, v in payload.items()}
     snap["saved_at"] = _now()
+    first_key = f"first_{m}"
     with _LOCK:
         store = _read_store()
         store[m] = snap
+        if pin_first and first_key not in store:
+            store[first_key] = snap
         try:
             _write_store(store)
         except Exception:
@@ -79,8 +91,19 @@ def load_last(mode: str) -> dict[str, Any] | None:
     return raw if isinstance(raw, dict) else None
 
 
+def load_first(mode: str) -> dict[str, Any] | None:
+    """Original result set for this mode (first successful search after Clear)."""
+    m = (mode or "").strip().lower()
+    if m not in MODES:
+        return None
+    with _LOCK:
+        store = _read_store()
+    raw = store.get(f"first_{m}")
+    return raw if isinstance(raw, dict) else None
+
+
 def clear_last(mode: str | None = None) -> None:
-    """Drop last-search snapshot(s). mode=None clears both Escape and Detour."""
+    """Drop last-search snapshot(s) and first-set pins. mode=None clears all."""
     with _LOCK:
         if mode is None:
             try:
@@ -93,15 +116,15 @@ def clear_last(mode: str | None = None) -> None:
         if m not in MODES:
             return
         store = _read_store()
-        if m in store:
-            store.pop(m, None)
-            try:
-                if store:
-                    _write_store(store)
-                elif STORE_PATH.exists():
-                    STORE_PATH.unlink()
-            except Exception:
-                pass
+        store.pop(m, None)
+        store.pop(f"first_{m}", None)
+        try:
+            if store:
+                _write_store(store)
+            elif STORE_PATH.exists():
+                STORE_PATH.unlink()
+        except Exception:
+            pass
 
 
 def hydrate_escape(snap: dict[str, Any]) -> dict[str, Any]:

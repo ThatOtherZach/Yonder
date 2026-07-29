@@ -446,14 +446,9 @@
       (ctx.avoid_names && ctx.avoid_names.length);
     var rank = ranking || {};
     var pw = rank.pattern_weights || {};
-    var seeds = Array.isArray(rank.dest_seeds) ? rank.dest_seeds : [];
-    // Soft invent seeds only (not shown as "Save · city")
-    var seedCodes = seeds
-      .slice(0, 3)
-      .map(function (s) {
-        return s && s.iata;
-      })
-      .filter(Boolean);
+    // Do not seed invent from prior Save destinations (pollutes the board).
+    // Ranking still uses Saves for which *pattern* pills float higher.
+    var seedCodes = [];
 
     function baseScore(pattern, slotsFilled) {
       var s = 1.0 + (slotsFilled || 0) * 0.15;

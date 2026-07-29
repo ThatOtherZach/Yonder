@@ -453,7 +453,14 @@ def _is_getaway(req: AdventureRequest) -> bool:
     return req.origin.upper() == req.destination.upper()
 
 
-def seed_ideas(req: AdventureRequest) -> list[StopoverIdea]:
+def seed_ideas(
+    req: AdventureRequest,
+    *,
+    exclude_iatas: set[str] | None = None,
+    shuffle: bool = False,
+) -> list[StopoverIdea]:
+    import random
+
     origin = req.origin.upper()
     dest = req.destination.upper()
     avoid = normalize_avoid_list(req.avoid_countries)
@@ -461,6 +468,7 @@ def seed_ideas(req: AdventureRequest) -> list[StopoverIdea]:
         c.upper()
         for c in normalize_country_list(req.visited_countries or [], max_n=250)
     }
+    ban = {c.upper() for c in (exclude_iatas or set()) if c}
     getaway = _is_getaway(req)
     stay = max(
         req.min_stop_days,
@@ -469,6 +477,8 @@ def seed_ideas(req: AdventureRequest) -> list[StopoverIdea]:
     ideas: list[StopoverIdea] = []
     for row in SEED_STOPOVERS:
         code = row["iata"]
+        if code in ban:
+            continue
         if code == origin or (not getaway and code == dest):
             continue
         if getaway and code == dest and dest == origin:
@@ -518,7 +528,11 @@ def seed_ideas(req: AdventureRequest) -> list[StopoverIdea]:
             s += 2
         return s
 
-    if want_food or want_cheap or want_safe or (
+    if shuffle:
+        random.shuffle(ideas)
+        # Light vibe boost after shuffle so we still prefer matching tags
+        ideas = sorted(ideas, key=lambda i: (_score(i), random.random()), reverse=True)
+    elif want_food or want_cheap or want_safe or (
         vibe and vibe not in ("adventure", "any", "chaos", "")
     ):
         ideas = sorted(ideas, key=_score, reverse=True)
@@ -532,11 +546,13 @@ async def plan_adventure(
     settings: Settings | None = None,
     include_mock: bool = False,
     cancel_id: str | None = None,
+    exclude_iatas: set[str] | None = None,
 ) -> AdventureResult:
     settings = settings or get_settings()
     trip_kind = (req.trip_kind or "detour").lower().strip()
     if req.origin.upper() == req.destination.upper():
         trip_kind = "getaway"
+    ban = {c.upper() for c in (exclude_iatas or set()) if c and len(str(c)) == 3}
     req = req.model_copy(
         update={
             "origin": req.origin.upper(),
@@ -551,7 +567,11 @@ async def plan_adventure(
             "include_direct": False if trip_kind == "getaway" else req.include_direct,
         }
     )
+    if ban:
+        ideas = [i for i in ideas if (i.iata or "").upper() not in ban]
     ideas = filter_ideas(ideas, req)
+    if ban:
+        ideas = [i for i in ideas if (i.iata or "").upper() not in ban]
     # Extra filter for getaway: drop visited countries even if Grok suggested them
     if _is_getaway(req) and req.visited_countries:
         visited = {c.upper() for c in req.visited_countries}
@@ -900,6 +920,13 @@ async def plan_adventure(
             errors.append(f"Past soft aim (~{aim:.0f}s) — still finished pricing")
 
     complete = [i for i in itineraries if i.total_price is not None]
+    # Never surface banned stops (prior Saves / already shown)
+    if ban:
+        complete = [
+            i
+            for i in complete
+            if (i.stop_iata or "").upper() not in ban
+        ]
     # Rank cheapest → most expensive; one package per destination city
     complete.sort(key=lambda i: (i.total_price or 1e12, -i.adventure_score))
     top: list[AdventureItinerary] = []
@@ -911,6 +938,8 @@ async def plan_adventure(
             or it.title.strip().lower()
         )
         if not city_key or city_key in seen_cities:
+            continue
+        if ban and (it.stop_iata or "").upper() in ban:
             continue
         seen_cities.add(city_key)
         top.append(it)

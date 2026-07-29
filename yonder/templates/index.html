@@ -661,6 +661,56 @@
       0%, 100% { opacity: 0.55; }
       50% { opacity: 1; }
     }
+    .pb-vibe-line {
+      margin: 0.55rem 0 0;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      color: var(--ink);
+    }
+    .pb-vibe-line .pb-vibe-label {
+      display: block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+    .pb-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-top: 0.75rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--paper-2, #f4f1ea);
+      color: var(--ink);
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      cursor: pointer;
+    }
+    .pb-toggle:hover {
+      border-color: color-mix(in srgb, var(--vibe-now, var(--sky-bright)) 45%, var(--line));
+    }
+    .pb-toggle .pb-chevron {
+      display: inline-block;
+      transition: transform 0.15s ease;
+      font-size: 0.75em;
+    }
+    .field-note-slot.is-expanded .pb-toggle .pb-chevron {
+      transform: rotate(180deg);
+    }
+    .pb-details[hidden] {
+      display: none !important;
+    }
+    .pb-details {
+      margin-top: 0.75rem;
+      padding-top: 0.65rem;
+      border-top: 1px dashed var(--line);
+    }
 {% endblock %}
 {% block body %}
   {% set mode = mode or 'escape' %}
@@ -718,6 +768,8 @@
         <input type="hidden" name="origin" id="explore-origin" value="" />
         <input type="hidden" name="min_stop_days" id="explore-min-stop" value="" />
         <input type="hidden" name="max_stop_days" id="explore-max-stop" value="" />
+        <input type="hidden" name="exclude_iatas" id="explore-exclude-iatas" value="" />
+        <input type="hidden" name="refresh" id="explore-refresh" value="" />
 
         <div class="compose-field has-vibe">
           <div class="compose-field-top" id="depart-strip">
@@ -787,7 +839,7 @@
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
     <script src="/static/country_map.js?v=16"></script>
-    <script src="/static/vibe_slider.js?v=17"></script>
+    <script src="/static/vibe_slider.js?v=18"></script>
 
     {% if error %}
       <div class="error" id="server-error" data-clear-with-results>{{ error }}</div>
@@ -840,64 +892,22 @@
     </div>
     {% endif %}
 
-    {# ——— Escape results ——— #}
+    {# ——— Escape results (card layout matches Detour boarding passes) ——— #}
     <div class="results-panel" id="escape-results" data-result-kind="escape">
-    {% if has_escape %}
-    <h2 class="results-kind-label" style="font-size:1.05rem;margin:0 0 0.65rem">Straight shots · Escape</h2>
-    {% endif %}
-    {% if has_escape and escape_result and escape_result.query is defined %}
-    <div
-      class="place-book field-note-slot{% if not escape_place_book %} is-loading{% endif %}"
-      id="escape-field-note"
-      data-iata="{{ escape_result.query.destination }}"
-      data-country=""
-      data-city=""
-      data-role="destination"
-    >
-      {% if escape_place_book %}
-      <span class="pb-tag">Field note</span>
-      <h3>{{ escape_place_book.title }}</h3>
-      {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
-      {% if escape_place_book.facts %}
-      <div class="pb-fast-facts" aria-label="Fast facts">
-        {% for f in escape_place_book.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
-      </div>
-      {% endif %}
-      <div class="pb-grid">
-        {% if escape_place_book.culture %}
-        <div class="pb-block"><h4>Culture</h4><p>{{ escape_place_book.culture }}</p></div>
-        {% endif %}
-        {% if escape_place_book.food %}
-        <div class="pb-block"><h4>Food</h4><p>{{ escape_place_book.food }}</p></div>
-        {% endif %}
-        {% if escape_place_book.vibe %}
-        <div class="pb-block"><h4>Vibe</h4><p>{{ escape_place_book.vibe }}</p></div>
-        {% endif %}
-        {% if escape_place_book.caution %}
-        <div class="pb-block"><h4>Heads-up</h4><p>{{ escape_place_book.caution }}</p></div>
-        {% endif %}
-      </div>
-      {% if escape_place_book.era_note %}<p class="pb-closer">{{ escape_place_book.era_note }}</p>{% endif %}
-      {% else %}
-      <span class="pb-tag">Field note</span>
-      <p class="pb-loading-msg">Writing field note…</p>
-      {% endif %}
-    </div>
-    {% endif %}
-
     {% if escape_result %}
-      <div class="card">
-        {% if escape_dest_theme %}
-        <div class="results-banner">
-          {% if escape_dest_theme.flag_img %}
-            <img class="flag-img" src="{{ escape_dest_theme.flag_img }}" alt="" width="32" height="24" loading="lazy" />
+      <div class="card" id="escape-results-card">
+        <h2>Straight shots · Escape</h2>
+        <p class="sub">
+          {% if escape_dest_theme %}
+            {{ escape_dest_theme.label }}
+            · {{ route(escape_result.query.origin, escape_result.query.destination) }}
+          {% else %}
+            {{ route(escape_result.query.origin, escape_result.query.destination) }}
           {% endif %}
-          <div>
-            <strong>{{ escape_dest_theme.label }}</strong>
-            <span class="muted"> · {{ route(escape_result.query.origin, escape_result.query.destination) }}</span>
-          </div>
-        </div>
-        {% endif %}
+          · one cheapest fare signal
+          · <a href="/saved">Saved</a>
+        </p>
+        {% if escape_result.results %}
         <div class="pills" style="margin-top:0;margin-bottom:0.85rem">
           {% for r in escape_result.results %}
             {% if r.ok %}
@@ -907,14 +917,23 @@
             {% endif %}
           {% endfor %}
         </div>
+        {% endif %}
         {% if escape_result.offers %}
         <div class="pass-stack">
           {% for o in escape_result.offers[:1] %}
-          <article class="boarding-pass">
+          {% set esc_theme = escape_dest_theme or {} %}
+          <article
+            class="boarding-pass is-adventure"
+            data-dest-iata="{{ escape_result.query.destination }}"
+            {% if esc_theme.primary %} style="--bp-accent: {{ esc_theme.primary }}; border-color: color-mix(in srgb, {{ esc_theme.primary }} 35%, var(--line));"{% endif %}
+          >
             <div class="bp-main">
               <div class="bp-top">
-                <span class="bp-label">Boarding pass · signal</span>
-                <span class="bp-badge soft">#{{ loop.index }}</span>
+                <span class="bp-label">Boarding pass · escape</span>
+                <span class="bp-badge soft"{% if esc_theme.primary %} style="background:{{ esc_theme.primary }};color:#fff;border:none"{% endif %}>
+                  {% if esc_theme.flag_img %}<img class="flag-img" src="{{ esc_theme.flag_img }}" alt="" width="18" height="12" style="vertical-align:-1px;margin-right:0.25rem;border-radius:2px" loading="lazy" />{% endif %}
+                  {{ esc_theme.label or 'Escape' }}
+                </span>
               </div>
               <div class="bp-route">
                 <span class="bp-iata">{{ escape_result.query.origin }}</span>
@@ -922,28 +941,87 @@
                 <span class="bp-iata">{{ escape_result.query.destination }}</span>
               </div>
               <p class="bp-cities">{{ route(escape_result.query.origin, escape_result.query.destination) }}</p>
-              <div class="bp-fields">
-                <div class="bp-field">
-                  <span class="k">Depart</span>
-                  <span class="v">{{ escape_result.query.depart_date }}</span>
-                </div>
-                <div class="bp-field">
-                  <span class="k">Airline</span>
-                  <span class="v">{{ o.airlines|join(', ') if o.airlines else '—' }}</span>
-                </div>
-                <div class="bp-field">
-                  <span class="k">Stops</span>
-                  <span class="v">{{ o.stops_out }}</span>
-                </div>
-                <div class="bp-field">
-                  <span class="k">Duration</span>
-                  <span class="v">
-                    {% if o.duration_out_minutes is not none %}
-                      {{ (o.duration_out_minutes // 60) }}h{{ '%02d'|format(o.duration_out_minutes % 60) }}m
-                    {% else %}—{% endif %}
-                  </span>
+              {% if escape_parsed and escape_parsed.intent_summary %}
+              <p class="bp-why">{{ escape_parsed.intent_summary }}</p>
+              {% elif esc_vibe %}
+              <p class="bp-why">Vibe {{ esc_vibe }} · one traveler · economy</p>
+              {% endif %}
+              <div class="bp-legs">
+                <div class="bp-leg">
+                  <div>
+                    <div class="codes">{{ place(escape_result.query.origin) }} → {{ place(escape_result.query.destination) }}</div>
+                    <div class="meta">
+                      {{ escape_result.query.depart_date }}
+                      {% if escape_result.query.return_date %} · return {{ escape_result.query.return_date }}{% endif %}
+                      · {{ o.airlines|join(', ') if o.airlines else '—' }}
+                      · {{ o.stops_out }} stop{{ 's' if o.stops_out != 1 else '' }}
+                      {% if o.duration_out_minutes is not none %}
+                        · {{ (o.duration_out_minutes // 60) }}h{{ '%02d'|format(o.duration_out_minutes % 60) }}m
+                      {% endif %}
+                      {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
+                        · <a href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
+                      {% endif %}
+                      {% if o.google_flights_url %}
+                        · <a href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Google ↗</a>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="fare">
+                    {{ o.display_price_base or o.display_price or ('~' ~ o.currency ~ ' ' ~ '%.0f'|format(o.price)) }}
+                  </div>
                 </div>
               </div>
+
+              {# Field note — same collapsible pattern as Detour #}
+              <div
+                class="place-book field-note-slot{% if not escape_place_book %} is-loading{% endif %}"
+                id="escape-field-note"
+                style="margin-top:0.75rem;box-shadow:none"
+                data-iata="{{ escape_result.query.destination }}"
+                data-country="{{ esc_theme.country or '' }}"
+                data-city=""
+                data-role="destination"
+              >
+                <div class="pb-story-body{% if not escape_place_book %} is-loading{% endif %}">
+                  {% if escape_place_book %}
+                  <span class="pb-tag">Field note</span>
+                  <h3 style="font-size:1.15rem">{{ escape_place_book.title }}</h3>
+                  {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
+                  {% if escape_place_book.facts %}
+                  <div class="pb-fast-facts" aria-label="Fast facts">
+                    {% for f in escape_place_book.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
+                  </div>
+                  {% endif %}
+                  {% if escape_place_book.vibe %}
+                  <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ escape_place_book.vibe }}</div>
+                  {% endif %}
+                  {% if escape_place_book.era_note %}<p class="pb-closer">{{ escape_place_book.era_note }}</p>{% endif %}
+                  {% else %}
+                  <span class="pb-tag">Field note</span>
+                  <p class="pb-loading-msg">Writing field note…</p>
+                  {% endif %}
+                </div>
+                {% if escape_place_book and (escape_place_book.culture or escape_place_book.food or escape_place_book.caution) %}
+                <button type="button" class="pb-toggle" aria-expanded="false">
+                  <span class="pb-toggle-label">More · culture, food &amp; budget</span>
+                  <span class="pb-chevron" aria-hidden="true">▾</span>
+                </button>
+                <div class="pb-details" hidden>
+                  <div class="pb-grid pb-mesh-grid">
+                    {% if escape_place_book.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ escape_place_book.culture }}</p></div>{% endif %}
+                    {% if escape_place_book.food %}<div class="pb-block"><h4>Food</h4><p>{{ escape_place_book.food }}</p></div>{% endif %}
+                    {% if escape_place_book.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ escape_place_book.caution }}</p></div>{% endif %}
+                  </div>
+                </div>
+                {% elif not escape_place_book %}
+                <button type="button" class="pb-toggle" aria-expanded="false" hidden>
+                  <span class="pb-toggle-label">More · culture, food &amp; budget</span>
+                  <span class="pb-chevron" aria-hidden="true">▾</span>
+                </button>
+                <div class="pb-details" hidden></div>
+                {% endif %}
+              </div>
+
               <script type="application/json" id="escape-offer-json-{{ loop.index0 }}">{{ o.model_dump_json() | safe }}</script>
               <script type="application/json" id="escape-query-json">{{ escape_result.query.model_dump_json() | safe }}</script>
               <div class="bp-actions">
@@ -958,7 +1036,7 @@
             </div>
             <div class="bp-stub">
               <div>
-                <div class="bp-stub-label">Approx fare</div>
+                <div class="bp-stub-label">Trip total</div>
                 <div class="bp-stub-price price-with-sign">
                   <span class="price-amt">{{ o.display_price_base or o.display_price or ('~' ~ o.currency ~ ' ' ~ '%.0f'|format(o.price)) }}</span>{% if o.price_glyph %}<span class="price-sign {{ o.price_tone or 'neutral' }} sign">{{ o.price_glyph }}</span>{% endif %}
                 </div>
@@ -1057,6 +1135,7 @@
               {% set has_col = it.ground_display or it.ground_compare_line or it.ground_budget_line or it.all_in_display %}
               {% if it.stop_iata or has_col %}
                 {% set pb = (detour_place_books or {}).get(it.stop_iata) if detour_place_books is defined and it.stop_iata else none %}
+                {% set has_more = (pb and (pb.culture or pb.food or pb.caution)) or has_col %}
                 <div
                   class="place-book field-note-slot{% if it.stop_iata and not pb %} is-loading{% endif %}"
                   style="margin-top:0.75rem;box-shadow:none"
@@ -1080,50 +1159,59 @@
                       {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
                     </div>
                     {% endif %}
+                    {% if pb.vibe %}
+                    <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe }}</div>
+                    {% endif %}
+                    {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
                     {% elif it.stop_iata %}
                     <span class="pb-tag">Field note</span>
                     <p class="pb-loading-msg">Writing field note…</p>
                     {% else %}
                     <span class="pb-tag">On the ground</span>
-                    <h3 style="font-size:1.15rem">Cost of living</h3>
+                    <h3 style="font-size:1.15rem">{{ it.stop_city or it.stop_iata or 'Stop' }}</h3>
                     {% endif %}
                   </div>
-                  <div class="pb-grid pb-mesh-grid">
-                    {% if pb %}
-                      {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
-                      {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
-                      {% if pb.vibe %}<div class="pb-block"><h4>Vibe</h4><p>{{ pb.vibe }}</p></div>{% endif %}
-                      {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
-                    {% endif %}
-                    {% if has_col %}
-                    <hr class="pb-col-divider" />
-                    {% if it.ground_display %}
-                    <div class="pb-block pb-col">
-                      <h4>Ground spend</h4>
-                      <p>{{ it.ground_display }}</p>
+                  {% if has_more or (it.stop_iata and not pb) %}
+                  <button type="button" class="pb-toggle" aria-expanded="false"{% if it.stop_iata and not pb and not has_col %} hidden{% endif %}>
+                    <span class="pb-toggle-label">More · culture, food &amp; budget</span>
+                    <span class="pb-chevron" aria-hidden="true">▾</span>
+                  </button>
+                  <div class="pb-details" hidden>
+                    <div class="pb-grid pb-mesh-grid">
+                      {% if pb %}
+                        {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
+                        {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
+                        {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
+                      {% endif %}
+                      {% if has_col %}
+                      {% if it.ground_display %}
+                      <div class="pb-block pb-col">
+                        <h4>Ground spend</h4>
+                        <p>{{ it.ground_display }}</p>
+                      </div>
+                      {% endif %}
+                      {% if it.ground_compare_line %}
+                      <div class="pb-block pb-col">
+                        <h4>Vs home</h4>
+                        <p>{{ it.ground_compare_line }}</p>
+                      </div>
+                      {% endif %}
+                      {% if it.ground_budget_line %}
+                      <div class="pb-block pb-col{% if it.ground_budget_status == 'under' %} col-under{% elif it.ground_budget_status == 'over' %} col-over{% endif %}">
+                        <h4>Your budget</h4>
+                        <p>{{ it.ground_budget_line }}</p>
+                      </div>
+                      {% endif %}
+                      {% if it.all_in_display %}
+                      <div class="pb-block pb-col pb-col-allin">
+                        <h4>All-in estimate</h4>
+                        <p>{{ it.all_in_display }}</p>
+                      </div>
+                      {% endif %}
+                      {% endif %}
                     </div>
-                    {% endif %}
-                    {% if it.ground_compare_line %}
-                    <div class="pb-block pb-col">
-                      <h4>Vs home</h4>
-                      <p>{{ it.ground_compare_line }}</p>
-                    </div>
-                    {% endif %}
-                    {% if it.ground_budget_line %}
-                    <div class="pb-block pb-col{% if it.ground_budget_status == 'under' %} col-under{% elif it.ground_budget_status == 'over' %} col-over{% endif %}">
-                      <h4>Your budget</h4>
-                      <p>{{ it.ground_budget_line }}</p>
-                    </div>
-                    {% endif %}
-                    {% if it.all_in_display %}
-                    <div class="pb-block pb-col pb-col-allin">
-                      <h4>All-in estimate</h4>
-                      <p>{{ it.all_in_display }}</p>
-                    </div>
-                    {% endif %}
-                    {% endif %}
                   </div>
-                  {% if pb and pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
+                  {% endif %}
                 </div>
               {% endif %}
               <script type="application/json" id="it-json-{{ loop.index0 }}">{{ it.model_dump_json() | safe }}</script>
@@ -1282,7 +1370,8 @@
         document.querySelectorAll("[data-clear-with-results]").forEach(function (el) {
           if (el.parentNode) el.parentNode.removeChild(el);
         });
-        // Forget last search so refresh doesn't bring the board back
+        // Forget last search + first-set pin; reset session "seen" cities
+        clearSeenIatas();
         try {
           fetch("/api/results-clear", {
             method: "POST",
@@ -1316,7 +1405,7 @@
         applyResultFilter("all");
       }
 
-      function collectResultSeedIatas() {
+      function collectBoardIatas() {
         var seeds = [];
         var seen = {};
         function add(code) {
@@ -1328,15 +1417,58 @@
         document.querySelectorAll("#detour-results [data-stop-iata], #detour-results .boarding-pass").forEach(function (el) {
           add(el.getAttribute("data-stop-iata") || el.getAttribute("data-iata"));
         });
-        // Fallback: parse saved itinerary JSON blobs
+        document.querySelectorAll("#escape-results [data-dest-iata]").forEach(function (el) {
+          add(el.getAttribute("data-dest-iata"));
+        });
         document.querySelectorAll("[id^='it-json-']").forEach(function (el) {
           try {
             var it = JSON.parse(el.textContent || "{}");
             add(it.stop_iata || it.destination);
-            if (it.legs && it.legs[0]) add(it.legs[0].destination || (it.legs[0].offer && it.legs[0].offer.destination));
           } catch (e) { /* ignore */ }
         });
+        try {
+          var qEl = document.getElementById("escape-query-json");
+          if (qEl) {
+            var q = JSON.parse(qEl.textContent || "{}");
+            add(q.destination);
+          }
+        } catch (e2) { /* ignore */ }
         return seeds;
+      }
+
+      var SEEN_KEY = "yonder_seen_iatas";
+
+      function getSeenIatas() {
+        try {
+          var raw = sessionStorage.getItem(SEEN_KEY);
+          var arr = raw ? JSON.parse(raw) : [];
+          return Array.isArray(arr) ? arr : [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function rememberSeenIatas(codes) {
+        var s = getSeenIatas();
+        var map = {};
+        s.forEach(function (c) { map[c] = true; });
+        (codes || []).forEach(function (c) {
+          c = String(c || "").toUpperCase();
+          if (c.length === 3 && !map[c]) {
+            map[c] = true;
+            s.push(c);
+          }
+        });
+        try {
+          sessionStorage.setItem(SEEN_KEY, JSON.stringify(s));
+        } catch (e) { /* ignore */ }
+        return s;
+      }
+
+      function clearSeenIatas() {
+        try {
+          sessionStorage.removeItem(SEEN_KEY);
+        } catch (e) { /* ignore */ }
       }
 
       function bootCriteriaRefresh() {
@@ -1348,7 +1480,12 @@
         var hidOrigin = document.getElementById("explore-origin");
         var hidMin = document.getElementById("explore-min-stop");
         var hidMax = document.getElementById("explore-max-stop");
+        var hidExclude = document.getElementById("explore-exclude-iatas");
+        var hidRefresh = document.getElementById("explore-refresh");
         var forceEl = document.getElementById("explore-force");
+
+        // Track cities currently on the board as "seen"
+        rememberSeenIatas(collectBoardIatas());
 
         if (originEl) {
           originEl.addEventListener("input", function () {
@@ -1363,7 +1500,6 @@
           }
           var text = (ta && ta.value || "").trim();
           if (!text) {
-            // Recover prompt from last board if textarea empty
             var meta = pageAttribution().tripMeta || {};
             text = (meta.prompt || meta.trip_prompt || "").trim();
             if (text && ta) ta.value = text;
@@ -1396,12 +1532,15 @@
             else forceEl.value = "";
           }
 
-          // Fast reprice: seed from cities already on the board
-          var seeds = collectResultSeedIatas();
+          // Exclude everything already shown; ask server for NEW cities
+          var board = collectBoardIatas();
+          var exclude = rememberSeenIatas(board);
+          if (hidExclude) hidExclude.value = exclude.join(",");
+          if (hidRefresh) hidRefresh.value = "1";
           setAttribution({
-            chip_id: "refresh:criteria",
+            chip_id: "refresh:new",
             chip_source: "refresh",
-            seed_iatas: seeds,
+            seed_iatas: [],
             force_new_click: true,
           });
           if (clickIdEl) clickIdEl.value = newClickId();
@@ -1410,16 +1549,11 @@
           btn.disabled = true;
           var prev = btn.textContent;
           btn.textContent = "Refreshing…";
-          if (typeof submitBtn !== "undefined" && submitBtn) {
-            submitBtn.disabled = true;
-          } else if (window.__exploreSubmitBtn) {
-            window.__exploreSubmitBtn.disabled = true;
-          }
           var goBtn = document.getElementById("explore-submit");
           if (goBtn) goBtn.disabled = true;
           YonderProgress.submitWithProgress(form, {
             mode: "adventure",
-            title: "Refreshing with new criteria…",
+            title: "Finding new cities…",
           }).finally(function () {
             btn.disabled = false;
             btn.textContent = prev;
@@ -1427,6 +1561,7 @@
               goBtn.disabled = false;
               goBtn.textContent = "Go";
             }
+            if (hidRefresh) hidRefresh.value = "";
           });
         });
       }
@@ -1735,12 +1870,13 @@
         };
       }
 
+      function hasColData(col) {
+        return !!(col && (col.ground || col.compare || col.budget || col.allin));
+      }
+
       function renderColBlocksHtml(col) {
-        if (!col) return "";
-        var has =
-          col.ground || col.compare || col.budget || col.allin;
-        if (!has) return "";
-        var h = '<hr class="pb-col-divider" />';
+        if (!hasColData(col)) return "";
+        var h = "";
         if (col.ground) {
           h +=
             '<div class="pb-block pb-col"><h4>Ground spend</h4><p>' +
@@ -1794,39 +1930,105 @@
             });
             h += "</div>";
           }
-        } else if (col && (col.ground || col.compare || col.budget || col.allin)) {
+          if (brief.vibe) {
+            h +=
+              '<div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>' +
+              escapeHtml(brief.vibe) +
+              "</div>";
+          }
+          if (brief.era_note)
+            h += '<p class="pb-closer">' + escapeHtml(brief.era_note) + "</p>";
+        } else if (hasColData(col)) {
           h += '<span class="pb-tag">On the ground</span>';
-          h += '<h3 style="font-size:1.15rem">Cost of living</h3>';
+          h += '<h3 style="font-size:1.15rem">Stop details</h3>';
         }
         h += "</div>";
-        h += '<div class="pb-grid pb-mesh-grid">';
+
+        var detailInner = "";
         if (brief) {
           if (brief.culture)
-            h +=
+            detailInner +=
               '<div class="pb-block"><h4>Culture</h4><p>' +
               escapeHtml(brief.culture) +
               "</p></div>";
           if (brief.food)
-            h +=
+            detailInner +=
               '<div class="pb-block"><h4>Food</h4><p>' +
               escapeHtml(brief.food) +
               "</p></div>";
-          if (brief.vibe)
-            h +=
-              '<div class="pb-block"><h4>Vibe</h4><p>' +
-              escapeHtml(brief.vibe) +
-              "</p></div>";
           if (brief.caution)
-            h +=
+            detailInner +=
               '<div class="pb-block"><h4>Heads-up</h4><p>' +
               escapeHtml(brief.caution) +
               "</p></div>";
         }
-        h += renderColBlocksHtml(col);
-        h += "</div>";
-        if (brief && brief.era_note)
-          h += '<p class="pb-closer">' + escapeHtml(brief.era_note) + "</p>";
+        detailInner += renderColBlocksHtml(col);
+        if (detailInner) {
+          h +=
+            '<button type="button" class="pb-toggle" aria-expanded="false">' +
+            '<span class="pb-toggle-label">More · culture, food &amp; budget</span>' +
+            '<span class="pb-chevron" aria-hidden="true">▾</span></button>';
+          h +=
+            '<div class="pb-details" hidden><div class="pb-grid pb-mesh-grid">' +
+            detailInner +
+            "</div></div>";
+        }
         return h;
+      }
+
+      function logFieldNoteExpand(slot) {
+        if (!slot || slot.getAttribute("data-expand-logged") === "1") return;
+        slot.setAttribute("data-expand-logged", "1");
+        var attr = pageAttribution();
+        var body = {
+          event: "field_note_expand",
+          click_id: attr.click_id || null,
+          chip_id: attr.chip_id || null,
+          chip_source: attr.chip_source || null,
+          search_id: attr.search_id || null,
+          dest: (slot.getAttribute("data-iata") || "").toUpperCase() || null,
+          vibe: (attr.tripMeta && attr.tripMeta.vibe) || (vibeInput && vibeInput.value) || null,
+        };
+        try {
+          fetch("/api/funnel", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify(body),
+          }).catch(function () {});
+        } catch (e) { /* ignore */ }
+      }
+
+      function bindFieldNoteToggles(root) {
+        var scope = root || document;
+        scope.querySelectorAll(".field-note-slot .pb-toggle").forEach(function (btn) {
+          if (btn._pbBound) return;
+          btn._pbBound = true;
+          btn.addEventListener("click", function () {
+            var slot = btn.closest(".field-note-slot");
+            if (!slot) return;
+            var details = slot.querySelector(".pb-details");
+            if (!details) return;
+            var open = details.hasAttribute("hidden");
+            if (open) {
+              details.removeAttribute("hidden");
+              slot.classList.add("is-expanded");
+              btn.setAttribute("aria-expanded", "true");
+              var lab = btn.querySelector(".pb-toggle-label");
+              if (lab) lab.textContent = "Less details";
+              logFieldNoteExpand(slot);
+            } else {
+              details.setAttribute("hidden", "");
+              slot.classList.remove("is-expanded");
+              btn.setAttribute("aria-expanded", "false");
+              var lab2 = btn.querySelector(".pb-toggle-label");
+              if (lab2) lab2.textContent = "More · culture, food & budget";
+            }
+          });
+        });
       }
 
       function escapeHtml(s) {
@@ -1881,29 +2083,21 @@
               if (data && data.ok && data.brief) {
                 data.brief._compact = slot.id !== "escape-field-note";
                 slot.innerHTML = renderFieldNoteHtml(data.brief, col);
+              } else if (hasColData(col)) {
+                slot.innerHTML = renderFieldNoteHtml(null, col);
               } else {
-                var fail = renderFieldNoteHtml(
-                  {
-                    title: iata,
-                    subtitle: "Note unavailable",
-                    culture: "",
-                    food: "",
-                    vibe: "",
-                    _compact: true,
-                  },
-                  col
-                );
-                // Prefer COL-only if we have it
-                if (col && (col.ground || col.budget || col.allin)) {
-                  slot.innerHTML = renderFieldNoteHtml(null, col);
-                } else {
-                  slot.innerHTML = fail;
-                }
+                slot.innerHTML =
+                  '<span class="pb-tag">Field note</span>' +
+                  '<p class="muted" style="margin:0.35rem 0 0">Couldn’t load a note for ' +
+                  escapeHtml(iata) +
+                  ".</p>";
               }
+              bindFieldNoteToggles(slot);
             })
             .catch(function () {
               slot.classList.remove("is-loading");
               slot.innerHTML = renderFieldNoteHtml(null, col);
+              bindFieldNoteToggles(slot);
             })
             .finally(function () {
               setTimeout(next, 120);
@@ -1918,6 +2112,7 @@
         bootOutboundLinks();
         bootResultsFilter();
         bootCriteriaRefresh();
+        bindFieldNoteToggles(document);
         bootFieldNotes();
         document.title = "Yonder";
         // After a live search, land on the board of results
