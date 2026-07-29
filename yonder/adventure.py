@@ -515,26 +515,77 @@ def seed_ideas(
         w in prompt_l for w in ("safe", "security", "secure", "personal security")
     )
 
+    # Map each vibe id to the seed vibe_tags that signal a good match.
+    # Each overlap point scores +2 so tag-rich cities naturally rise above
+    # cities that only match incidentally.
+    _VIBE_TAG_MAP: dict[str, frozenset[str]] = {
+        "chaos":     frozenset({"gritty", "raw", "vivid", "neon", "electric", "hazy"}),
+        "wild":      frozenset({"nature", "rugged", "feral", "untamed", "mountains", "crisp", "stormy", "raw"}),
+        "party":     frozenset({"neon", "electric", "vivid", "warmnights"}),
+        "romance":   frozenset({"velvet", "goldenhour", "tender", "serene", "luminous", "nostalgic"}),
+        "whimsical": frozenset({"whimsical", "neon", "luminous", "tender"}),
+        "neon":      frozenset({"neon", "electric"}),
+        "night":     frozenset({"neon", "electric", "moody", "velvet"}),
+        "soul":      frozenset({"velvet", "nostalgic", "moody", "ancient"}),
+        "art":       frozenset({"art", "culture"}),
+        "culture":   frozenset({"culture", "art", "ancient", "sacred", "nostalgic"}),
+        "city":      frozenset({"city"}),
+        "future":    frozenset({"modern", "electric", "neon", "luminous"}),
+        "ocean":     frozenset({"coast", "seasalt", "beach"}),
+        "islands":   frozenset({"beach", "seasalt", "serene", "coast"}),
+        "beach":     frozenset({"beach", "seasalt", "relax", "warmnights", "coast"}),
+        "jungle":    frozenset({"lush", "hazy"}),
+        "nature":    frozenset({"nature", "lush", "serene", "rugged", "crisp"}),
+        "mountains": frozenset({"mountains", "alps", "rugged", "crisp", "north"}),
+        "adventure": frozenset({"nature", "rugged", "feral", "untamed", "mountains", "raw"}),
+        "trains":    frozenset({"trains"}),
+        "food":      frozenset({"food"}),
+        "street":    frozenset({"food", "gritty", "vivid", "cheap"}),
+        "desert":    frozenset({"hazy", "sun", "ancient"}),
+        "sun":       frozenset({"sun", "goldenhour", "warmnights", "seasalt"}),
+        "luxury":    frozenset({"opulent", "luminous", "velvet"}),
+        "nostalgic": frozenset({"nostalgic", "ancient", "sleepy", "tender", "moody"}),
+        "spa":       frozenset({"serene", "tender", "sleepy", "crisp", "nature"}),
+        "cozy":      frozenset({"tender", "sleepy", "moody", "serene"}),
+        "history":   frozenset({"ancient", "sacred", "nostalgic", "culture"}),
+        "snow":      frozenset({"crisp", "north", "stormy", "mountains"}),
+        "quiet":     frozenset({"serene", "sleepy", "tender", "crisp"}),
+        "gritty":    frozenset({"gritty", "raw", "hazy"}),
+        "cheap":     frozenset({"cheap"}),
+        "fire":      frozenset({"electric", "vivid", "neon", "warmnights"}),
+        "velvet":    frozenset({"velvet", "moody", "nostalgic", "goldenhour"}),
+        "ember":     frozenset({"goldenhour", "warmnights", "tender", "lush"}),
+        "rose":      frozenset({"tender", "goldenhour", "serene", "whimsical"}),
+        "blush":     frozenset({"tender", "sleepy", "serene", "whimsical"}),
+    }
+
+    _related_tags = _VIBE_TAG_MAP.get(vibe, frozenset())
+
     def _score(idea: StopoverIdea) -> int:
         tags = {t.lower() for t in (idea.vibe_tags or [])}
         s = 0
-        if want_food and ("food" in tags or vibe in tags):
+        # Count how many of the idea's tags overlap with the vibe's related tags;
+        # each matching tag is worth 2 points so tag-rich cities naturally lead.
+        if _related_tags:
+            s += len(tags & _related_tags) * 2
+        elif vibe and vibe in tags:
+            # Vibe id not in the map but present verbatim as a tag → small boost
+            s += 2
+        # Additional boosts for explicit prompt/vibe intent signals
+        if want_food and "food" in tags:
             s += 3
         if want_cheap and "cheap" in tags:
             s += 3
         if want_safe and "safe" in tags:
             s += 2
-        if vibe and vibe not in ("adventure", "any", "chaos", "") and vibe in tags:
-            s += 2
         return s
 
+    # Always sort by vibe-tag overlap so best-matched cities lead even when
+    # the AI is offline and seeds are the only result.
     if shuffle:
         random.shuffle(ideas)
-        # Light vibe boost after shuffle so we still prefer matching tags
         ideas = sorted(ideas, key=lambda i: (_score(i), random.random()), reverse=True)
-    elif want_food or want_cheap or want_safe or (
-        vibe and vibe not in ("adventure", "any", "chaos", "")
-    ):
+    else:
         ideas = sorted(ideas, key=_score, reverse=True)
     return ideas[: req.max_candidates]
 
