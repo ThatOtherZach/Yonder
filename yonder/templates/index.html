@@ -1679,8 +1679,7 @@
         setTimeout(renderSuggestions, 80);
         setTimeout(renderSuggestions, 400);
 
-        form.addEventListener("submit", function (e) {
-          e.preventDefault();
+        function doSubmit() {
           clearError();
           var text = (ta.value || "").trim();
           if (!text) {
@@ -1699,7 +1698,6 @@
           // Free-type path: still get a click_id for affiliate funnel
           if (chipSourceEl && !chipSourceEl.value) chipSourceEl.value = "prompt";
           if (chipSourceEl && chipSourceEl.value === "prompt" && chipIdEl && !chipIdEl.value) {
-            // User typed — clear chip seeds so we don't reuse a prior chip
             if (!seedIatasEl || !seedIatasEl.value) {
               setAttribution({ chip_id: "", chip_source: "prompt", seed_iatas: [] });
             }
@@ -1712,11 +1710,62 @@
           YonderProgress.submitWithProgress(form, {
             mode: "adventure",
             title: "Exploring options…",
-            // expectedMs / skipAfterMs from Settings via FS_TRAVEL (default 30s / 42s)
           }).finally(function () {
             btn.disabled = false;
             btn.textContent = "Go";
           });
+        }
+
+        var originEl2 = document.getElementById("criteria-origin");
+        var hidOrigin2 = document.getElementById("explore-origin");
+
+        function resolveOriginThenSubmit() {
+          // Already have an origin — skip GPS entirely
+          var existing = (originEl2 && originEl2.value || "").trim();
+          if (existing) { doSubmit(); return; }
+          // Already asked this session — skip
+          if (sessionStorage.getItem("yonder_gps_asked")) { doSubmit(); return; }
+          // No geolocation support — skip
+          if (!navigator.geolocation) { doSubmit(); return; }
+
+          sessionStorage.setItem("yonder_gps_asked", "1");
+          btn.disabled = true;
+          btn.textContent = "Locating…";
+
+          navigator.geolocation.getCurrentPosition(
+            function (pos) {
+              var lat = pos.coords.latitude;
+              var lon = pos.coords.longitude;
+              fetch("/api/nearest-airport?lat=" + lat + "&lon=" + lon, {
+                credentials: "same-origin",
+              })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                  if (data && data.ok && data.iata) {
+                    if (originEl2) originEl2.value = data.iata;
+                    if (hidOrigin2) hidOrigin2.value = data.iata;
+                  }
+                })
+                .catch(function () {})
+                .finally(function () {
+                  btn.disabled = false;
+                  btn.textContent = "Go";
+                  doSubmit();
+                });
+            },
+            function () {
+              // Denied or error — proceed without origin
+              btn.disabled = false;
+              btn.textContent = "Go";
+              doSubmit();
+            },
+            { timeout: 6000, maximumAge: 300000 }
+          );
+        }
+
+        form.addEventListener("submit", function (e) {
+          e.preventDefault();
+          resolveOriginThenSubmit();
         });
       }
 

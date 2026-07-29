@@ -2116,6 +2116,36 @@ async def api_place_brief(
     return JSONResponse({"ok": True, "iata": code, "brief": brief.to_dict()})
 
 
+@app.get("/api/nearest-airport")
+async def api_nearest_airport(lat: float, lon: float) -> JSONResponse:
+    """Return the IATA code of the nearest scheduled-service airport to lat/lon."""
+    import json
+    import math
+
+    data_path = _PKG / "static" / "airports_ll.json"
+    try:
+        airports: dict[str, list[float]] = json.loads(data_path.read_text())
+    except Exception:
+        return JSONResponse({"ok": False, "error": "airport data unavailable"}, status_code=503)
+
+    def _haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        r = 6371.0
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+        return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    best_iata, best_dist = "", float("inf")
+    for iata, (alat, alon) in airports.items():
+        d = _haversine(lat, lon, alat, alon)
+        if d < best_dist:
+            best_dist, best_iata = d, iata
+
+    if not best_iata:
+        return JSONResponse({"ok": False, "error": "no airport found"}, status_code=404)
+    return JSONResponse({"ok": True, "iata": best_iata, "distance_km": round(best_dist, 1)})
+
+
 @app.get("/api/suggest")
 async def api_suggest(
     vibe: str = Query(""),
