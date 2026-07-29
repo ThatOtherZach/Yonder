@@ -374,80 +374,63 @@
           <label for="HOME_IATA">Home airport
             <span class="help">
               Default <strong>origin</strong> for Escape/Detour when you don’t name a city
-              (e.g. <code>YVR</code>). Blank → first passport-map country → default currency’s
-              country → USA. Currently resolves to <strong>{{ view.home_resolved or 'JFK' }}</strong>.
+              (e.g. <code>YVR</code>). Blank → <strong>first country you stamp</strong> on the
+              passport map (selection order) → default currency’s country → USA.
+              Currently resolves to <strong>{{ view.home_resolved or 'JFK' }}</strong>.
             </span>
             <input id="HOME_IATA" name="HOME_IATA" type="text" maxlength="3" pattern="[A-Za-z]{0,3}"
               placeholder="YVR" value="{{ view.home_iata or '' }}"
               style="max-width:100px;text-transform:uppercase;letter-spacing:0.08em;font-weight:700" />
           </label>
           <div>
-            <label style="margin-bottom:0.45rem">Your expected day bag
+            <label style="margin-bottom:0.45rem">Your daily budget
               <span class="help">
-                Your personal target per person/day (default currency). Components
-                <strong>add up</strong> to the budget Grok is scored against.
-                Leave all zero to show Grok COL without under/over ranking.
+                Personal target per person/day in your default currency — what <em>you</em>
+                expect to spend on hotel + food + local transit + a bit of culture.
+                There is no city default: leave <strong>0</strong> to show destination COL
+                without under/over ranking. Override anytime.
               </span>
             </label>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.65rem;align-items:end">
-              <label for="COL_HOTEL">Hotel / night
-                <span class="help">Decent 3★ / midscale</span>
-                <input id="COL_HOTEL" name="COL_HOTEL" type="number" min="0" max="2000" step="5"
-                  class="col-part" value="{{ view.col_hotel }}" />
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0.65rem;align-items:end">
+              <label for="COL_EXPECTED_DAILY">Cost / day
+                <span class="help">Your total day bag (not per destination)</span>
+                <input id="COL_EXPECTED_DAILY" name="COL_EXPECTED_DAILY" type="number" min="0" max="5000" step="5"
+                  value="{{ view.col_expected_daily }}" />
               </label>
-              <label for="COL_FOOD">Food &amp; drink
-                <span class="help">Meals + drinks for the day</span>
-                <input id="COL_FOOD" name="COL_FOOD" type="number" min="0" max="1000" step="5"
-                  class="col-part" value="{{ view.col_food }}" />
-              </label>
-              <label for="COL_TRANSIT">Local transit
-                <span class="help">Metro/bus if any (not taxis)</span>
-                <input id="COL_TRANSIT" name="COL_TRANSIT" type="number" min="0" max="500" step="1"
-                  class="col-part" value="{{ view.col_transit }}" />
-              </label>
-              <label for="COL_CULTURE">Culture (1–2)
-                <span class="help">Museum / temple / tour-ish</span>
-                <input id="COL_CULTURE" name="COL_CULTURE" type="number" min="0" max="500" step="1"
-                  class="col-part" value="{{ view.col_culture }}" />
-              </label>
-              <label for="COL_TOLERANCE_PCT">Over-budget %
-                <span class="help">OK band above the sum</span>
+              <label for="COL_TOLERANCE_PCT">Over / under %
+                <span class="help">OK band above your target</span>
                 <input id="COL_TOLERANCE_PCT" name="COL_TOLERANCE_PCT" type="number" min="0" max="100" step="1"
                   value="{{ view.col_tolerance_pct }}" />
               </label>
             </div>
-            <input type="hidden" name="COL_EXPECTED_DAILY" id="COL_EXPECTED_DAILY" value="{{ view.col_expected_daily }}" />
             <p class="map-status" style="margin-top:0.55rem">
               Daily target: <strong id="col-sum-display">0</strong>
               · OK up to <strong id="col-ceil-display">0</strong>
-              <span class="muted" style="margin-left:0.35rem">(sum × (1 + %/100))</span>
+              <span class="muted" style="margin-left:0.35rem">(target × (1 + %/100))</span>
             </p>
             <p class="muted" style="margin:0.35rem 0 0;font-size:0.8rem">
-              Detour: Grok estimates hotel+food+transit+culture for each stop (sum = daily spend),
-              then ranks vs this bag: under ↑ · within +% band ≈ · over ↓.
+              Destinations still get their own Grok COL estimate (hotel+food+transit+culture).
+              That estimate is ranked vs this number: under ↑ · within +% band ≈ · over ↓.
             </p>
           </div>
           <script>
             (function () {
-              var parts = document.querySelectorAll(".col-part");
+              var dailyEl = document.getElementById("COL_EXPECTED_DAILY");
               var pctEl = document.getElementById("COL_TOLERANCE_PCT");
               var sumEl = document.getElementById("col-sum-display");
               var ceilEl = document.getElementById("col-ceil-display");
-              var hidden = document.getElementById("COL_EXPECTED_DAILY");
               function num(el) {
                 var v = parseFloat(el && el.value ? el.value : "0");
                 return isFinite(v) && v > 0 ? v : 0;
               }
               function sync() {
-                var sum = 0;
-                parts.forEach(function (el) { sum += num(el); });
+                var sum = num(dailyEl);
                 var pct = num(pctEl);
                 var ceil = sum * (1 + pct / 100);
                 if (sumEl) sumEl.textContent = sum ? ("~" + Math.round(sum)) : "0 (off)";
                 if (ceilEl) ceilEl.textContent = sum ? ("~" + Math.round(ceil)) : "—";
-                if (hidden) hidden.value = sum ? String(Math.round(sum * 100) / 100) : "0";
               }
-              parts.forEach(function (el) { el.addEventListener("input", sync); });
+              if (dailyEl) dailyEl.addEventListener("input", sync);
               if (pctEl) pctEl.addEventListener("input", sync);
               sync();
             })();
@@ -486,6 +469,21 @@
               <span class="help">Ideas to invent &amp; price (2–5, default 5). Each search shows at most 5 results.</span>
               <input id="DETOUR_MAX_CANDIDATES" name="DETOUR_MAX_CANDIDATES" type="number" min="2" max="5" step="1"
                 value="{{ view.detour_max_candidates }}" />
+            </label>
+            <label for="SEARCH_BUDGET_SECONDS">Soft aim (sec)
+              <span class="help">Try to finish by this (default 30). Pacing only — not a hard kill.</span>
+              <input id="SEARCH_BUDGET_SECONDS" name="SEARCH_BUDGET_SECONDS" type="number" min="8" max="180" step="1"
+                value="{{ view.search_budget_seconds }}" />
+            </label>
+            <label for="SEARCH_MAX_SECONDS">Skip after (sec)
+              <span class="help">When <strong>Skip</strong> appears on the progress screen (default 42). Without Skip, search can run longer.</span>
+              <input id="SEARCH_MAX_SECONDS" name="SEARCH_MAX_SECONDS" type="number" min="8" max="600" step="1"
+                value="{{ view.search_max_seconds }}" />
+            </label>
+            <label for="AFFILIATE_TAG">Affiliate tag
+              <span class="help">Partner id stamped on outbound book links (optional product attribution)</span>
+              <input id="AFFILIATE_TAG" name="AFFILIATE_TAG" type="text" maxlength="80"
+                value="{{ view.affiliate_tag or '' }}" placeholder="your-partner-id" />
             </label>
           </div>
 

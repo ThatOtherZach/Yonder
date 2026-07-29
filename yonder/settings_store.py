@@ -23,7 +23,7 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
     (
         "HOME_IATA",
         "Home airport (IATA)",
-        "Default origin for Escape/Detour (e.g. YVR). Blank → first map country → currency country → USA",
+        "Default origin (e.g. YVR). Blank → first passport stamp (selection order) → currency country → USA",
         False,
     ),
     (
@@ -39,41 +39,22 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
         False,
     ),
     (
-        "COL_HOTEL",
-        "COL hotel / night",
-        "Decent-enough hotel night (3★/midscale) in default currency",
-        False,
-    ),
-    (
-        "COL_FOOD",
-        "COL food & drink / day",
-        "Normal meals + drinks for the day",
-        False,
-    ),
-    (
-        "COL_TRANSIT",
-        "COL local transit / day",
-        "Basic metro/bus/tram if the place has it (not taxis)",
-        False,
-    ),
-    (
-        "COL_CULTURE",
-        "COL culture / day",
-        "Budget for 1–2 simple cultural things (museum, temple, walking tour)",
-        False,
-    ),
-    (
         "COL_EXPECTED_DAILY",
-        "Expected COL per day (total)",
-        "Auto-sum of hotel+food+transit+culture when those are set",
+        "Expected COL per day",
+        "Your personal daily target (default currency). 0 = ranking off",
         False,
     ),
     (
         "COL_TOLERANCE_PCT",
         "COL over-budget %",
-        "How far over the summed daily target still counts as OK (e.g. 25 = +25%)",
+        "How far over the daily target still counts as OK (e.g. 25 = +25%)",
         False,
     ),
+    # Legacy component keys — kept so write_env can zero them; not shown in UI
+    ("COL_HOTEL", "COL hotel / night (legacy)", "Deprecated; use COL_EXPECTED_DAILY", False),
+    ("COL_FOOD", "COL food / day (legacy)", "Deprecated; use COL_EXPECTED_DAILY", False),
+    ("COL_TRANSIT", "COL transit / day (legacy)", "Deprecated; use COL_EXPECTED_DAILY", False),
+    ("COL_CULTURE", "COL culture / day (legacy)", "Deprecated; use COL_EXPECTED_DAILY", False),
     (
         "PROVIDER_MODE",
         "Provider routing mode",
@@ -102,6 +83,24 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
         "DETOUR_MAX_CANDIDATES",
         "Detour options to price",
         "How many stopover/getaway ideas to invent and price (2–5, default 5). Each search returns at most 5 results.",
+        False,
+    ),
+    (
+        "SEARCH_BUDGET_SECONDS",
+        "Search soft aim (seconds)",
+        "Try to finish Escape/Detour by this time (default 30). Not a hard kill.",
+        False,
+    ),
+    (
+        "SEARCH_MAX_SECONDS",
+        "Skip button after (seconds)",
+        "When the progress Skip control appears (default 42). Without Skip, search may run longer.",
+        False,
+    ),
+    (
+        "AFFILIATE_TAG",
+        "Affiliate / partner tag",
+        "Optional partner id stamped on outbound booking links (product attribution)",
         False,
     ),
 ]
@@ -209,6 +208,8 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
         "DETOUR_MIN_STOP_DAYS": "3",
         "DETOUR_MAX_STOP_DAYS": "5",
         "DETOUR_MAX_CANDIDATES": "5",
+        "SEARCH_BUDGET_SECONDS": "30",
+        "SEARCH_MAX_SECONDS": "42",
     }
     for key, default in _detour_defaults.items():
         if not str(current.get(key) or "").strip():
@@ -220,6 +221,22 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
             except ValueError:
                 n = 5
             current[key] = str(max(2, min(5, n)))
+        if key == "SEARCH_BUDGET_SECONDS":
+            try:
+                n = float(str(current.get(key) or "30").strip() or "30")
+            except ValueError:
+                n = 30.0
+            current[key] = str(max(8, min(180, n)))
+        if key == "SEARCH_MAX_SECONDS":
+            try:
+                n = float(str(current.get(key) or "42").strip() or "42")
+            except ValueError:
+                n = 42.0
+            try:
+                aim = float(str(current.get("SEARCH_BUDGET_SECONDS") or "30").strip() or "30")
+            except ValueError:
+                aim = 30.0
+            current[key] = str(max(aim, min(600, n)))
 
     lines: list[str] = [
         "# Yonder settings — local only, do not commit",
@@ -237,12 +254,12 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
             "Defaults",
             [
                 "DEFAULT_CURRENCY",
+                "COL_EXPECTED_DAILY",
+                "COL_TOLERANCE_PCT",
                 "COL_HOTEL",
                 "COL_FOOD",
                 "COL_TRANSIT",
                 "COL_CULTURE",
-                "COL_EXPECTED_DAILY",
-                "COL_TOLERANCE_PCT",
                 "AVOID_COUNTRIES",
                 "VISITED_COUNTRIES",
                 "PROVIDER_MODE",
@@ -250,6 +267,9 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
                 "DETOUR_MIN_STOP_DAYS",
                 "DETOUR_MAX_STOP_DAYS",
                 "DETOUR_MAX_CANDIDATES",
+                "SEARCH_BUDGET_SECONDS",
+                "SEARCH_MAX_SECONDS",
+                "AFFILIATE_TAG",
             ],
         ),
     ]
@@ -284,6 +304,30 @@ def mask_secret(value: str) -> str:
     if len(value) <= 4:
         return "••••"
     return "••••••••" + value[-4:]
+
+
+def _float_env(env: dict, key: str) -> float:
+    try:
+        return max(0.0, float(str(env.get(key) or "0").strip() or "0"))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _effective_col_daily(env: dict) -> str:
+    """Display value for Settings: total first, else legacy component sum."""
+    total = _float_env(env, "COL_EXPECTED_DAILY")
+    if total <= 0:
+        total = (
+            _float_env(env, "COL_HOTEL")
+            + _float_env(env, "COL_FOOD")
+            + _float_env(env, "COL_TRANSIT")
+            + _float_env(env, "COL_CULTURE")
+        )
+    if total <= 0:
+        return "0"
+    if abs(total - round(total)) < 1e-9:
+        return str(int(round(total)))
+    return str(round(total, 2))
 
 
 def settings_view() -> dict:
@@ -335,7 +379,8 @@ def settings_view() -> dict:
         "col_food": env.get("COL_FOOD") or "0",
         "col_transit": env.get("COL_TRANSIT") or "0",
         "col_culture": env.get("COL_CULTURE") or "0",
-        "col_expected_daily": env.get("COL_EXPECTED_DAILY") or "0",
+        # Prefer total; migrate old component-only .env into the single field for display
+        "col_expected_daily": _effective_col_daily(env),
         "col_tolerance_pct": env.get("COL_TOLERANCE_PCT") or "25",
         "provider_mode": (env.get("PROVIDER_MODE") or "smart").lower(),
         "testing": str(env.get("TESTING") or "false").strip().lower()
@@ -343,4 +388,7 @@ def settings_view() -> dict:
         "detour_min_stop_days": env.get("DETOUR_MIN_STOP_DAYS") or "3",
         "detour_max_stop_days": env.get("DETOUR_MAX_STOP_DAYS") or "5",
         "detour_max_candidates": env.get("DETOUR_MAX_CANDIDATES") or "5",
+        "search_budget_seconds": env.get("SEARCH_BUDGET_SECONDS") or "30",
+        "search_max_seconds": env.get("SEARCH_MAX_SECONDS") or "42",
+        "affiliate_tag": env.get("AFFILIATE_TAG") or "",
     }

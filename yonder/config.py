@@ -51,13 +51,13 @@ class Settings(BaseSettings):
     avoid_countries: str = ""
     # Comma-separated ISO2 codes — personal travel passport map (unlimited-ish)
     visited_countries: str = ""
-    # Lean day-bag components (default_currency). Sum = daily target; 0s = COL ranking off
-    # unless col_expected_daily is set (legacy single total).
+    # Lean day-bag components (default_currency) — legacy split; kept for migration.
+    # Settings UI writes only col_expected_daily and zeros these.
     col_hotel: float = 0.0
     col_food: float = 0.0
     col_transit: float = 0.0
     col_culture: float = 0.0
-    # Legacy / computed total (kept in sync on save when components used)
+    # Primary daily target (default_currency). 0 = COL under/over ranking off.
     col_expected_daily: float = 0.0
     # Acceptable % over expected before hard penalty (e.g. 25 → budget + 25%).
     col_tolerance_pct: float = 25.0
@@ -70,8 +70,13 @@ class Settings(BaseSettings):
     detour_max_stop_days: int = 5
     # How many detour ideas to invent/price (results always capped at 5 cheapest)
     detour_max_candidates: int = 5
-    # Hard wall-clock budget for Escape + Detour (seconds)
+    # Soft aim for Escape + Detour pacing (seconds) — try to finish by this
     search_budget_seconds: float = 30.0
+    # When the progress Skip button appears (seconds). Not a hard kill:
+    # without Skip the search may run as long as needed.
+    search_max_seconds: float = 42.0
+    # Affiliate / partner tag for outbound booking links (product attribution)
+    affiliate_tag: str = ""
 
     @field_validator(
         "detour_min_stop_days",
@@ -97,6 +102,8 @@ class Settings(BaseSettings):
         "col_culture",
         "col_expected_daily",
         "col_tolerance_pct",
+        "search_budget_seconds",
+        "search_max_seconds",
         mode="before",
     )
     @classmethod
@@ -108,10 +115,26 @@ class Settings(BaseSettings):
             "col_culture": 0.0,
             "col_expected_daily": 0.0,
             "col_tolerance_pct": 25.0,
+            "search_budget_seconds": 30.0,
+            "search_max_seconds": 42.0,
         }
         if v is None or (isinstance(v, str) and not str(v).strip()):
             return defaults.get(getattr(info, "field_name", ""), 0.0)
         return v
+
+    def search_timing(self) -> tuple[float, float]:
+        """(soft_aim_seconds, skip_after_seconds) clamped to safe ranges."""
+        try:
+            aim = float(self.search_budget_seconds or 30.0)
+        except (TypeError, ValueError):
+            aim = 30.0
+        try:
+            mx = float(self.search_max_seconds or 42.0)
+        except (TypeError, ValueError):
+            mx = 42.0
+        aim = max(8.0, min(180.0, aim))
+        mx = max(aim, min(600.0, mx))
+        return aim, mx
 
     def detour_stop_defaults(self) -> tuple[int, int, int]:
         """(min_stop_days, max_stop_days, max_candidates) clamped to safe ranges."""
@@ -169,8 +192,9 @@ class Settings(BaseSettings):
         """Home origin for Escape/Detour when the prompt doesn't name one.
 
         Order:
-          1. HOME_IATA setting
-          2. primary airport of first passport-map country
+          1. HOME_IATA setting (explicit override)
+          2. primary airport of the **first** passport-map country
+             (selection order — first stamp = home)
           3. primary airport for default_currency's country
           4. USA (JFK)
         """
@@ -179,6 +203,7 @@ class Settings(BaseSettings):
         raw = (self.home_iata or "").strip().upper()
         if len(raw) == 3 and raw.isalpha():
             return raw
+        # VISITED_COUNTRIES is stored in stamp order (not alphabetized)
         visited = self.visited_country_list()
         if visited:
             for cc in visited:
@@ -214,24 +239,25 @@ class Settings(BaseSettings):
     def col_budget(self) -> tuple[float | None, float, dict[str, float]]:
         """(expected_daily or None, tolerance_pct, components dict).
 
-        Daily target = sum of component fields when any are set; else legacy
-        col_expected_daily. Percentage is the over-target band for ranking.
+        Daily target prefers col_expected_daily when > 0; otherwise falls back
+        to sum of legacy component fields (hotel+food+transit+culture).
+        Percentage is the over-target band for under/within/over ranking.
         """
         parts = self.col_components()
-        summed = sum(parts.values())
         try:
-            legacy = float(self.col_expected_daily or 0)
+            total = float(self.col_expected_daily or 0)
         except (TypeError, ValueError):
-            legacy = 0.0
-        expected = summed if summed > 0 else legacy
+            total = 0.0
+        if total <= 0:
+            total = sum(parts.values())
         try:
             pct = float(self.col_tolerance_pct if self.col_tolerance_pct is not None else 25)
         except (TypeError, ValueError):
             pct = 25.0
         pct = max(0.0, min(100.0, pct))
-        if expected <= 0:
+        if total <= 0:
             return None, pct, parts
-        return expected, pct, parts
+        return total, pct, parts
 
     @property
     def duffel_is_test(self) -> bool:
