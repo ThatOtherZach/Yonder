@@ -129,6 +129,27 @@ try:
 except Exception:
     pass
 templates = Jinja2Templates(directory=str(_PKG / "templates"))
+def _fmt_date(value: object) -> str:
+    """Format a date or ISO string as 'Month DD, YYYY' (e.g. September 5, 2026)."""
+    from datetime import date as _date
+    if value is None:
+        return "—"
+    if isinstance(value, _date):
+        return value.strftime("%-d %B %Y").replace(
+            value.strftime("%B"), value.strftime("%B")
+        )
+    s = str(value).strip()
+    if not s:
+        return "—"
+    try:
+        from datetime import date as _date2
+        d = _date2.fromisoformat(s[:10])
+        return d.strftime("%B %-d, %Y")
+    except Exception:
+        return s
+
+
+templates.env.filters["fmt_date"] = _fmt_date
 templates.env.globals["place"] = format_place
 templates.env.globals["route"] = format_route
 templates.env.globals["airline_site_label"] = airline_site_label

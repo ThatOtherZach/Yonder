@@ -513,7 +513,7 @@
             <div class="leg">
               <div class="route">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
               <div class="muted">
-                {{ leg.depart_date }}
+                {{ leg.depart_date | fmt_date }}
                 {% if leg.offer %}
                   · {{ leg.offer.airlines|join(', ') or '—' }}
                   · {{ leg.offer.stops_out }} stop{{ 's' if leg.offer.stops_out != 1 else '' }}

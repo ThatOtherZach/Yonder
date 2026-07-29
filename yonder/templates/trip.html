@@ -148,8 +148,8 @@
           </div>
           <p class="bp-cities">{{ route(q.origin or '', q.destination or '') if q.origin and q.destination else share.title }}</p>
           <div class="bp-fields">
-            <div class="bp-field"><span class="k">Depart</span><span class="v">{{ q.depart_date or '—' }}</span></div>
-            {% if q.return_date %}<div class="bp-field"><span class="k">Return</span><span class="v">{{ q.return_date }}</span></div>{% endif %}
+            <div class="bp-field"><span class="k">Depart</span><span class="v">{{ q.depart_date | fmt_date }}</span></div>
+            {% if q.return_date %}<div class="bp-field"><span class="k">Return</span><span class="v">{{ q.return_date | fmt_date }}</span></div>{% endif %}
             <div class="bp-field"><span class="k">Airline</span><span class="v">{{ (o.airlines or [])|join(', ') or '—' }}</span></div>
             <div class="bp-field"><span class="k">Stops</span><span class="v">{{ o.stops_out if o.stops_out is defined else '—' }}</span></div>
           </div>
@@ -200,7 +200,7 @@
               <div>
                 <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
                 <div class="meta">
-                  {{ leg.depart_date }}
+                  {{ leg.depart_date | fmt_date }}
                   {% if leg.offer and leg.offer.airlines %} · {{ leg.offer.airlines|join(', ') }}{% endif %}
                 </div>
               </div>
