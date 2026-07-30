@@ -841,3 +841,244 @@ class TestMixShapeRefreshOriginPinned:
         assert captures["plan_calls"][0].origin == "SYD", (
             "no refresh → detour branch must use translate's SYD, not the form's YVR"
         )
+
+
+# ---------------------------------------------------------------------------
+# 9.  Mix shape — partial branch error: surviving branch keeps pinned origin
+# ---------------------------------------------------------------------------
+
+
+def _patch_mix_escape_error(
+    monkeypatch,
+    *,
+    translate_origin: str,
+    translate_dest: str = "NRT",
+    grok_ready: bool = True,
+) -> dict[str, list]:
+    """Patch mix mode so _do_escape (search_flights) always raises RuntimeError.
+
+    Only the detour branch (plan_adventure) succeeds.  Returns captures with
+    'plan_calls' so tests can assert the origin that reached plan_adventure.
+    """
+    captures: dict[str, list] = {"plan_calls": []}
+
+    settings = _make_settings(grok_ready=grok_ready)
+    monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
+
+    parsed = _make_parsed_trip("YYZ")  # Grok returns something different from form
+
+    async def _fake_parse(self, *a: Any, **kw: Any) -> ParsedTrip:
+        return parsed
+
+    monkeypatch.setattr(grok_module.GrokClient, "parse_natural_language", _fake_parse)
+
+    adv_req = AdventureRequest(
+        origin=translate_origin,
+        destination=translate_dest,
+        depart_date=date.today() + timedelta(days=30),
+        trip_kind="getaway",
+    )
+    ideas = [StopoverIdea(iata="TYO", city="Tokyo", stay_days=3)]
+
+    async def _fake_translate(self, *a: Any, **kw: Any):
+        return adv_req, ideas
+
+    monkeypatch.setattr(grok_module.GrokClient, "translate_adventure", _fake_translate)
+
+    async def _failing_search(query, *, settings=None, **kw: Any) -> UnifiedSearchResult:
+        raise RuntimeError("simulated search_flights failure on escape branch")
+
+    monkeypatch.setattr(web_module, "search_flights", _failing_search)
+
+    async def _fake_plan(req, idea_list, *, settings=None, **kw: Any) -> AdventureResult:
+        captures["plan_calls"].append(req)
+        return _make_adventure_result(req.origin, req.destination)
+
+    monkeypatch.setattr(web_module, "plan_adventure", _fake_plan)
+
+    return captures
+
+
+def _patch_mix_detour_error(
+    monkeypatch,
+    *,
+    grok_parsed_origin: str,
+    grok_ready: bool = True,
+) -> dict[str, list]:
+    """Patch mix mode so _do_detour (plan_adventure) always raises RuntimeError.
+
+    Only the escape branch (search_flights) succeeds.  Returns captures with
+    'search_calls' so tests can assert the origin that reached search_flights.
+    """
+    captures: dict[str, list] = {"search_calls": []}
+
+    settings = _make_settings(grok_ready=grok_ready)
+    monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
+
+    parsed = _make_parsed_trip(grok_parsed_origin)
+
+    async def _fake_parse(self, *a: Any, **kw: Any) -> ParsedTrip:
+        return parsed
+
+    monkeypatch.setattr(grok_module.GrokClient, "parse_natural_language", _fake_parse)
+
+    adv_req = AdventureRequest(
+        origin="LAX",  # translate returns something different from form
+        destination="NRT",
+        depart_date=date.today() + timedelta(days=30),
+        trip_kind="getaway",
+    )
+    ideas = [StopoverIdea(iata="TYO", city="Tokyo", stay_days=3)]
+
+    async def _fake_translate(self, *a: Any, **kw: Any):
+        return adv_req, ideas
+
+    monkeypatch.setattr(grok_module.GrokClient, "translate_adventure", _fake_translate)
+
+    async def _fake_search(query, *, settings=None, **kw: Any) -> UnifiedSearchResult:
+        captures["search_calls"].append(query)
+        return _make_search_result(query.origin, query.destination)
+
+    monkeypatch.setattr(web_module, "search_flights", _fake_search)
+
+    async def _failing_plan(req, idea_list, *, settings=None, **kw: Any) -> AdventureResult:
+        raise RuntimeError("simulated plan_adventure failure on detour branch")
+
+    monkeypatch.setattr(web_module, "plan_adventure", _failing_plan)
+
+    return captures
+
+
+class TestMixShapePartialErrorResilience:
+    """force_mode=mix + refresh=1 where one branch raises mid-execution.
+
+    The server wraps each branch in its own try/except and collects the error
+    into an errors list.  The surviving branch must still have received the
+    pinned origin and the response must be 200 with partial results present.
+    """
+
+    def test_escape_branch_errors_detour_still_gets_pinned_origin(
+        self, client, monkeypatch
+    ):
+        """_do_escape (search_flights) raises; _do_detour must still run and
+        receive the form's pinned origin (YVR), not translate_adventure's LAX."""
+        captures = _patch_mix_escape_error(
+            monkeypatch,
+            translate_origin="LAX",  # detour translate returns wrong origin
+        )
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "surprise me",
+                "origin": "YVR",
+                "depart": _DEPART,
+                "refresh": "1",
+                "force_mode": "mix",
+                "vibe": "adventure",
+            },
+        )
+        assert resp.status_code == 200, (
+            f"Expected 200 even with escape error, got {resp.status_code}"
+        )
+
+        # Detour branch must have run and received the pinned origin
+        assert captures["plan_calls"], (
+            "plan_adventure (detour) was never called after escape branch errored"
+        )
+        assert captures["plan_calls"][0].origin == "YVR", (
+            f"detour branch: expected pinned YVR, got {captures['plan_calls'][0].origin}"
+        )
+
+        # Page must not be a blank/empty result — detour content should be present
+        body = resp.text
+        assert body, "Response body must not be empty when detour branch succeeded"
+
+    def test_escape_branch_errors_detour_results_present_in_response(
+        self, client, monkeypatch
+    ):
+        """When escape fails, the page renders detour results — it must not be a
+        silent blank with no indication that results were found."""
+        captures = _patch_mix_escape_error(
+            monkeypatch,
+            translate_origin="ORD",  # translate returns different origin
+        )
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "quick getaway options",
+                "origin": "JFK",
+                "depart": _DEPART,
+                "refresh": "1",
+                "force_mode": "mix",
+                "vibe": "adventure",
+            },
+        )
+        assert resp.status_code == 200
+        assert captures["plan_calls"], "plan_adventure (detour) was never called"
+        # Pinned to JFK even though translate returned ORD
+        assert captures["plan_calls"][0].origin == "JFK"
+
+    def test_detour_branch_errors_escape_still_gets_pinned_origin(
+        self, client, monkeypatch
+    ):
+        """_do_detour (plan_adventure) raises; _do_escape must still run and
+        receive the form's pinned origin (YVR), not Grok's parsed YYZ."""
+        captures = _patch_mix_detour_error(
+            monkeypatch,
+            grok_parsed_origin="YYZ",  # escape Grok returns wrong origin
+        )
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "surprise me",
+                "origin": "YVR",
+                "depart": _DEPART,
+                "refresh": "1",
+                "force_mode": "mix",
+                "vibe": "adventure",
+            },
+        )
+        assert resp.status_code == 200, (
+            f"Expected 200 even with detour error, got {resp.status_code}"
+        )
+
+        # Escape branch must have run and received the pinned origin
+        assert captures["search_calls"], (
+            "search_flights (escape) was never called after detour branch errored"
+        )
+        assert captures["search_calls"][0].origin == "YVR", (
+            f"escape branch: expected pinned YVR, got {captures['search_calls'][0].origin}"
+        )
+
+        # Page must not be a blank/empty result — escape content should be present
+        body = resp.text
+        assert body, "Response body must not be empty when escape branch succeeded"
+
+    def test_detour_branch_errors_escape_results_present_in_response(
+        self, client, monkeypatch
+    ):
+        """When detour fails, the page renders escape results — it must not be a
+        silent blank with no indication that results were found."""
+        captures = _patch_mix_detour_error(
+            monkeypatch,
+            grok_parsed_origin="CDG",  # Grok returns different origin
+        )
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "beach options please",
+                "origin": "LHR",
+                "depart": _DEPART,
+                "refresh": "1",
+                "force_mode": "mix",
+                "vibe": "adventure",
+            },
+        )
+        assert resp.status_code == 200
+        assert captures["search_calls"], "search_flights (escape) was never called"
+        # Pinned to LHR even though Grok returned CDG
+        assert captures["search_calls"][0].origin == "LHR"
