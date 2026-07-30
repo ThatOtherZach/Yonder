@@ -480,7 +480,10 @@ class GrokClient:
             "- Never use home/origin as a candidate\n"
             "- Exactly max_candidates creative but bookable places\n"
             "- For cheap/low-hassle/chaos getaways prefer short-haul or easy hub cities\n"
-            "- country = ISO2 for each candidate"
+            "- country = ISO2 for each candidate\n"
+            "- traveler_comfort rank guides candidate boldness: "
+            "Chaos Pilot/Nomadic Soul → prefer off-beaten-path, emerging, or unconventional stops; "
+            "Armchair Explorer/Day Tripper → prefer safe hubs, easy connections, well-touristed cities"
         )
         # Codes only in the prompt (names bloat tokens / latency for large passport maps)
         _xp = _compute_xp(visited, avoid)
