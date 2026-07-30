@@ -68,7 +68,13 @@ def _vibes_data() -> tuple[str, str]:
     if _vibes_json is None:
         raw = _VIBES_PATH.read_text(encoding="utf-8")
         _vibes_json = json.dumps(json.loads(raw), separators=(",", ":"))
-        _vibes_v = hashlib.sha1(_vibes_json.encode()).hexdigest()[:8]
+        # Include the slider script in the hash so JS edits bust browser caches too
+        slider_src = (Path(__file__).parent / "static" / "vibe_slider.js").read_bytes()
+        _vibes_v = (
+            hashlib.sha1(_vibes_json.encode()).hexdigest()[:8]
+            + "-"
+            + hashlib.sha1(slider_src).hexdigest()[:8]
+        )
     return _vibes_json, _vibes_v
 
 
