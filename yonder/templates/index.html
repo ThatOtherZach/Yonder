@@ -107,21 +107,34 @@
       opacity: 0.65;
       cursor: not-allowed;
     }
-    /* Phones (below the grid's sm breakpoint): compact submit, fluid depart strip */
+    /* Phones (below the grid's sm breakpoint): stack submit below textarea */
     @media (max-width: 575.98px) {
+      .compose-text-row {
+        flex-direction: column;
+      }
+      .compose-field textarea {
+        min-height: 5rem;
+        font-size: 1rem;
+        padding: 0.65rem 0.75rem;
+      }
       button.btn-vibe-go {
-        min-width: 5.25rem;
-        max-width: 6.25rem;
-        font-size: 0.84rem;
-        padding: 0.55rem 0.55rem;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        border-top: 1px solid color-mix(in srgb, var(--vibe-now, var(--sky-bright)) 30%, var(--line));
+        font-size: 1rem;
+        font-weight: 700;
+        padding: 0.75rem 1rem;
+        border-radius: 0;
       }
       .compose-field-top {
         gap: 0.35rem 0.45rem;
-        padding: 0.4rem 0.5rem;
+        padding: 0.4rem 0.6rem;
       }
       .compose-field-top label.date-field {
         flex: 1 1 auto;
         min-width: 0;
+        height: 2.5rem;
       }
       label.date-field input[type="date"] {
         min-width: 0;
@@ -219,9 +232,12 @@
       border-color: var(--brass);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 20%, transparent);
     }
-    .examples-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.55rem; }
+    .examples-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.55rem; }
     .examples-row .examples { flex: 1 1 auto; flex-wrap: wrap; margin-top: 0; }
     .examples-row .toggle-switch { flex-shrink: 0; margin-left: auto; }
+    @media (max-width: 575px) {
+      .examples-row .toggle-switch { flex: 1 1 100%; margin-left: 0; margin-top: 0.25rem; padding-top: 0.35rem; border-top: 1px solid var(--line); }
+    }
     .examples { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.55rem; }
     .examples button, .examples .ex {
       background: var(--paper);
@@ -520,9 +536,11 @@
       line-height: 1;
       padding: 0;
     }
+    .thumb-btn.thumb-up   { background: color-mix(in srgb, var(--good, #1a9e5c) 10%, transparent); border-color: color-mix(in srgb, var(--good, #1a9e5c) 30%, var(--line)); }
+    .thumb-btn.thumb-down { background: color-mix(in srgb, #e05 9%, transparent); border-color: color-mix(in srgb, #e05 25%, var(--line)); }
     .thumb-btn:hover { border-color: var(--sky); color: var(--sky); background: var(--sky-mist); }
-    .thumb-btn.voted-up   { background: color-mix(in srgb, var(--good) 15%, transparent); border-color: var(--good); color: var(--good); }
-    .thumb-btn.voted-down { background: color-mix(in srgb, #e05 14%, transparent); border-color: #e05; color: #e05; }
+    .thumb-btn.voted-up   { background: color-mix(in srgb, var(--good) 18%, transparent); border-color: var(--good); color: var(--good); }
+    .thumb-btn.voted-down { background: color-mix(in srgb, #e05 16%, transparent); border-color: #e05; color: #e05; }
     .thumb-btn:disabled   { opacity: 0.45; cursor: default; }
     .fare-table .provider {
       font-family: ui-monospace, Consolas, monospace;
@@ -923,6 +941,23 @@
     }
     .results-criteria .btn-refresh:hover { filter: brightness(1.07); }
     .results-criteria .btn-refresh:disabled { opacity: 0.55; cursor: wait; }
+    @media (max-width: 575px) {
+      .results-criteria .criteria-stop-label { flex: 1 1 auto; border-right: none; }
+      .results-criteria .criteria-hint {
+        flex: 1 1 100%;
+        border-top: 1px solid var(--line);
+        border-right: none;
+        padding: 0.5rem 0.85rem;
+      }
+      .results-criteria .btn-refresh {
+        flex: 1 1 100%;
+        margin: 0;
+        border-radius: 0;
+        border-top: 1px solid var(--line);
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
+      }
+    }
     /* GPS auto-swap notice */
     .gps-origin-notice {
       display: none;
@@ -1055,13 +1090,6 @@
     <p id="explore-blurb">
       Buy The Ticket, Take The Ride
     </p>
-    {% if xp_profile and xp_profile.xp > 0 %}
-    <a href="/settings#travel-map" class="xp-rank-badge" title="{{ xp_profile.xp }} XP · {{ xp_profile.rank_blurb }}">
-      <span class="xp-rank-badge-emoji">{{ xp_profile.rank_emoji }}</span>
-      <span class="xp-rank-badge-name">{{ xp_profile.rank }}</span>
-      <span class="xp-rank-badge-xp">{{ xp_profile.xp }} XP</span>
-    </a>
-    {% endif %}
   </header>
   <main class="container">
     {# ——— One compose card: Escape | Detour toggle, shared prompt + vibe + map ——— #}
@@ -1154,9 +1182,29 @@
       <ul class="vibe-suggest-list" id="vibe-suggest-list"></ul>
     </div>
 
+    {% if xp_profile and xp_profile.xp > 0 %}
+    <template id="xp-badge-tpl">
+      <a href="/settings#travel-map" class="xp-rank-badge" title="{{ xp_profile.xp }} XP · {{ xp_profile.rank_blurb }}">
+        <span class="xp-rank-badge-emoji">{{ xp_profile.rank_emoji }}</span>
+        <span class="xp-rank-badge-name">{{ xp_profile.rank }}</span>
+        <span class="xp-rank-badge-xp">{{ xp_profile.xp }} XP</span>
+      </a>
+    </template>
+    {% endif %}
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
     <script src="/static/country_map.js?v=16"></script>
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      var tpl = document.getElementById("xp-badge-tpl");
+      if (!tpl) return;
+      var meta = document.querySelector("#explore-map .ymap-compact-meta");
+      if (meta) {
+        meta.insertBefore(tpl.content.cloneNode(true), meta.firstChild);
+      }
+      tpl.remove();
+    });
+    </script>
 
     {% if error %}
       <div class="error" id="server-error" data-clear-with-results>{{ error }}</div>
@@ -1198,7 +1246,7 @@
           <span class="gps-notice-icon">📍</span>
           <span class="gps-notice-text"></span>
         </span>
-        <label {% if not has_detour %}title="Detour only"{% endif %}>Stop days
+        <label class="criteria-stop-label" {% if not has_detour %}title="Detour only"{% endif %}>Stop days
           <div class="criteria-stop-range">
             <div class="stop-input-group">
               <span class="stop-sub-label">Min</span>
