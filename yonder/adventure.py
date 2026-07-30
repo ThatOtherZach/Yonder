@@ -344,6 +344,7 @@ async def _price_leg(
                         depart=depart,
                         offer=offer,
                         currency=req.currency,
+                        model_source=settings.model_source_label() or None,
                     )
                 except Exception:
                     pass

@@ -265,6 +265,10 @@ async def get_place_brief(
             )
         if not payload:
             return None
+        # Tag the cached brief with the backend that wrote it so a stale BYOM
+        # brief can be told apart from a Grok one later.
+        payload = dict(payload)
+        payload["model_source"] = settings.model_source_label()
         put_cached(key, payload)
         # Also seed generic cache if empty (helps cold paths)
         if tone and not get_cached(base):

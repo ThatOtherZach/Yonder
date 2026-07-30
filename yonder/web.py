@@ -1087,6 +1087,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 "origin": query.origin,
                 "destination": query.destination,
                 "mock": mock,
+                "model_source": settings.model_source_label(),
             },
         }
         # Escape refresh got nothing useful → first set
@@ -1384,6 +1385,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             "intent": decision.shape,
             "intent_rationale": decision.rationale,
             "mock": mock,
+            "model_source": settings.model_source_label(),
             **attr_meta,
         }
         form = {
@@ -1472,6 +1474,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 from yonder.vibe_signals import record_search
                 _loop = asyncio.get_running_loop()
                 _sess = click_id or None
+                _ms_label = settings.model_source_label() or None
                 if has_esc:
                     esc_tm = escape_override.get("trip_meta") or {}
                     esc_dest = str(
@@ -1494,6 +1497,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                                 prompt=prompt,
                                 session_hash=_sess,
                                 signal_id=s,
+                                model_source=_ms_label,
                             ),
                         )
                         esc_tm["signal_id"] = esc_sig
@@ -1520,6 +1524,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                                 prompt=prompt,
                                 session_hash=_sess,
                                 signal_id=s,
+                                model_source=_ms_label,
                             ),
                         )
                     if sig_map:
@@ -1840,6 +1845,10 @@ async def adventure_run(request: Request) -> HTMLResponse:
             "origin": result.request.origin,
             "destination": result.request.destination,
         }
+        # Tag AI-produced results with the backend that made them; local
+        # fallback (no AI call) leaves the label off.
+        if _adv_usage:
+            trip_meta["model_source"] = settings.model_source_label()
         # Stamp vibe theme onto each itinerary so Save keeps the color
         try:
             stamped = []
@@ -2137,6 +2146,7 @@ async def api_save_itinerary(request: Request):
         "chip_source",
         "search_id",
         "mock",
+        "model_source",
     ):
         if k in body and k not in trip_meta:
             trip_meta[k] = body[k]

@@ -188,6 +188,21 @@ class Settings(BaseSettings):
         byom_ready = bool(self.byom_base_url and self.byom_api_key)
         return byom_ready or bool(self.xai_api_key)
 
+    def model_source_label(self) -> str:
+        """Human-readable label for whichever AI backend would serve requests.
+
+        BYOM takes precedence over built-in Grok (mirrors GrokClient._chat).
+        Returns "" when no AI backend is configured.
+        """
+        byom_base = (self.byom_base_url or "").strip()
+        byom_key = (self.byom_api_key or "").strip()
+        if byom_base and byom_key:
+            name = (self.byom_model or "").strip()
+            return f"BYOM, {name}" if name else "BYOM"
+        if self.xai_api_key:
+            return "Grok (Server)"
+        return ""
+
     def avoid_country_list(self) -> list[str]:
         from yonder.countries import normalize_avoid_list
 

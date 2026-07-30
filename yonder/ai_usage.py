@@ -40,6 +40,8 @@ def merge_usage(*usages: dict) -> dict:
             merged[k] = merged.get(k, 0) + u.get(k, 0)
         if not merged.get("model"):
             merged["model"] = u.get("model", "")
+        if not merged.get("model_source"):
+            merged["model_source"] = u.get("model_source", "")
     if merged and merged.get("total_tokens"):
         merged["est_cost_usd"] = estimate_cost(
             merged.get("prompt_tokens", 0),
@@ -76,9 +78,14 @@ def _ensure_db() -> sqlite3.Connection:
             completion_tokens INTEGER DEFAULT 0,
             total_tokens     INTEGER DEFAULT 0,
             est_cost_usd     REAL    DEFAULT 0,
-            calls            INTEGER DEFAULT 1
+            calls            INTEGER DEFAULT 1,
+            model_source     TEXT
         )
     """)
+    # Older DBs predate model_source — add it in place (nullable, legacy rows stay NULL)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(ai_usage)").fetchall()}
+    if "model_source" not in cols:
+        conn.execute("ALTER TABLE ai_usage ADD COLUMN model_source TEXT")
     conn.commit()
     return conn
 
@@ -90,8 +97,8 @@ def _log_sync(route: str, usage: dict) -> None:
         conn = _ensure_db()
         conn.execute(
             "INSERT INTO ai_usage "
-            "(ts, route, model, prompt_tokens, completion_tokens, total_tokens, est_cost_usd, calls) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(ts, route, model, prompt_tokens, completion_tokens, total_tokens, est_cost_usd, calls, model_source) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 datetime.now(timezone.utc).isoformat(),
                 route,
@@ -101,6 +108,7 @@ def _log_sync(route: str, usage: dict) -> None:
                 int(usage.get("total_tokens", 0)),
                 float(usage.get("est_cost_usd", 0.0)),
                 int(usage.get("calls", 1)),
+                usage.get("model_source") or None,
             ),
         )
         conn.commit()

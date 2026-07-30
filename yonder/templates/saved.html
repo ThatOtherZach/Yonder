@@ -153,6 +153,9 @@
               {% endif %}
             </div>
             {% endif %}
+            {% if s.model_source %}
+            <p class="bp-note muted" style="margin:0.35rem 0 0;font-size:0.75rem">via {{ s.model_source }}</p>
+            {% endif %}
 
             <div class="bp-actions">
               <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form">

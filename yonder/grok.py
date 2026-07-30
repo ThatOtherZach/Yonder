@@ -97,6 +97,17 @@ class GrokClient:
         )
         return byom_on or bool(self.settings.xai_api_key)
 
+    def model_source_label(self) -> str:
+        """Label of the backend this client would call (see Settings.model_source_label)."""
+        byom_base = getattr(self.settings, "byom_base_url", "").strip()
+        byom_key = getattr(self.settings, "byom_api_key", "").strip()
+        if byom_base and byom_key:
+            name = getattr(self.settings, "byom_model", "").strip()
+            return f"BYOM, {name}" if name else "BYOM"
+        if self.settings.xai_api_key:
+            return "Grok (Server)"
+        return ""
+
     async def __aenter__(self) -> GrokClient:
         if self._client is None:
             # Connect fast; allow enough read time for invent/parse (fallback still catches stalls)
@@ -131,6 +142,7 @@ class GrokClient:
             "completion_tokens": completion,
             "total_tokens": total,
             "model": model,
+            "model_source": self.model_source_label(),
             "calls": len(self._usage_log),
             "est_cost_usd": estimate_cost(prompt, completion, model),
         }

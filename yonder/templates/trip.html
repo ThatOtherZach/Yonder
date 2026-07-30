@@ -249,6 +249,9 @@
             {% endif %}
           </div>
           {% endif %}
+          {% if it.model_source %}
+          <p class="bp-note muted" style="margin:0.35rem 0 0;font-size:0.75rem">via {{ it.model_source }}</p>
+          {% endif %}
           <div class="bp-actions">
             {% if it.google_flights_url %}
             <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>

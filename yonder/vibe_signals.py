@@ -59,10 +59,15 @@ def _connect() -> sqlite3.Connection:
             search_type TEXT,
             result_count INTEGER,
             signal_strength INTEGER NOT NULL DEFAULT 1,
-            prompt_hash TEXT
+            prompt_hash TEXT,
+            model_source TEXT
         )
         """
     )
+    # Older DBs predate model_source — add it in place (nullable, legacy rows stay NULL)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(search_signals)").fetchall()}
+    if "model_source" not in cols:
+        conn.execute("ALTER TABLE search_signals ADD COLUMN model_source TEXT")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_signals_dest_vibe"
         " ON search_signals(dest_iata, vibe)"
@@ -131,6 +136,7 @@ def record_search(
     session_hash: str | None = None,
     signal_strength: int = SEARCHED,
     signal_id: str | None = None,
+    model_source: str | None = None,
 ) -> str | None:
     """Write one search signal row. Returns the signal id (or None in MOCK mode)."""
     if _mock_mode():
@@ -145,8 +151,9 @@ def record_search(
                 """
                 INSERT OR IGNORE INTO search_signals (
                     id, ts, session_hash, vibe, origin, dest_iata,
-                    search_type, result_count, signal_strength, prompt_hash
-                ) VALUES (?,?,?,?,?,?,?,?,?,?)
+                    search_type, result_count, signal_strength, prompt_hash,
+                    model_source
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     sid,
@@ -159,6 +166,7 @@ def record_search(
                     int(result_count or 0),
                     max(1, min(4, int(signal_strength or 1))),
                     prompt_hash(prompt),
+                    (model_source or "").strip() or None,
                 ),
             )
             conn.commit()

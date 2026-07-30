@@ -37,10 +37,15 @@ def _connect() -> sqlite3.Connection:
             google_flights_url TEXT,
             deep_link TEXT,
             raw_id TEXT,
-            observed_at TEXT NOT NULL
+            observed_at TEXT NOT NULL,
+            model_source TEXT
         )
         """
     )
+    # Older DBs predate model_source — add it in place (nullable, legacy rows stay NULL)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(price_samples)").fetchall()}
+    if "model_source" not in cols:
+        conn.execute("ALTER TABLE price_samples ADD COLUMN model_source TEXT")
     conn.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_route_date
@@ -56,8 +61,13 @@ def record_offer(
     offer: FlightOffer,
     *,
     observed_at: datetime | None = None,
+    model_source: str | None = None,
 ) -> None:
-    """Append one fare observation."""
+    """Append one fare observation.
+
+    model_source: AI backend label ("Grok (Server)", "BYOM, …") when this row
+    came from an AI-planned search; None for legacy/non-AI rows.
+    """
     if offer.price_kind == "mock":
         return  # don't pollute history with demo
     ts = (observed_at or datetime.now(timezone.utc)).isoformat()
@@ -67,8 +77,9 @@ def record_offer(
             INSERT INTO price_samples (
                 origin, destination, depart_date, return_date,
                 price, currency, source, price_kind, stops, airlines,
-                duration_minutes, notes, google_flights_url, deep_link, raw_id, observed_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                duration_minutes, notes, google_flights_url, deep_link, raw_id, observed_at,
+                model_source
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 query.origin.upper(),
@@ -87,6 +98,7 @@ def record_offer(
                 offer.deep_link,
                 offer.raw_id,
                 ts,
+                (model_source or "").strip() or None,
             ),
         )
         conn.commit()
@@ -110,6 +122,7 @@ def record_leg(
     depart: date,
     offer: FlightOffer,
     currency: str = "CAD",
+    model_source: str | None = None,
 ) -> None:
     """Log a one-way adventure leg."""
     q = SearchQuery(
@@ -119,7 +132,7 @@ def record_leg(
         currency=currency.upper(),
         max_results=1,
     )
-    record_offer(q, offer)
+    record_offer(q, offer, model_source=model_source)
 
 
 @dataclass

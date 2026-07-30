@@ -102,6 +102,12 @@ class SavedItinerary:
     trip_meta: dict[str, Any]
 
     @property
+    def model_source(self) -> str:
+        """AI backend label ("Grok (Server)", "BYOM, …") or "" for legacy/unknown."""
+        val = self.trip_meta.get("model_source") or self.itinerary.get("model_source")
+        return str(val or "").strip()
+
+    @property
     def saved_at_iso(self) -> str:
         return datetime.fromtimestamp(self.saved_at, tz=timezone.utc).strftime(
             "%B %d, %Y"
@@ -279,6 +285,18 @@ def save_itinerary(
         except Exception:
             theme_accent = vibe_color
     theme_label = vibe_label or itinerary.get("theme_label")
+
+    # Model-source label ("Grok (Server)" / "BYOM, <model>") — keep it on both
+    # the meta and the frozen itinerary JSON so share pages can surface it.
+    # Legacy rows without it simply read back with no model_source key.
+    model_source = str(
+        meta.get("model_source") or itinerary.get("model_source") or ""
+    ).strip()
+    if model_source:
+        meta["model_source"] = model_source
+        if itinerary.get("model_source") != model_source:
+            itinerary = dict(itinerary)
+            itinerary["model_source"] = model_source
 
     now = time.time()
     sid = replace_id or str(uuid.uuid4())
