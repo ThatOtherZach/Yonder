@@ -2,10 +2,6 @@
 {% block title %}Saved · Yonder{% endblock %}
 {% block extra_css %}
     .list-head {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: baseline;
-      justify-content: space-between;
       gap: 0.5rem 1rem;
       margin-bottom: 1rem;
     }
@@ -39,13 +35,13 @@
     button.refresh-btn:disabled { opacity: 0.7; cursor: wait; }
 {% endblock %}
 {% block body %}
-  <header class="page-head">
+  <header class="page-head container">
     <h1>Saved trips</h1>
     <p>
       Boarding passes you kept. Refresh re-checks the market; last-known fares stick if a leg goes quiet.
     </p>
   </header>
-  <main>
+  <main class="container">
     {% if flash %}
       <div class="flash ok">{{ flash }}</div>
     {% endif %}
@@ -62,7 +58,7 @@
         <a class="btn btn-gold" href="/?mode=detour">Plan a detour</a>
       </div>
     {% else %}
-      <div class="list-head">
+      <div class="list-head d-flex flex-wrap align-items-baseline justify-content-between">
         <h2>{{ cards|length }} pass{{ 'es' if cards|length != 1 else '' }}</h2>
         <p class="muted" style="margin:0">
           Signals, not tickets · <a href="/?mode=detour">Plan a detour</a>
@@ -240,7 +236,7 @@
       </div>
     {% endif %}
   </main>
-  <footer class="site-foot">
+  <footer class="site-foot container">
     Signals aren’t tickets. Re-check live fares before you book.
   </footer>
   <script>

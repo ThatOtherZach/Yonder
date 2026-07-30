@@ -41,12 +41,6 @@
       font-weight: 700;
     }
     button.btn-adv:disabled { opacity: 0.75; cursor: wait; }
-    .grid-form {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-      gap: 0.75rem;
-      align-items: end;
-    }
     .itinerary {
       --theme-primary: #e6b450;
       --theme-accent: #f0c96a;
@@ -277,7 +271,7 @@
     }
 {% endblock %}
 {% block body %}
-  <header>
+  <header class="page-head container">
     <h1>Adventure mode <span class="adv-badge">DETOURS</span></h1>
     <p class="hero-vibe">
       Describe a trip in plain English — named A→B detours <em>or</em> open getaways
@@ -285,7 +279,7 @@
       then you verify on Google Flights.
     </p>
   </header>
-  <main>
+  <main class="container">
     <form id="adv-form" class="ask-form" method="post" action="/adventure">
       <div class="card adv-card">
         <h2 style="margin:0 0 0.35rem">Plan an adventure</h2>
@@ -320,22 +314,33 @@
       </div>
 
       <div class="card adv-card">
-        <div class="grid-form">
+        <div class="row g-3 align-items-end">
+          <div class="col-12 col-sm-6 col-md-4 col-lg-2">
           <label>Depart
             <input name="depart" type="date" value="{{ form.depart }}" required />
           </label>
+          </div>
+          <div class="col-12 col-sm-6 col-md-4 col-lg-2">
           <label>Arrive by <span class="muted" style="text-transform:none;font-weight:400">(optional)</span>
             <input name="arrive_by" type="date" value="{{ form.arrive_by }}" />
           </label>
+          </div>
+          <div class="col-6 col-md-4 col-lg-2">
           <label>Min stop days
             <input name="min_stop_days" type="number" min="1" max="21" value="{{ form.min_stop_days }}" />
           </label>
+          </div>
+          <div class="col-6 col-md-4 col-lg-2">
           <label>Max stop days
             <input name="max_stop_days" type="number" min="1" max="30" value="{{ form.max_stop_days }}" />
           </label>
+          </div>
+          <div class="col-6 col-md-4 col-lg-2">
           <label>Detours to try
             <input name="max_candidates" type="number" min="2" max="10" value="{{ form.max_candidates }}" />
           </label>
+          </div>
+          <div class="col-6 col-md-4 col-lg-2">
           <label>Vibe
             <select name="vibe" id="adv-vibe">
               {% set vibes = [
@@ -356,6 +361,7 @@
               {% endif %}
             </select>
           </label>
+          </div>
         </div>
 
         <p class="meta-note">
@@ -577,7 +583,7 @@
       </div>
     {% endif %}
   </main>
-  <footer>
+  <footer class="site-foot container">
     Adventure mode prices separate one-ways. Always re-check live fares before buying.
   </footer>
   <script>

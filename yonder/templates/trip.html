@@ -7,8 +7,6 @@
     }
     /* Compact share bar: small QR inline with the URL */
     .trip-share-bar {
-      display: flex;
-      align-items: center;
       gap: 1rem;
       margin: 0 0 1.5rem;
       padding: 0.75rem 1rem;
@@ -90,23 +88,23 @@
 {% endblock %}
 {% block body %}
   {% if not share %}
-  <header class="page-head">
+  <header class="page-head container">
     <h1>Trip not found</h1>
     <p class="trip-meta">{{ error or "This shared trip is missing or expired." }}</p>
   </header>
-  <main class="trip-share">
+  <main class="trip-share container">
     <p class="muted"><a href="/">← Back to Yonder</a></p>
   </main>
   {% else %}
   {% set p = share.payload or {} %}
-  <header class="page-head">
+  <header class="page-head container">
     <h1>{{ share.title }}</h1>
     <p class="trip-meta">
       Shared {{ kind_label }} · scan the QR or open this link on another device.
       Fares are signals only — re-check before you buy.
     </p>
   </header>
-  <main class="trip-share">
+  <main class="trip-share container">
     {# QR lightbox overlay #}
     <div class="qr-overlay" id="qr-overlay" role="dialog" aria-modal="true" aria-label="QR code enlarged">
       <div class="qr-overlay-inner">
@@ -119,7 +117,7 @@
     </div>
 
     {# ── Compact share bar: small QR + URL + copy ── #}
-    <div class="trip-share-bar">
+    <div class="trip-share-bar d-flex align-items-center">
       <button type="button" class="bp-qr" id="qr-thumb" aria-label="Enlarge QR code" title="Click to enlarge">
         {% if qr_src %}
         <img src="{{ qr_src }}" alt="QR code" width="60" height="60" />

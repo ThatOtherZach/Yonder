@@ -973,7 +973,7 @@
   {% set detour_place_books = dp.place_books if dp.place_books is defined else (place_books if mode == 'detour' else {}) %}
   {% set detour_trip_meta = dp.trip_meta if dp.trip_meta is defined else (trip_meta if mode == 'detour' else none) %}
 
-  <header class="page-head" id="explore-head">
+  <header class="page-head container" id="explore-head">
     <h1 id="explore-title">Go yonder</h1>
     <script>(function(){var t=["Go Yonder","Yonder City Awaits","Need Out?"];document.getElementById("explore-title").textContent=t[Math.floor(Math.random()*t.length)];})()</script>
     <p id="explore-blurb">
@@ -987,7 +987,7 @@
     </a>
     {% endif %}
   </header>
-  <main>
+  <main class="container">
     {# ——— One compose card: Escape | Detour toggle, shared prompt + vibe + map ——— #}
     <div class="card compose-card{% if mode == 'detour' %} is-detour{% endif %}" id="compose-card">
       <h2 id="compose-heading">Where to?</h2>
@@ -1534,7 +1534,7 @@
     {% endif %}
     </div>
   </main>
-  <footer class="site-foot">
+  <footer class="site-foot container">
     Signals aren’t tickets. Re-check live fares. Culture notes are short takes, not gospel.
   </footer>
   <script>
