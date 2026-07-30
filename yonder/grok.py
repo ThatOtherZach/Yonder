@@ -368,10 +368,10 @@ class GrokClient:
             "match that traveler's energy (cheap/chaotic/romantic/food-obsessed/quiet/etc.) "
             "while keeping the same structure and length. Echo their vibe, don't quote them.\n"
             "STRICT JSON only:\n"
-            '{"title":"Name","subtitle":"≤8 words",'
+            '{"title":"Name",'
             '"facts":["≤6 word punchy fact","…"],'
             '"culture":"1-2 sentences","food":"1 sentence","vibe":"1 sentence",'
-            '"caution":"optional 1 sentence or empty","era_note":"one cheeky closer ≤12 words"}\n'
+            '"caution":"optional 1 sentence or empty","era_note":"one cinematic tagline ≤12 words — evocative, specific, vibe-matched"}\n'
             "facts are optional FAST FACT chips (max 3, each ≤6 words). Prefer culture/food/vibe."
         )
         user = json.dumps(
@@ -401,7 +401,6 @@ class GrokClient:
         except Exception:
             return {
                 "title": city or iata or "Somewhere",
-                "subtitle": "Worth a look",
                 "facts": [],
                 "culture": text.strip()[:280] if text else "",
                 "food": "",
