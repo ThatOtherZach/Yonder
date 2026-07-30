@@ -369,7 +369,11 @@
             <a class="btn secondary" href="/?mode=detour" style="padding:0.4rem 0.75rem;font-size:0.85rem">Detour</a>
             <button type="button" id="clear-visited-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" {% if not visited_defaults %}hidden{% endif %}>Clear visited</button>
             <button type="button" id="clear-avoid-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" {% if not avoid_defaults %}hidden{% endif %}>Clear avoid</button>
+            <button type="button" id="backup-export-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem">Export backup</button>
+            <button type="button" id="backup-import-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem">Import backup</button>
+            <input type="file" id="backup-import-file" accept=".json,application/json" hidden />
           </div>
+          <p class="map-status" id="backup-status" hidden></p>
         </div>
 
         {# Preferences #}
@@ -1037,6 +1041,100 @@
         if (cvb) bindClearConfirm(cvb, function() { clearList("visited"); });
         var cab = document.getElementById("clear-avoid-btn");
         if (cab) bindClearConfirm(cab, function() { clearList("avoid"); });
+
+        /* ── Backup: export / import ─────────────────────── */
+        var statusEl = document.getElementById("backup-status");
+        function setStatus(msg, isError) {
+          if (!statusEl) return;
+          statusEl.hidden = !msg;
+          statusEl.textContent = msg || "";
+          statusEl.style.color = isError ? "var(--bad)" : "";
+        }
+
+        var expBtn = document.getElementById("backup-export-btn");
+        if (expBtn) expBtn.addEventListener("click", async function () {
+          setStatus("");
+          try {
+            var res = await fetch("/api/backup/export");
+            if (!res.ok) throw new Error("export failed");
+            var data = await res.json();
+            var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+            var a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "yonder-backup-" + (data.exported_at || "export") + ".json";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+            setStatus("Backup downloaded.");
+          } catch (e) {
+            setStatus("Export failed — try again.", true);
+          }
+        });
+
+        var impBtn = document.getElementById("backup-import-btn");
+        var impFile = document.getElementById("backup-import-file");
+        var pendingBackup = null;
+
+        async function applyImport() {
+          try {
+            var res = await fetch("/api/backup/import", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: pendingBackup,
+            });
+            var data = await res.json().catch(function(){ return {}; });
+            pendingBackup = null;
+            impBtn.textContent = "Import backup";
+            if (!res.ok || !data.ok) {
+              setStatus(data.error || "Import failed — is this a Yonder backup file?", true);
+              return;
+            }
+            document.dispatchEvent(new CustomEvent("yonder:xpupdate", { detail: data.xp }));
+            document.dispatchEvent(new CustomEvent("yonder:mapchange", { detail: { visited: data.visited, avoid: data.avoid } }));
+            setStatus("Backup restored — refreshing…");
+            setTimeout(function(){ location.reload(); }, 600);
+          } catch (e) {
+            pendingBackup = null;
+            impBtn.textContent = "Import backup";
+            setStatus("Import failed — try again.", true);
+          }
+        }
+
+        if (impBtn && impFile) {
+          impBtn.addEventListener("click", function (e) {
+            e.preventDefault();
+            if (!pendingBackup) {
+              setStatus("");
+              impFile.value = "";
+              impFile.click();
+            } else {
+              applyImport();
+            }
+          });
+          document.addEventListener("click", function (e) {
+            if (pendingBackup && !impBtn.contains(e.target)) {
+              pendingBackup = null;
+              impBtn.textContent = "Import backup";
+              setStatus("Import cancelled.");
+            }
+          }, true);
+          impFile.addEventListener("change", async function () {
+            var f = impFile.files && impFile.files[0];
+            if (!f) return;
+            try {
+              var text = await f.text();
+              var parsed = JSON.parse(text);
+              if (!parsed || parsed.format !== "yonder-backup") throw new Error("bad file");
+              pendingBackup = text;
+              impBtn.textContent = "Are you sure? 😮";
+              setStatus("This will overwrite your map stamps and settings. Click again to confirm.");
+            } catch (err) {
+              pendingBackup = null;
+              setStatus("That file isn't a Yonder backup.", true);
+            }
+          });
+        }
       })();
 
       document.addEventListener("yonder:xpupdate", function (e) { updateXpCard(e.detail); });

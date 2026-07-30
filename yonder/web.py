@@ -2816,6 +2816,161 @@ async def api_travel_map(request: Request) -> JSONResponse:
     )
 
 
+_BACKUP_FORMAT = "yonder-backup"
+_BACKUP_VERSION = 1
+# Non-secret .env settings included in backups (never API keys)
+_BACKUP_ENV_KEYS = ("HOME_IATA", "DEFAULT_CURRENCY")
+
+
+@app.get("/api/backup/export")
+async def api_backup_export() -> JSONResponse:
+    """Download all user settings + passport map as a single JSON backup.
+
+    Never includes secrets — only user_prefs.db values and the two
+    non-secret env prefs (home airport, currency). XP is derived from the
+    map and recomputed on import, so it is not stored.
+    """
+    from yonder.settings_store import read_env as _read_env
+    from yonder.user_prefs import PREF_DEFAULTS, get_all_prefs
+
+    s = get_settings()
+    prefs = {k: v for k, v in get_all_prefs().items() if k in PREF_DEFAULTS}
+    # visited/avoid exported as explicit lists under travel_map
+    prefs.pop("visited_countries", None)
+    prefs.pop("avoid_countries", None)
+    env = _read_env()
+    payload = {
+        "format": _BACKUP_FORMAT,
+        "version": _BACKUP_VERSION,
+        "exported_at": date.today().isoformat(),
+        "travel_map": {
+            "visited": list(s.visited_country_list()),
+            "avoid": list(s.avoid_country_list()),
+        },
+        "prefs": prefs,
+        "settings": {k: (env.get(k) or "").strip() for k in _BACKUP_ENV_KEYS},
+    }
+    fname = f"yonder-backup-{date.today().isoformat()}.json"
+    return JSONResponse(
+        payload,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+@app.post("/api/backup/import")
+async def api_backup_import(request: Request) -> JSONResponse:
+    """Restore a previously exported backup. Validates everything; rejects junk."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "Not valid JSON."}, status_code=400)
+
+    if not isinstance(body, dict) or body.get("format") != _BACKUP_FORMAT:
+        return JSONResponse(
+            {"ok": False, "error": "Not a Yonder backup file."}, status_code=400
+        )
+    try:
+        version = int(body.get("version"))
+    except (TypeError, ValueError):
+        version = -1
+    if version != _BACKUP_VERSION:
+        return JSONResponse(
+            {"ok": False, "error": f"Unsupported backup version {body.get('version')!r}."},
+            status_code=400,
+        )
+
+    tm = body.get("travel_map") or {}
+    if not isinstance(tm, dict):
+        return JSONResponse(
+            {"ok": False, "error": "Malformed travel_map section."}, status_code=400
+        )
+
+    def _codes(raw: object) -> list[str]:
+        if not isinstance(raw, list):
+            return []
+        return [
+            str(c).strip().upper()
+            for c in raw
+            if isinstance(c, str) and len(str(c).strip()) == 2 and str(c).strip().isalpha()
+        ]
+
+    visited = normalize_country_list(_codes(tm.get("visited")), max_n=250)
+    avoid = normalize_avoid_list(_codes(tm.get("avoid")))
+    avoid_set = set(avoid)
+    visited = [c for c in visited if c not in avoid_set]
+
+    # Prefs: only known keys, numeric keys sanity-checked
+    from yonder.user_prefs import PREF_DEFAULTS, set_prefs as _set_prefs
+
+    raw_prefs = body.get("prefs") or {}
+    if not isinstance(raw_prefs, dict):
+        return JSONResponse(
+            {"ok": False, "error": "Malformed prefs section."}, status_code=400
+        )
+    numeric_bounds = {
+        "col_expected_daily": (0, 5000),
+        "col_tolerance_pct": (0, 100),
+        "col_hotel": (0, 5000),
+        "col_food": (0, 5000),
+        "col_transit": (0, 5000),
+        "col_culture": (0, 5000),
+        "detour_min_stop_days": (1, 21),
+        "detour_max_stop_days": (1, 30),
+    }
+    pref_updates: dict[str, str] = {}
+    for key, bounds in numeric_bounds.items():
+        if key not in raw_prefs or key not in PREF_DEFAULTS:
+            continue
+        try:
+            v = float(str(raw_prefs[key]).strip() or "0")
+        except (TypeError, ValueError):
+            continue
+        v = max(bounds[0], min(bounds[1], v))
+        pref_updates[key] = str(int(v)) if v == int(v) else str(round(v, 2))
+    pref_updates["visited_countries"] = ",".join(visited)
+    pref_updates["avoid_countries"] = ",".join(avoid)
+
+    # Settings: only the whitelisted non-secret keys, format-validated
+    raw_settings = body.get("settings") or {}
+    if not isinstance(raw_settings, dict):
+        return JSONResponse(
+            {"ok": False, "error": "Malformed settings section."}, status_code=400
+        )
+    env_updates: dict[str, str] = {}
+    clear_keys: set[str] = set()
+    home = str(raw_settings.get("HOME_IATA") or "").strip().upper()
+    if "HOME_IATA" in raw_settings:
+        if home == "":
+            clear_keys.add("HOME_IATA")
+        elif len(home) == 3 and home.isalpha():
+            env_updates["HOME_IATA"] = home
+    cur = str(raw_settings.get("DEFAULT_CURRENCY") or "").strip().upper()
+    if len(cur) == 3 and cur.isalpha():
+        env_updates["DEFAULT_CURRENCY"] = cur
+
+    try:
+        _set_prefs(pref_updates)
+        if env_updates or clear_keys:
+            write_env(env_updates, clear_keys=clear_keys)
+        reload_settings()
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+    from yonder.xp import compute_xp as _compute_xp
+
+    xp_profile = _compute_xp(visited, avoid)
+    return JSONResponse(
+        {
+            "ok": True,
+            "visited": visited,
+            "avoid": avoid,
+            "avoid_names": [country_label(c) for c in avoid],
+            "visited_names": [country_label(c) for c in visited],
+            "xp": xp_profile,
+        }
+    )
+
+
 @app.get("/api/usage/summary")
 async def usage_summary() -> JSONResponse:
     """Return AI token usage totals for last 7d, last 30d, and all-time."""
