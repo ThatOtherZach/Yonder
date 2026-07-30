@@ -672,3 +672,172 @@ class TestEscapeChipOriginCorrection:
         assert captures["search_calls"], "search_flights was never called"
         # No chip, no correction — Grok's DXB must survive
         assert captures["search_calls"][0].origin == "DXB"
+
+
+# ---------------------------------------------------------------------------
+# 8.  Mix shape — refresh: origin pinned on BOTH escape and detour branches
+# ---------------------------------------------------------------------------
+
+
+def _patch_mix(
+    monkeypatch,
+    *,
+    grok_parsed_origin: str,
+    translate_origin: str,
+    translate_dest: str = "NRT",
+    grok_ready: bool = True,
+) -> dict[str, list]:
+    """Patch Grok + search_flights + plan_adventure for mix-shape tests.
+
+    Both paths are active simultaneously.  Returns a captures dict with
+    'search_calls' (escape branch) and 'plan_calls' (detour branch).
+    """
+    captures: dict[str, list] = {"search_calls": [], "plan_calls": []}
+
+    settings = _make_settings(grok_ready=grok_ready)
+    monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
+
+    parsed = _make_parsed_trip(grok_parsed_origin)
+
+    async def _fake_parse(self, *a: Any, **kw: Any) -> ParsedTrip:
+        return parsed
+
+    monkeypatch.setattr(grok_module.GrokClient, "parse_natural_language", _fake_parse)
+
+    adv_req = AdventureRequest(
+        origin=translate_origin,
+        destination=translate_dest,
+        depart_date=date.today() + timedelta(days=30),
+        trip_kind="getaway",
+    )
+    ideas = [StopoverIdea(iata="TYO", city="Tokyo", stay_days=3)]
+
+    async def _fake_translate(self, *a: Any, **kw: Any):
+        return adv_req, ideas
+
+    monkeypatch.setattr(
+        grok_module.GrokClient, "translate_adventure", _fake_translate
+    )
+
+    async def _fake_search(query, *, settings=None, **kw: Any) -> UnifiedSearchResult:
+        captures["search_calls"].append(query)
+        return _make_search_result(query.origin, query.destination)
+
+    monkeypatch.setattr(web_module, "search_flights", _fake_search)
+
+    async def _fake_plan(req, idea_list, *, settings=None, **kw: Any) -> AdventureResult:
+        captures["plan_calls"].append(req)
+        return _make_adventure_result(req.origin, req.destination)
+
+    monkeypatch.setattr(web_module, "plan_adventure", _fake_plan)
+
+    return captures
+
+
+class TestMixShapeRefreshOriginPinned:
+    """force_mode=mix runs _do_escape AND _do_detour in the same request.
+    With refresh=1, origin_pinned must hold across both branches — the form
+    origin must reach search_flights (escape) AND plan_adventure (detour),
+    regardless of what Grok's parse_natural_language or translate_adventure
+    returned.
+    """
+
+    def test_both_branches_pinned_on_refresh(self, client, monkeypatch):
+        """Grok returns a different origin on both paths; refresh=1 must pin
+        both to the form's YVR."""
+        captures = _patch_mix(
+            monkeypatch,
+            grok_parsed_origin="YYZ",    # escape branch — Grok says YYZ
+            translate_origin="LAX",       # detour branch — translate says LAX
+        )
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "show me something new",
+                "origin": "YVR",
+                "depart": _DEPART,
+                "refresh": "1",
+                "force_mode": "mix",
+                "vibe": "adventure",
+            },
+        )
+        assert resp.status_code == 200
+
+        # Escape branch: search_flights must have been called with YVR
+        assert captures["search_calls"], "search_flights (escape) was never called"
+        assert captures["search_calls"][0].origin == "YVR", (
+            f"escape branch: expected pinned YVR, got {captures['search_calls'][0].origin}"
+        )
+
+        # Detour branch: plan_adventure must have been called with YVR
+        assert captures["plan_calls"], "plan_adventure (detour) was never called"
+        assert captures["plan_calls"][0].origin == "YVR", (
+            f"detour branch: expected pinned YVR, got {captures['plan_calls'][0].origin}"
+        )
+
+    def test_escape_branch_pinned_even_when_detour_origin_matches(
+        self, client, monkeypatch
+    ):
+        """Detour translate already returns the right origin; escape is the one
+        that needs correction.  Both must still receive the form's JFK."""
+        captures = _patch_mix(
+            monkeypatch,
+            grok_parsed_origin="ORD",    # escape branch wrong
+            translate_origin="JFK",       # detour branch already correct
+        )
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "weekend getaway ideas",
+                "origin": "JFK",
+                "depart": _DEPART,
+                "refresh": "1",
+                "force_mode": "mix",
+                "vibe": "adventure",
+            },
+        )
+        assert resp.status_code == 200
+
+        assert captures["search_calls"], "search_flights (escape) was never called"
+        assert captures["search_calls"][0].origin == "JFK", (
+            f"escape branch: expected pinned JFK, got {captures['search_calls'][0].origin}"
+        )
+
+        assert captures["plan_calls"], "plan_adventure (detour) was never called"
+        assert captures["plan_calls"][0].origin == "JFK"
+
+    def test_no_pin_without_refresh_on_mix(self, client, monkeypatch):
+        """Without refresh=1, Grok's origins must be preserved on both branches
+        (origin_pinned is False — no override should occur)."""
+        captures = _patch_mix(
+            monkeypatch,
+            grok_parsed_origin="NRT",    # escape Grok origin
+            translate_origin="SYD",       # detour translate origin
+        )
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "mix of options please",
+                "origin": "YVR",
+                "depart": _DEPART,
+                # NO refresh flag
+                "force_mode": "mix",
+                "vibe": "adventure",
+            },
+        )
+        assert resp.status_code == 200
+
+        # Without refresh, Grok's NRT survives on the escape branch
+        assert captures["search_calls"], "search_flights (escape) was never called"
+        assert captures["search_calls"][0].origin == "NRT", (
+            "no refresh → escape branch must use Grok's NRT, not the form's YVR"
+        )
+
+        # Without refresh, translate's SYD survives on the detour branch
+        assert captures["plan_calls"], "plan_adventure (detour) was never called"
+        assert captures["plan_calls"][0].origin == "SYD", (
+            "no refresh → detour branch must use translate's SYD, not the form's YVR"
+        )
