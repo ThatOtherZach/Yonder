@@ -1,1 +1,2 @@
 - [Vibe signal store semantics](vibe-signals-store.md) — upgrade-only tiers, MOCK env guard inside the module, hourly lazy recompute (force it when testing).
+- [Mock provider cancellation fallback](mock-provider-cancellation.md) — CancelledError escapes `except Exception`; guard Grok awaits with internal timeouts, clear XAI_API_KEY in tests.

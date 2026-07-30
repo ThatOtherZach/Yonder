@@ -115,6 +115,8 @@ class AIDemoProvider(FlightProvider):
         return True
 
     async def search(self, query: SearchQuery) -> list[FlightOffer]:
+        import asyncio
+
         from yonder.ai_usage import log_usage
         from yonder.grok import GrokClient
 
@@ -124,7 +126,13 @@ class AIDemoProvider(FlightProvider):
 
         try:
             async with GrokClient(self._settings, self._client) as grok:
-                offers = await grok.invent_demo_fares(query)
+                # Use an internal timeout so a slow/cancelled Grok call always
+                # falls back to the seeded mock rather than leaking CancelledError
+                # (CancelledError is BaseException, not Exception, so the outer
+                # except block won't catch it without this guard).
+                offers = await asyncio.wait_for(
+                    grok.invent_demo_fares(query), timeout=6.0
+                )
             usage = grok.accumulated_usage
             if usage:
                 await log_usage("demo_fares", usage)

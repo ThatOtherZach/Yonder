@@ -56,8 +56,13 @@ async def _run_pipeline(req: AdventureRequest) -> tuple[list[str], list[str]]:
 
 @pytest.fixture(autouse=True)
 def _no_env_mock(monkeypatch):
-    """Ensure the MOCK env-var guard does not suppress the mock provider."""
+    """Ensure the MOCK env-var guard does not suppress the mock provider.
+
+    Also clear XAI_API_KEY so AIDemoProvider uses the fast seeded MockProvider
+    instead of attempting live Grok API calls during tests.
+    """
     monkeypatch.delenv("MOCK", raising=False)
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
 
 
 # ---------------------------------------------------------------------------

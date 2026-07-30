@@ -11,3 +11,4 @@ python-multipart>=0.0.9
 segno>=1.6
 airportsdata
 pytest
+pytest-asyncio
