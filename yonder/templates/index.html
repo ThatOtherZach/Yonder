@@ -1492,6 +1492,21 @@
       var errBox = document.getElementById("ask-client-error");
       var grokReady = {{ "true" if grok_ready else "false" }};
 
+      function updateGoButton() {
+        if (!ta || !btn) return;
+        if (ta.value.trim().length === 0) {
+          btn.textContent = "What's the vibe?";
+          btn.disabled = true;
+        } else {
+          btn.disabled = false;
+          if (typeof paintGoButtons === "function") paintGoButtons();
+          else btn.textContent = "Find ✈️";
+        }
+      }
+      if (ta) {
+        ta.addEventListener("input", updateGoButton);
+        updateGoButton();
+      }
 
       function showError(msg) {
         if (!errBox) return;
