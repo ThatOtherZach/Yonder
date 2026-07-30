@@ -495,3 +495,180 @@ class TestDetourLocalGetawayFallback:
         assert len(used) == 3 and used.isalpha(), f"Expected IATA, got {used!r}"
         # and specifically NOT the malformed "YV"
         assert used != "YV"
+
+
+# ---------------------------------------------------------------------------
+# 7.  Escape — chip-driven origin correction
+# ---------------------------------------------------------------------------
+
+
+class TestEscapeChipOriginCorrection:
+    """When a search is driven by a dataset/template/save chip, Grok may echo a
+    stale "From XYZ:" prefix from the chip text.  The server must pin the result
+    back to the user's resolved home airport (home_iata) regardless of what Grok
+    returned.  A plain prompt (chip_source=prompt) must NOT apply this correction.
+    """
+
+    # ------------------------------------------------------------------
+    # Positive cases — chip_source triggers the guard
+    # ------------------------------------------------------------------
+
+    def test_dataset_chip_corrects_mismatched_origin(self, client, monkeypatch):
+        """chip_source=dataset + Grok returns wrong origin → home_iata wins."""
+        captures = _patch_escape(monkeypatch, grok_parsed_origin="LAX")
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "From LAX: beaches",
+                "origin": "JFK",
+                "depart": _DEPART,
+                "force_mode": "escape",
+                "vibe": "adventure",
+                "chip_source": "dataset",
+                "chip_id": "ds:abc123",
+            },
+        )
+        assert resp.status_code == 200
+        assert captures["search_calls"], "search_flights was never called"
+        assert captures["search_calls"][0].origin == "JFK", (
+            "chip correction should have overridden Grok's LAX with home JFK"
+        )
+
+    def test_template_chip_corrects_mismatched_origin(self, client, monkeypatch):
+        """chip_source=template + Grok returns wrong origin → home_iata wins."""
+        captures = _patch_escape(monkeypatch, grok_parsed_origin="SYD")
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "From SYD: island hopping",
+                "origin": "YVR",
+                "depart": _DEPART,
+                "force_mode": "escape",
+                "vibe": "adventure",
+                "chip_source": "template",
+                "chip_id": "tmpl:summer",
+            },
+        )
+        assert resp.status_code == 200
+        assert captures["search_calls"], "search_flights was never called"
+        assert captures["search_calls"][0].origin == "YVR", (
+            "chip correction should have overridden Grok's SYD with home YVR"
+        )
+
+    def test_save_chip_corrects_mismatched_origin(self, client, monkeypatch):
+        """chip_source=save + Grok returns wrong origin → home_iata wins."""
+        captures = _patch_escape(monkeypatch, grok_parsed_origin="CDG")
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "From CDG: city break",
+                "origin": "LHR",
+                "depart": _DEPART,
+                "force_mode": "escape",
+                "vibe": "adventure",
+                "chip_source": "save",
+                "chip_id": "saved:weekend",
+            },
+        )
+        assert resp.status_code == 200
+        assert captures["search_calls"], "search_flights was never called"
+        assert captures["search_calls"][0].origin == "LHR", (
+            "chip correction should have overridden Grok's CDG with home LHR"
+        )
+
+    def test_ds_chip_id_prefix_corrects_mismatched_origin(self, client, monkeypatch):
+        """chip_id starting with 'ds:' triggers correction even if chip_source is empty."""
+        captures = _patch_escape(monkeypatch, grok_parsed_origin="ORD")
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "From ORD: warm escape",
+                "origin": "BOS",
+                "depart": _DEPART,
+                "force_mode": "escape",
+                "vibe": "adventure",
+                "chip_source": "",   # no explicit chip_source
+                "chip_id": "ds:warmweather",
+            },
+        )
+        assert resp.status_code == 200
+        assert captures["search_calls"], "search_flights was never called"
+        assert captures["search_calls"][0].origin == "BOS", (
+            "ds: chip_id prefix should have triggered correction to home BOS"
+        )
+
+    def test_chip_correction_skipped_when_grok_already_matches_home(
+        self, client, monkeypatch
+    ):
+        """No spurious notes when Grok already returned the home airport."""
+        captures = _patch_escape(monkeypatch, grok_parsed_origin="JFK")
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "beaches",
+                "origin": "JFK",
+                "depart": _DEPART,
+                "force_mode": "escape",
+                "vibe": "adventure",
+                "chip_source": "dataset",
+                "chip_id": "ds:beaches",
+            },
+        )
+        assert resp.status_code == 200
+        assert captures["search_calls"], "search_flights was never called"
+        # Origin was already correct — must still be JFK
+        assert captures["search_calls"][0].origin == "JFK"
+
+    # ------------------------------------------------------------------
+    # Negative case — prompt source must NOT apply the correction
+    # ------------------------------------------------------------------
+
+    def test_prompt_source_does_not_apply_chip_correction(self, client, monkeypatch):
+        """chip_source=prompt is a regular user query — Grok's origin must be used."""
+        captures = _patch_escape(monkeypatch, grok_parsed_origin="NRT")
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "fly from Tokyo to Europe",
+                "origin": "YVR",
+                "depart": _DEPART,
+                "force_mode": "escape",
+                "vibe": "adventure",
+                "chip_source": "prompt",
+            },
+        )
+        assert resp.status_code == 200
+        assert captures["search_calls"], "search_flights was never called"
+        # chip_source=prompt — no correction, Grok's NRT must survive
+        assert captures["search_calls"][0].origin == "NRT", (
+            "prompt source should never apply chip correction"
+        )
+
+    def test_absent_chip_source_does_not_apply_chip_correction(
+        self, client, monkeypatch
+    ):
+        """When chip_source is omitted, the server defaults it to 'prompt', so no
+        chip correction should be applied to a plain search."""
+        captures = _patch_escape(monkeypatch, grok_parsed_origin="DXB")
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": "desert luxury from Dubai",
+                "origin": "YYZ",
+                "depart": _DEPART,
+                "force_mode": "escape",
+                "vibe": "adventure",
+                # chip_source intentionally absent — defaults to "prompt"
+            },
+        )
+        assert resp.status_code == 200
+        assert captures["search_calls"], "search_flights was never called"
+        # No chip, no correction — Grok's DXB must survive
+        assert captures["search_calls"][0].origin == "DXB"
