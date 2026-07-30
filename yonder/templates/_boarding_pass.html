@@ -1,0 +1,428 @@
+{# ── Shared boarding-pass card macros ─────────────────────────────────────────
+   Canonical UI extracted verbatim from Explore (index.html). Reused by:
+     - index.html  (mode='explore')  — full interactive card
+     - saved.html  (mode='saved')    — refresh/remove forms, saved metadata, no thumbs
+     - trip.html   (mode='share')    — read-only, no thumbs/share, no in-card field note
+
+   Callers must pass loop.index0 in as `idx` (macros don't see caller loops) and
+   compute any share pack (share_escape / share_detour) themselves — macros never
+   call page-only globals.
+#}
+
+{% macro escape_card(mode, o, query, idx,
+                     esc_theme=none, esc_vibe=none, escape_parsed=none,
+                     escape_place_book=none, share=none,
+                     esc_text='', ask='', share_vibe=none) %}
+{% set esc_theme = esc_theme or {} %}
+{% set fare = o.display_price_base or o.display_price or (('~' ~ (o.currency or '') ~ ' ' ~ '%.0f'|format(o.price)) if o.price is defined and o.price is not none else '—') %}
+<article
+  class="boarding-pass is-adventure"
+  data-dest-iata="{{ query.destination }}"
+  {% if esc_theme.primary %} style="--bp-accent: {{ esc_theme.primary }}; border-color: color-mix(in srgb, {{ esc_theme.primary }} 35%, var(--line));"{% endif %}
+>
+  <div class="bp-main">
+    <div class="bp-top">
+      <span class="bp-label">Direct Escape</span>
+      {% if mode == 'share' and share_vibe %}
+      <span class="bp-badge soft" style="background:{{ share_vibe.color }};color:#fff;border:none">{{ share_vibe.emoji }} {{ share_vibe.label }}</span>
+      {% else %}
+      <span class="bp-badge soft"{% if esc_theme.primary %} style="background:{{ esc_theme.primary }};color:#fff;border:none"{% endif %}>
+        {% if esc_theme.flag_img %}<img class="flag-img" src="{{ esc_theme.flag_img }}" alt="" width="18" height="12" style="vertical-align:-1px;margin-right:0.25rem;border-radius:2px" loading="lazy" />{% elif esc_vibe %}{{ esc_vibe | vibe_emoji }} {% endif %}{{ esc_theme.label or 'Escape' }}
+      </span>
+      {% endif %}
+    </div>
+    <div class="bp-route">
+      <span class="bp-iata">{{ query.origin }}</span>
+      <span class="bp-plane" aria-hidden="true">✈</span>
+      <span class="bp-iata">{{ query.destination }}</span>
+    </div>
+    <p class="bp-cities">{{ route(query.origin, query.destination) }}</p>
+    {% if escape_parsed and escape_parsed.intent_summary %}
+    <p class="bp-why">{{ escape_parsed.intent_summary }}</p>
+    {% elif esc_vibe %}
+    <p class="bp-why">{{ esc_vibe | vibe_emoji }} {{ esc_vibe }} vibes · one traveler · economy</p>
+    {% endif %}
+    <div class="bp-legs">
+      <div class="bp-leg">
+        <div class="codes">{{ place(query.origin) }} → {{ place(query.destination) }}</div>
+        <div class="fare">
+          {{ fare }}
+        </div>
+        <div class="meta">
+          {{ query.depart_date | fmt_date }}
+          {% if query.return_date %} · return {{ query.return_date | fmt_date }}{% endif %}
+          · {{ o.airlines|join(', ') if o.airlines else '—' }}
+          · {{ 'Direct' if o.stops_out == 0 else (o.stops_out|string + (' stop' if o.stops_out == 1 else ' stops')) }}
+          {% if o.duration_out_minutes is defined and o.duration_out_minutes is not none %}
+            · {{ (o.duration_out_minutes // 60) }}h{{ '%02d'|format(o.duration_out_minutes % 60) }}m
+          {% endif %}
+          {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
+            · <a href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if mode == 'explore' %}
+    {# Field note — same collapsible pattern as Detour #}
+    <div
+      class="place-book field-note-inset field-note-slot{% if not escape_place_book %} is-loading{% endif %}"
+      id="escape-field-note"
+      data-iata="{{ query.destination }}"
+      data-country="{{ esc_theme.country or '' }}"
+      data-city=""
+      data-role="destination"
+    >
+      <div class="pb-story-body{% if not escape_place_book %} is-loading{% endif %}">
+        {% if escape_place_book %}
+        <span class="pb-tag">Field note</span>
+        <h3 style="font-size:1.15rem">{{ escape_place_book.title }}</h3>
+        {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
+        {% if escape_place_book.facts %}
+        <div class="pb-fast-facts" aria-label="Fast facts">
+          {% for f in escape_place_book.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        {% set pb_tagline = escape_place_book.tagline or escape_place_book.era_note or escape_place_book.vibe %}
+        {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
+        {% else %}
+        <span class="pb-tag">Field note</span>
+        <p class="pb-loading-msg">Writing field note…</p>
+        {% endif %}
+      </div>
+      {% if escape_place_book and (escape_place_book.culture or escape_place_book.food or escape_place_book.caution) %}
+      <button type="button" class="pb-toggle" aria-expanded="false">
+        <span class="pb-toggle-label">More · culture, food &amp; budget</span>
+        <span class="pb-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="pb-details" hidden>
+        <div class="pb-grid pb-mesh-grid">
+          {% if escape_place_book.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ escape_place_book.culture }}</p></div>{% endif %}
+          {% if escape_place_book.food %}<div class="pb-block"><h4>Food</h4><p>{{ escape_place_book.food }}</p></div>{% endif %}
+          {% if escape_place_book.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ escape_place_book.caution }}</p></div>{% endif %}
+        </div>
+      </div>
+      {% elif not escape_place_book %}
+      <button type="button" class="pb-toggle" aria-expanded="false" hidden>
+        <span class="pb-toggle-label">More · culture, food &amp; budget</span>
+        <span class="pb-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="pb-details" hidden></div>
+      {% endif %}
+    </div>
+
+    <script type="application/json" id="escape-offer-json-{{ idx }}">{{ o.model_dump_json() | safe }}</script>
+    <script type="application/json" id="escape-query-json">{{ query.model_dump_json() | safe }}</script>
+    {% endif %}
+    <div class="bp-actions">
+      {% if o.google_flights_url %}
+      <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
+      {% endif %}
+      {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
+      <a class="btn secondary" href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="bp-stub">
+    <div>
+      <div class="bp-stub-label">Approx fare</div>
+      <div class="bp-stub-price price-with-sign">
+        <span class="price-amt">{{ fare }}</span>{% if o.price_glyph %}<span class="price-sign {{ o.price_tone or 'neutral' }} sign">{{ o.price_glyph }}</span>{% endif %}
+      </div>
+      {% if mode == 'explore' %}
+      <div class="bp-thumbs"
+           data-vibe="{{ esc_vibe | e }}"
+           data-dest="{{ query.destination }}"
+           data-query="{{ esc_text | e }}"
+           data-mock="{{ 'true' if o.price_kind == 'mock' else 'false' }}">
+        <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">👍</button>
+        <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">👎</button>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if mode == 'explore' and share and share.qr_src %}
+    <div class="bp-stub-qr">
+      <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
+        <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
+      </a>
+      <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-offer-idx="{{ idx }}" data-ask="{{ (ask or esc_text or '')|e }}">★ Share</button>
+    </div>
+    {% elif mode == 'explore' and share %}
+    <div class="bp-stub-qr">
+      <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
+      <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-offer-idx="{{ idx }}" data-ask="{{ (ask or esc_text or '')|e }}">★ Share</button>
+    </div>
+    {% elif mode == 'share' %}
+    <div class="bp-stub-meta">{{ o.provider or 'signal' }}</div>
+    {% else %}
+    <div class="bp-barcode" aria-hidden="true"></div>
+    {% endif %}
+  </div>
+</article>
+{% endmacro %}
+
+
+{% macro detour_card(mode, it, idx,
+                     det_vibe='', det_text='', share=none, pb=none,
+                     s=none, share_vibe=none, fallback_title='') %}
+{% set accent = ((s.theme_primary if s else none) or it.theme_primary) %}
+<article class="boarding-pass is-adventure" data-stop-iata="{{ it.stop_iata or '' }}"{% if accent %} style="--bp-accent: {{ accent }}; border-color: color-mix(in srgb, {{ accent }} 35%, var(--line));"{% endif %}>
+  <div class="bp-main">
+    <div class="bp-top">
+      {% if mode == 'saved' %}
+      <span class="bp-label">{% if s.kind == 'escape' %}Direct Escape{% elif s.kind == 'getaway' %}Getaway{% else %}Detour{% endif %}</span>
+      <span class="bp-badge soft"{% if s.theme_primary %} style="background:{{ s.theme_primary }};color:#fff;border:none"{% endif %}>{% if s.vibe %}{{ s.vibe | vibe_emoji }} {% endif %}{{ it.theme_label or s.theme_label or it.kind or 'Trip' }}</span>
+      {% elif mode == 'share' %}
+      <span class="bp-label">{{ (it.kind or 'detour') | title }}</span>
+      <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{% if share_vibe %}{{ share_vibe.emoji }} {{ share_vibe.label }}{% else %}{{ it.theme_label or 'Detour' }}{% endif %}</span>
+      {% else %}
+      <span class="bp-label">Detour</span>
+      <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{% set _bem = (it.theme_label or '') | lower | vibe_emoji %}{% if _bem %}{{ _bem }} {% endif %}{{ it.theme_label or '#' ~ (idx + 1) }}</span>
+      {% endif %}
+    </div>
+    {% if it.legs and it.legs|length >= 1 %}
+    <div class="bp-route">
+      <span class="bp-iata">{{ it.legs[0].from_iata }}</span>
+      <span class="bp-plane" aria-hidden="true">✈</span>
+      {% if it.stop_iata and (mode != 'saved' or it.legs|length > 1) %}<span class="bp-iata" style="font-size:1.35rem;opacity:0.85">{{ it.stop_iata }}</span>
+      <span class="bp-plane" aria-hidden="true">✈</span>{% endif %}
+      <span class="bp-iata">{{ (it.legs|last).to_iata }}</span>
+    </div>
+    {% endif %}
+    <p class="bp-cities">{{ it.title or fallback_title }}</p>
+    {% if it.stay_days %}<p class="bp-stop-days">{{ it.stay_days }} Day Stop</p>{% endif %}
+    {% if it.why %}<p class="bp-why">{{ it.why }}</p>{% endif %}
+
+    {% if mode == 'saved' %}
+    <div class="bp-fields" style="margin-bottom:0.65rem">
+      <div class="bp-field">
+        <span class="k">Fares age</span>
+        <span class="v">{{ s.price_stale_label }}</span>
+      </div>
+      <div class="bp-field">
+        <span class="k">Saved</span>
+        <span class="v" style="font-size:0.82rem">{{ s.saved_at_iso }}</span>
+      </div>
+      {% if it.stay_days %}
+      <div class="bp-field">
+        <span class="k">Stop</span>
+        <span class="v">{{ it.stay_days }} Days</span>
+      </div>
+      {% endif %}
+      {% if it.vibe_tags %}
+      <div class="bp-field">
+        <span class="k">Vibe</span>
+        <span class="v">{{ it.vibe_tags[:2]|join(', ')|title }}</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if it.legs %}
+    <div class="bp-legs">
+      {% for leg in it.legs %}
+      <div class="bp-leg">
+        <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
+        <div class="fare">
+          {% if leg.offer %}
+            {{ leg.offer.display_price_base or leg.offer.display_price or (('~' ~ (leg.offer.currency or '') ~ ' ' ~ '%.0f'|format(leg.offer.price)) if leg.offer.price is defined and leg.offer.price is not none else '—') }}
+          {% else %}—{% endif %}
+        </div>
+        <div class="meta">
+          {{ leg.depart_date | fmt_date }}
+          {% if leg.offer %}
+            · {{ leg.offer.airlines|join(', ') or '—' }}
+            · {{ 'Direct' if leg.offer.stops_out == 0 else (leg.offer.stops_out|string + (' stop' if leg.offer.stops_out == 1 else ' stops')) }}
+          {% elif leg.error %}
+            · {{ leg.error[:64] }}
+          {% endif %}
+          {% if mode == 'explore' and leg.offer and leg.offer.deep_link and 'kayak.com' not in leg.offer.deep_link %}
+            · <a href="{{ leg.offer.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(leg.offer.airlines) }} ↗</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% set has_col = it.ground_display or it.ground_compare_line or it.ground_budget_line or it.all_in_display %}
+    {% if mode == 'explore' %}
+      {% if it.stop_iata or has_col %}
+        {% set has_more = (pb and (pb.culture or pb.food or pb.caution)) or has_col %}
+        <div
+          class="place-book field-note-inset field-note-slot{% if it.stop_iata and not pb %} is-loading{% endif %}"
+          data-iata="{{ it.stop_iata or '' }}"
+          data-country="{{ it.theme_country or '' }}"
+          data-city="{{ it.stop_city or '' }}"
+          data-role="stopover"
+          data-col-ground="{{ it.ground_display or '' }}"
+          data-col-compare="{{ it.ground_compare_line or '' }}"
+          data-col-budget="{{ it.ground_budget_line or '' }}"
+          data-col-budget-status="{{ it.ground_budget_status or '' }}"
+          data-col-allin="{{ it.all_in_display or '' }}"
+        >
+          <div class="pb-story-body{% if it.stop_iata and not pb %} is-loading{% endif %}">
+            {% if pb %}
+            <span class="pb-tag">Field note</span>
+            <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+            {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
+            {% if pb.facts %}
+            <div class="pb-fast-facts" aria-label="Fast facts">
+              {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
+            </div>
+            {% endif %}
+            {% set pb_tagline = pb.tagline or pb.era_note or pb.vibe %}
+            {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
+            {% elif it.stop_iata %}
+            <span class="pb-tag">Field note</span>
+            <p class="pb-loading-msg">Writing field note…</p>
+            {% else %}
+            <span class="pb-tag">On the ground</span>
+            <h3 style="font-size:1.15rem">{{ it.stop_city or it.stop_iata or 'Stop' }}</h3>
+            {% endif %}
+          </div>
+          {% if has_more or (it.stop_iata and not pb) %}
+          <button type="button" class="pb-toggle" aria-expanded="false"{% if it.stop_iata and not pb and not has_col %} hidden{% endif %}>
+            <span class="pb-toggle-label">More · culture, food &amp; budget</span>
+            <span class="pb-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="pb-details" hidden>
+            <div class="pb-grid pb-mesh-grid">
+              {% if pb %}
+                {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
+                {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
+                {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
+              {% endif %}
+              {% if has_col %}
+              {% if it.ground_display or it.ground_compare_line %}
+              <div class="pb-block pb-col">
+                <h4>Daily Spend</h4>
+                {% if it.ground_display %}<p>{{ it.ground_display }}</p>{% endif %}
+                {% if it.ground_compare_line %}<p class="muted" style="margin-top:0.25rem">{{ it.ground_compare_line }}</p>{% endif %}
+              </div>
+              {% endif %}
+              {% if it.ground_budget_line %}
+              <div class="pb-block pb-col{% if it.ground_budget_status == 'under' %} col-under{% elif it.ground_budget_status == 'over' %} col-over{% endif %}">
+                <h4>Your budget</h4>
+                <p>{{ it.ground_budget_line }}</p>
+              </div>
+              {% endif %}
+              {% if it.all_in_display %}
+              <div class="pb-block pb-col pb-col-allin">
+                <h4>Trip Estimate</h4>
+                <p><strong>{{ it.all_in_display }}</strong></p>
+              </div>
+              {% endif %}
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      {% endif %}
+    {% elif has_col %}
+    <div class="bp-col">
+      {% if it.ground_display %}
+      <p class="bp-note" style="margin:0.55rem 0 0">{{ it.ground_display }}</p>
+      {% endif %}
+      {% if it.ground_compare_line %}
+      <p class="bp-note muted" style="margin:0.2rem 0 0">{{ it.ground_compare_line }}</p>
+      {% endif %}
+      {% if it.ground_budget_line %}
+      <p class="bp-note{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}" style="margin:0.2rem 0 0">{{ it.ground_budget_line }}</p>
+      {% endif %}
+      {% if it.all_in_display %}
+      <p class="bp-note" style="margin:0.25rem 0 0;font-weight:650">{{ it.all_in_display }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% if mode in ('saved', 'share') %}
+      {% set model_src = (s.model_source if s else it.model_source) %}
+      {% if model_src %}
+      <p class="bp-note muted" style="margin:0.35rem 0 0;font-size:0.75rem">via {{ model_src }}</p>
+      {% endif %}
+    {% endif %}
+
+    {% if mode == 'explore' %}
+    <script type="application/json" id="it-json-{{ idx }}">{{ it.model_dump_json() | safe }}</script>
+    {% endif %}
+    <div class="bp-actions">
+      {% if mode == 'saved' %}
+      <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form">
+        <button type="submit" class="refresh-btn">Refresh fares</button>
+      </form>
+      {% endif %}
+      {% if it.google_flights_url %}
+      <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
+      {% endif %}
+      {% if it.legs and it.legs[0].google_flights_url %}
+      <a class="btn secondary" href="{{ it.legs[0].google_flights_url }}" target="_blank" rel="noopener">{{ it.legs[0].from_iata }} → {{ it.legs[0].to_iata }} ↗</a>
+      {% endif %}
+      {% if it.legs|length > 1 and it.legs[1].google_flights_url %}
+      <a class="btn secondary" href="{{ it.legs[1].google_flights_url }}" target="_blank" rel="noopener">{{ it.legs[1].from_iata }} → {{ it.legs[1].to_iata }} ↗</a>
+      {% endif %}
+      {% if mode == 'explore' and it.kayak_url %}
+      <a class="btn secondary" href="{{ it.kayak_url }}" target="_blank" rel="noopener">Kayak (leg 1) ↗</a>
+      {% endif %}
+      {% if mode == 'saved' %}
+      <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form">
+        <button type="button" class="danger js-remove-confirm">Remove</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  <div class="bp-stub">
+    <div>
+      <div class="bp-stub-label">Approx fare</div>
+      <div class="bp-stub-price price-with-sign">
+        {% if it.total_price is defined and it.total_price is not none %}
+        <span class="price-amt">{{ it.display_price_base or it.display_price or ('~' ~ ((it.currency or (s.currency if s else none)) or '') ~ ' ' ~ '%.0f'|format(it.total_price)) }}</span>{% if it.price_glyph %}<span class="price-sign {{ it.price_tone or 'neutral' }} sign">{{ it.price_glyph }}</span>{% endif %}
+        {% elif s and s.total_price is not none %}
+        <span class="price-amt">{{ s.display_price or ('~' ~ s.currency ~ ' ' ~ '%.0f'|format(s.total_price)) }}</span>
+        {% else %}
+        <span class="price-amt" style="font-size:1rem">—</span>
+        {% endif %}
+      </div>
+      {% if mode == 'explore' %}
+      <div class="bp-thumbs"
+           data-vibe="{{ det_vibe | e }}"
+           data-dest="{{ it.stop_iata or '' }}"
+           data-query="{{ det_text | e }}"
+           data-mock="false">
+        <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">👍</button>
+        <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">👎</button>
+      </div>
+      {% endif %}
+    </div>
+    {% if mode == 'explore' and share and share.qr_src %}
+    <div class="bp-stub-qr">
+      <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
+        <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
+      </a>
+      <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-it-idx="{{ idx }}">★ Share</button>
+    </div>
+    {% elif mode == 'explore' and share %}
+    <div class="bp-stub-qr">
+      <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
+      <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-it-idx="{{ idx }}">★ Share</button>
+    </div>
+    {% elif mode == 'saved' and share and share.qr_src %}
+    <div class="bp-stub-qr">
+      <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
+        <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
+      </a>
+      <div class="bp-stub-share">Scan · share</div>
+    </div>
+    {% elif mode == 'saved' and share %}
+    <div class="bp-stub-qr">
+      <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
+      <div class="bp-stub-share">Scan · share</div>
+    </div>
+    {% elif mode == 'share' %}
+    <div class="bp-stub-meta">{% if not it.stay_days %}multi-leg{% endif %}</div>
+    {% else %}
+    <div class="bp-barcode" aria-hidden="true"></div>
+    {% endif %}
+  </div>
+</article>
+{% endmacro %}

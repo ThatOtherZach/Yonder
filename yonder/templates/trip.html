@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_boarding_pass.html" as bp %}
 {% block title %}{{ share.title }} · Yonder{% endblock %}
 {% block extra_css %}
     .trip-share {
@@ -161,121 +162,10 @@
     {% if share.kind == 'escape' %}
       {% set q = p.query or {} %}
       {% set o = p.offer or {} %}
-      <article class="boarding-pass">
-        <div class="bp-main">
-          <div class="bp-top">
-            <span class="bp-label">Signal</span>
-            <span class="bp-badge soft"{% if share_vibe %} style="background:{{ share_vibe.color }};color:#fff;border:none"{% endif %}>{% if share_vibe %}{{ share_vibe.emoji }} {{ share_vibe.label }}{% else %}Escape{% endif %}</span>
-          </div>
-          <div class="bp-route">
-            <span class="bp-iata">{{ q.origin or '—' }}</span>
-            <span class="bp-plane" aria-hidden="true">✈</span>
-            <span class="bp-iata">{{ q.destination or '—' }}</span>
-          </div>
-          <p class="bp-cities">{{ route(q.origin or '', q.destination or '') if q.origin and q.destination else share.title }}</p>
-          <div class="bp-fields">
-            <div class="bp-field"><span class="k">Depart</span><span class="v">{{ q.depart_date | fmt_date }}</span></div>
-            {% if q.return_date %}<div class="bp-field"><span class="k">Return</span><span class="v">{{ q.return_date | fmt_date }}</span></div>{% endif %}
-            <div class="bp-field"><span class="k">Airline</span><span class="v">{{ (o.airlines or [])|join(', ') or '—' }}</span></div>
-            <div class="bp-field"><span class="k">Stops</span><span class="v">{{ o.stops_out if o.stops_out is defined else '—' }}</span></div>
-          </div>
-          <div class="bp-actions">
-            {% if o.google_flights_url %}
-            <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
-            {% endif %}
-            {% if o.deep_link and 'kayak.com' not in (o.deep_link or '') %}
-            <a class="btn secondary" href="{{ o.deep_link }}" target="_blank" rel="noopener">Airline ↗</a>
-            {% endif %}
-          </div>
-        </div>
-        <div class="bp-stub">
-          <div>
-            <div class="bp-stub-label">Approx fare</div>
-            <div class="bp-stub-price">
-              {{ o.display_price_base or o.display_price or (('~' ~ (o.currency or '') ~ ' ' ~ '%.0f'|format(o.price)) if o.price is defined and o.price is not none else '—') }}
-            </div>
-          </div>
-          <div class="bp-stub-meta">{{ o.provider or 'signal' }}</div>
-        </div>
-      </article>
-
+      {{ bp.escape_card('share', o, q, 0, share_vibe=share_vibe) }}
     {% elif share.kind == 'detour' %}
       {% set it = p.itinerary or {} %}
-      {% set legs = it.legs or [] %}
-      <article class="boarding-pass is-adventure"{% if it.theme_primary %} style="--bp-accent: {{ it.theme_primary }}; border-color: color-mix(in srgb, {{ it.theme_primary }} 35%, var(--line));"{% endif %}>
-        <div class="bp-main">
-          <div class="bp-top">
-            <span class="bp-label">{{ (it.kind or 'detour') | title }}</span>
-            <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{% if share_vibe %}{{ share_vibe.emoji }} {{ share_vibe.label }}{% else %}{{ it.theme_label or 'Detour' }}{% endif %}</span>
-          </div>
-          {% if legs|length >= 1 %}
-          <div class="bp-route">
-            <span class="bp-iata">{{ legs[0].from_iata }}</span>
-            <span class="bp-plane" aria-hidden="true">✈</span>
-            {% if it.stop_iata %}<span class="bp-iata" style="font-size:1.35rem;opacity:0.85">{{ it.stop_iata }}</span>
-            <span class="bp-plane" aria-hidden="true">✈</span>{% endif %}
-            <span class="bp-iata">{{ (legs|last).to_iata }}</span>
-          </div>
-          {% endif %}
-          <p class="bp-cities">{{ it.title or share.title }}</p>
-          {% if it.stay_days %}<p class="bp-stop-days">{{ it.stay_days }} Day Stop</p>{% endif %}
-          {% if it.why %}<p class="bp-why">{{ it.why }}</p>{% endif %}
-          {% if legs %}
-          <div class="bp-legs">
-            {% for leg in legs %}
-            <div class="bp-leg">
-              <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
-              <div class="fare">
-                {% if leg.offer %}
-                  {{ leg.offer.display_price_base or leg.offer.display_price or ('~' ~ leg.offer.currency ~ ' ' ~ '%.0f'|format(leg.offer.price)) }}
-                {% else %}—{% endif %}
-              </div>
-              <div class="meta">
-                {{ leg.depart_date | fmt_date }}
-                {% if leg.offer and leg.offer.airlines %} · {{ leg.offer.airlines|join(', ') }}{% endif %}
-              </div>
-            </div>
-            {% endfor %}
-          </div>
-          {% endif %}
-          {% if it.ground_display or it.ground_compare_line or it.all_in_display %}
-          <div class="bp-col">
-            {% if it.ground_display %}<p class="bp-note" style="margin:0.55rem 0 0">{{ it.ground_display }}</p>{% endif %}
-            {% if it.ground_compare_line %}<p class="bp-note muted" style="margin:0.2rem 0 0">{{ it.ground_compare_line }}</p>{% endif %}
-            {% if it.ground_budget_line %}<p class="bp-note" style="margin:0.2rem 0 0">{{ it.ground_budget_line }}</p>{% endif %}
-            {% if it.all_in_display %}
-            <p class="bp-note" style="margin:0.25rem 0 0;font-weight:650">{{ it.all_in_display | replace('All-in signal ', '') | replace(' (flights + ground est.)', '') }}</p>
-            <p class="bp-note muted" style="margin:0.1rem 0 0;font-size:0.78rem">Trip Estimate</p>
-            {% endif %}
-          </div>
-          {% endif %}
-          {% if it.model_source %}
-          <p class="bp-note muted" style="margin:0.35rem 0 0;font-size:0.75rem">via {{ it.model_source }}</p>
-          {% endif %}
-          <div class="bp-actions">
-            {% if it.google_flights_url %}
-            <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
-            {% endif %}
-            {% if legs and legs[0].google_flights_url %}
-            <a class="btn secondary" href="{{ legs[0].google_flights_url }}" target="_blank" rel="noopener">{{ legs[0].from_iata }} → {{ legs[0].to_iata }} ↗</a>
-            {% endif %}
-            {% if legs|length > 1 and legs[1].google_flights_url %}
-            <a class="btn secondary" href="{{ legs[1].google_flights_url }}" target="_blank" rel="noopener">{{ legs[1].from_iata }} → {{ legs[1].to_iata }} ↗</a>
-            {% endif %}
-          </div>
-        </div>
-        <div class="bp-stub">
-          <div>
-            <div class="bp-stub-label">Approx fare</div>
-            <div class="bp-stub-price">
-              {% if it.total_price is not none %}
-              {{ it.display_price_base or it.display_price or ('~' ~ it.currency ~ ' ' ~ '%.0f'|format(it.total_price)) }}
-              {% else %}—{% endif %}
-            </div>
-          </div>
-          <div class="bp-stub-meta">{% if not it.stay_days %}multi-leg{% endif %}</div>
-        </div>
-      </article>
+      {{ bp.detour_card('share', it, 0, share_vibe=share_vibe, fallback_title=share.title) }}
     {% else %}
       <div class="card">
         <p class="muted">Unknown share type.</p>
