@@ -336,13 +336,6 @@
       {% endif %}
     </div>
     {% endif %}
-    {% if mode in ('saved', 'share') %}
-      {% set model_src = (s.model_source if s else it.model_source) %}
-      {% if model_src %}
-      <p class="bp-note muted" style="margin:0.35rem 0 0;font-size:0.75rem">via {{ model_src }}</p>
-      {% endif %}
-    {% endif %}
-
     {% if mode == 'explore' %}
     <script type="application/json" id="it-json-{{ idx }}">{{ it.model_dump_json() | safe }}</script>
     {% endif %}

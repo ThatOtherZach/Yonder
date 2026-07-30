@@ -84,7 +84,14 @@ def _share_pack(request: Request, *, kind: str, title: str, payload: dict) -> di
     Link and QR always use the same absolute pretty URL:
     /t/escape/YVR-NRT-2026-08-20-…/id
     """
-    trip = create_share(kind=kind, title=title, payload=dump_obj(payload))
+    packed = dump_obj(payload)
+    # Never carry the AI model label into shared payloads.
+    if isinstance(packed, dict):
+        for part in packed.values():
+            if isinstance(part, dict):
+                part.pop("model_source", None)
+        packed.pop("model_source", None)
+    trip = create_share(kind=kind, title=title, payload=packed)
     base = str(request.base_url).rstrip("/")
     url = f"{base}{trip.path}"
     return {
