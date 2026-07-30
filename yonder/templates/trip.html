@@ -85,6 +85,28 @@
       font-size: 0.9rem;
       margin: 0 0 1rem;
     }
+    /* No horizontal scroll on any section */
+    .trip-share {
+      overflow-x: hidden;
+    }
+    /* ── Mobile ── */
+    @media (max-width: 575.98px) {
+      /* Share bar: allow wrap so nothing overflows on very narrow screens */
+      .trip-share-bar {
+        flex-wrap: wrap;
+      }
+      /* Copy link button: comfortable 44px tap target */
+      #copy-share-url {
+        min-height: 2.75rem !important;
+        padding: 0.5rem 0.9rem !important;
+        flex: 1 0 auto;
+      }
+      /* Boarding-pass action buttons: stretch to fill the row */
+      .boarding-pass .bp-actions .btn {
+        flex: 1 1 auto;
+        justify-content: center;
+      }
+    }
 {% endblock %}
 {% block body %}
   {% if not share %}
