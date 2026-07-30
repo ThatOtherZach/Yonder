@@ -1564,16 +1564,11 @@
                         {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
                       {% endif %}
                       {% if has_col %}
-                      {% if it.ground_display %}
+                      {% if it.ground_display or it.ground_compare_line %}
                       <div class="pb-block pb-col">
                         <h4>Ground spend</h4>
-                        <p>{{ it.ground_display }}</p>
-                      </div>
-                      {% endif %}
-                      {% if it.ground_compare_line %}
-                      <div class="pb-block pb-col">
-                        <h4>Vs home</h4>
-                        <p>{{ it.ground_compare_line }}</p>
+                        {% if it.ground_display %}<p>{{ it.ground_display }}</p>{% endif %}
+                        {% if it.ground_compare_line %}<p class="muted" style="margin-top:0.25rem">{{ it.ground_compare_line }}</p>{% endif %}
                       </div>
                       {% endif %}
                       {% if it.ground_budget_line %}
@@ -2568,17 +2563,15 @@
       function renderColBlocksHtml(col) {
         if (!hasColData(col)) return "";
         var h = "";
-        if (col.ground) {
-          h +=
-            '<div class="pb-block pb-col"><h4>Ground spend</h4><p>' +
-            escapeHtml(col.ground) +
-            "</p></div>";
-        }
-        if (col.compare) {
-          h +=
-            '<div class="pb-block pb-col"><h4>Vs home</h4><p>' +
-            escapeHtml(col.compare) +
-            "</p></div>";
+        if (col.ground || col.compare) {
+          h += '<div class="pb-block pb-col"><h4>Ground spend</h4>';
+          if (col.ground) h += "<p>" + escapeHtml(col.ground) + "</p>";
+          if (col.compare)
+            h +=
+              '<p class="muted" style="margin-top:0.25rem">' +
+              escapeHtml(col.compare) +
+              "</p>";
+          h += "</div>";
         }
         if (col.budget) {
           var cls = "pb-block pb-col";
