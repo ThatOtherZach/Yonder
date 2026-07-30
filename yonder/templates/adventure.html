@@ -544,11 +544,13 @@
             {% endfor %}
           </div>
           <script type="application/json" id="it-json-{{ loop.index0 }}">{{ it.model_dump_json() | safe }}</script>
+          {% set share = share_detour(request, it, trip_meta) %}
           <div style="margin-top:0.65rem;display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center">
-            <button type="button" class="btn secondary btn-save-it"
+            <button type="button" class="btn secondary btn-save-and-share"
                     style="padding:0.4rem 0.75rem;font-size:0.85rem"
-                    data-it-idx="{{ loop.index0 }}">
-              ★ Save
+                    data-it-idx="{{ loop.index0 }}"
+                    {% if share %}data-share-url="{{ share.url }}"{% endif %}>
+              ★ Save &amp; Share
             </button>
             {% if it.google_flights_url %}
             <a class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">
@@ -630,19 +632,47 @@
         if (results && results.dataset.tripMeta) {
           try { tripMeta = JSON.parse(results.dataset.tripMeta); } catch (e) {}
         }
-        document.querySelectorAll(".btn-save-it").forEach(function (btn) {
+        document.querySelectorAll(".btn-save-and-share").forEach(function (btn) {
           btn.addEventListener("click", function () {
             var idx = btn.getAttribute("data-it-idx");
+            var shareUrl = btn.getAttribute("data-share-url") || "";
             var el = document.getElementById("it-json-" + idx);
-            if (!el) return;
+            if (!el) { if (shareUrl) window.location.href = shareUrl; return; }
             var itinerary;
             try { itinerary = JSON.parse(el.textContent); } catch (e) {
+              if (shareUrl) { window.location.href = shareUrl; return; }
               btn.textContent = "Save failed";
               return;
             }
             btn.disabled = true;
             var prev = btn.textContent;
             btn.textContent = "Saving…";
+
+            if (shareUrl) {
+              // Save & Share: always navigate exactly once — on success, error, or hang.
+              var navigated = false;
+              function go() {
+                if (navigated) return;
+                navigated = true;
+                window.location.href = shareUrl;
+              }
+              var failsafe = setTimeout(go, 6000);
+              var opts = {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ itinerary: itinerary, trip_meta: tripMeta }),
+              };
+              if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) {
+                try { opts.signal = AbortSignal.timeout(5000); } catch (e) {}
+              }
+              fetch("/api/saved", opts)
+                .then(function (r) { return r.json(); })
+                .then(function () { clearTimeout(failsafe); go(); })
+                .catch(function () { clearTimeout(failsafe); go(); });
+              return;
+            }
+
+            // No share link available — fall back to save-only behavior.
             fetch("/api/saved", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
