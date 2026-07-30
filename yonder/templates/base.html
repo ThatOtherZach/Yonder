@@ -590,19 +590,21 @@
       align-items: center;
       gap: 0.35rem;
       margin-top: 0.75rem;
-      padding: 0.35rem 0.75rem;
+      padding: 0.4rem 0.9rem;
       border-radius: 999px;
-      border: 1px solid var(--line);
-      background: var(--paper-2, #f4f1ea);
-      color: var(--ink);
+      border: 1.5px solid var(--bp-accent, var(--sky-bright));
+      background: transparent;
+      color: var(--bp-accent, var(--sky-bright));
       font-family: inherit;
       font-size: 0.8rem;
       font-weight: 700;
       letter-spacing: 0.03em;
       cursor: pointer;
+      transition: background 0.12s, color 0.12s;
     }
     .pb-toggle:hover {
-      border-color: color-mix(in srgb, var(--sky-bright) 45%, var(--line));
+      background: var(--bp-accent, var(--sky-bright));
+      color: #fff;
     }
     .pb-toggle .pb-chevron {
       display: inline-block;
