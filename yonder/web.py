@@ -867,7 +867,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             status_code=400,
         )
 
-    decision = decide_shape(prompt, force=force)
+    decision = decide_shape(prompt, force=force, vibe=vibe, demo=bool(mock))
     max_cand = mix_candidate_cap(decision.shape, max_cand_settings)
     notes: list[str] = [
         f"Intent: {decision.shape} ({decision.confidence:.0%}) — {decision.rationale}"

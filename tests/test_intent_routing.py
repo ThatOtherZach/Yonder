@@ -147,3 +147,81 @@ class TestBroadCityResolution:
     def test_unknown_tokens_and_same_city_still_none(self):
         assert detect_route_iatas("leave Berlin and arrive in Berlin") is None
         assert detect_route_iatas("get out of town somewhere new") is None
+
+
+class TestTruthTable:
+    """Each row of the Escape vs Detour routing model (see yonder/intent.py)."""
+
+    def test_destination_plus_direct_language_is_escape(self):
+        d = decide_shape("nonstop Vancouver to Rome")
+        assert d.shape == "escape"
+
+    def test_plain_a_to_b_is_mix_directs_first(self):
+        d = decide_shape("Vancouver to Rome")
+        assert d.shape == "mix"
+
+    def test_no_destination_is_detour(self):
+        d = decide_shape("somewhere new, get me out of here")
+        assert d.shape == "detour"
+
+    def test_origin_only_is_detour_roundtrip(self):
+        d = decide_shape("get me out of Vancouver")
+        assert d.shape == "detour"
+
+    def test_origin_dest_journey_phrasing_is_detour(self):
+        d = decide_shape("leave Vancouver and end up in Rome")
+        assert d.shape == "detour"
+
+    def test_typo_city_falls_back_gracefully(self):
+        # "Vancover" won't resolve to an IATA — route mapping returns None
+        # but shape decision still lands on a sane shape, never crashes.
+        assert detect_route_iatas("leave Vancover and end up in Romee") is None
+        d = decide_shape("leave Vancover and end up in Romee")
+        assert d.shape in ("escape", "detour", "mix")
+
+
+class TestVibePriorTieBreaker:
+    """Vibe leans the shape ONLY for ambiguous prompts; explicit signals win."""
+
+    AMBIGUOUS = "best croissants and museums"
+
+    def test_wander_vibe_leans_detour(self):
+        for vibe in ("adventure", "chaotic", "budget", "slow-travel"):
+            d = decide_shape(self.AMBIGUOUS, vibe=vibe, demo=True)
+            assert d.shape == "detour", (vibe, d)
+
+    def test_comfort_vibe_leans_escape(self):
+        for vibe in ("luxury", "romantic", "relaxing"):
+            d = decide_shape(self.AMBIGUOUS, vibe=vibe, demo=True)
+            assert d.shape == "escape", (vibe, d)
+
+    def test_neutral_vibe_stays_mix(self):
+        d = decide_shape(self.AMBIGUOUS, vibe="city", demo=True)
+        assert d.shape == "mix"
+
+    def test_explicit_direct_language_beats_wander_prior(self):
+        d = decide_shape("direct flight from Vancouver to Rome", vibe="adventure", demo=True)
+        assert d.shape == "escape"
+
+    def test_explicit_getaway_beats_comfort_prior(self):
+        d = decide_shape("get me out of Vancouver, somewhere new", vibe="luxury", demo=True)
+        assert d.shape == "detour"
+
+    def test_journey_phrasing_beats_comfort_prior(self):
+        d = decide_shape("leave Vancouver and end up in Rome", vibe="luxury", demo=True)
+        assert d.shape == "detour"
+
+    def test_learned_lean_can_flip_static_prior(self, monkeypatch):
+        import yonder.vibe_signals as vs
+        # Strong learned escape lean on a wander vibe cancels + flips nothing
+        # below threshold, but a neutral vibe with learned detour lean flips.
+        monkeypatch.setattr(vs, "shape_lean_for_vibe", lambda v, demo=False: 1.0)
+        d = decide_shape(self.AMBIGUOUS, vibe="city")
+        assert d.shape == "detour"
+        monkeypatch.setattr(vs, "shape_lean_for_vibe", lambda v, demo=False: -1.0)
+        d = decide_shape(self.AMBIGUOUS, vibe="city")
+        assert d.shape == "escape"
+
+    def test_forced_shape_beats_everything(self):
+        d = decide_shape(self.AMBIGUOUS, vibe="adventure", force="escape", demo=True)
+        assert d.shape == "escape" and d.forced

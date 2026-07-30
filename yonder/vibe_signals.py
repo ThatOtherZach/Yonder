@@ -350,6 +350,45 @@ def recompute_scores(*, force: bool = False) -> bool:
         return False
 
 
+def shape_lean_for_vibe(vibe: str | None, *, demo: bool = False) -> float:
+    """Learned shape lean for a vibe in [-1, 1]: +1 → detour, -1 → escape.
+
+    Aggregates search_signals rows whose search_type recorded a shape
+    ('escape'/'detour'), weighted by signal_strength (saves/thumbs upgrade
+    strength in place, so engaged shapes count more) and recency.
+    Returns 0.0 when *demo* is True, MOCK mode is on, or there is no data —
+    the static prior table in yonder.intent then stands alone.
+    """
+    if demo or _mock_mode():
+        return 0.0
+    try:
+        now = time.time()
+        halflife_s = RECENCY_HALFLIFE_DAYS * 86400.0
+        with _connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT search_type, signal_strength, ts FROM search_signals
+                WHERE vibe = ? AND search_type IN ('escape', 'detour')
+                """,
+                (_norm_vibe(vibe),),
+            ).fetchall()
+        escape_w = 0.0
+        detour_w = 0.0
+        for r in rows:
+            age = max(0.0, now - float(r["ts"] or now))
+            w = float(r["signal_strength"] or 1) * (0.5 ** (age / halflife_s))
+            if r["search_type"] == "detour":
+                detour_w += w
+            else:
+                escape_w += w
+        total = escape_w + detour_w
+        if total <= 0:
+            return 0.0
+        return max(-1.0, min(1.0, (detour_w - escape_w) / total))
+    except Exception:
+        return 0.0
+
+
 def scores_for_vibe(vibe: str | None, *, demo: bool = False) -> dict[str, float]:
     """dest_iata → aggregate signal score for one vibe (lazy-refreshes first).
 

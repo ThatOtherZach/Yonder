@@ -1,5 +1,31 @@
 """Intent routing for Explore — pure Escape, pure Detour, or mix.
 
+THE ROUTING MODEL (keep future edits consistent with this):
+
+Three signals decide the shape — WHERE the user is now (origin), WHERE they
+want to end up (destination), and whether the prompt implies a detour
+(journey/stopover/open-getaway language):
+
+  destination named + direct language ("nonstop", "direct")  → escape
+  destination named, plain A→B ("Vancouver to Rome")          → mix
+                                       (directs first, stop options offered)
+  no destination at all ("somewhere warm", "get me out")      → detour
+                                       (open getaway: home → X → home)
+  origin + destination + journey phrasing ("leave Vancouver,
+  end up in Rome")                                            → detour
+                                       (routed: origin → vibe stop → dest)
+  origin + destination + explicit stop markers ("via", "with
+  a stopover")                                                → mix
+  ambiguous (no anchors, no direct/getaway language)          → vibe prior
+                                       decides the lean (see below)
+
+Vibe as tie-breaker: explicit prompt signals ALWAYS win. Only when the
+prompt is ambiguous does the vibe lean the shape — wander vibes (adventure,
+chaotic, budget, slow-travel) lean detour; comfort vibes (luxury, romantic,
+relaxing) lean escape. The lean starts from the static prior table below
+and is gradually adjusted by the vibe signal store (which shapes users with
+that vibe actually save / thumb up), so it is learned over time.
+
 Cheap heuristics first; no durable logging here (Save-only learning).
 """
 
@@ -155,12 +181,69 @@ def looks_like_escape_only(prompt: str) -> bool:
     return any(m in p for m in _ESCAPE_ONLY)
 
 
+# --- Vibe → shape prior (tie-breaker only; explicit prompt signals win) ---
+# Static lean: +1 → detour (wander: stopovers are the fun, often cheaper),
+# -1 → escape (comfort: arrive, don't connect). Adjusted over time by the
+# vibe signal store (what shapes users with this vibe actually save).
+_WANDER_VIBES = {
+    "adventure", "adventurous", "chaotic", "chaos", "budget", "cheap",
+    "slow-travel", "slow travel", "slow_travel", "backpacking", "wander",
+}
+_COMFORT_VIBES = {
+    "luxury", "luxurious", "romantic", "romance", "relaxing", "relax",
+    "relaxed", "comfort", "cozy", "honeymoon",
+}
+# |lean| must reach this before the prior flips an ambiguous prompt
+_PRIOR_THRESHOLD = 0.25
+# Weight of the learned (signal-store) lean vs the static table
+_LEARNED_WEIGHT = 0.5
+
+
+def _static_vibe_lean(vibe: str | None) -> float:
+    v = (vibe or "").strip().lower()
+    if not v:
+        return 0.0
+    if v in _WANDER_VIBES:
+        return 1.0
+    if v in _COMFORT_VIBES:
+        return -1.0
+    return 0.0
+
+
+def vibe_shape_prior(vibe: str | None, *, demo: bool = False) -> Shape | None:
+    """Return the shape a vibe leans toward ("detour"/"escape") or None.
+
+    Static prior table blended with the learned lean from the vibe signal
+    store (saves/thumbs of that vibe's searches by shape). Only consulted
+    for ambiguous prompts — explicit prompt signals always beat this.
+    """
+    lean = _static_vibe_lean(vibe)
+    try:
+        from yonder.vibe_signals import shape_lean_for_vibe
+
+        lean += _LEARNED_WEIGHT * shape_lean_for_vibe(vibe, demo=demo)
+    except Exception:
+        pass
+    if lean >= _PRIOR_THRESHOLD:
+        return "detour"
+    if lean <= -_PRIOR_THRESHOLD:
+        return "escape"
+    return None
+
+
 def decide_shape(
     prompt: str,
     *,
     force: str | None = None,
+    vibe: str | None = None,
+    demo: bool = False,
 ) -> IntentDecision:
-    """Pick pure escape / pure detour / mix from free text (and optional force)."""
+    """Pick pure escape / pure detour / mix from the three-signal model.
+
+    Signals: origin known? destination known? detour implied? (see module
+    docstring for the full truth table). *vibe* is only a tie-breaker for
+    ambiguous prompts; explicit prompt signals always win.
+    """
     f = (force or "").strip().lower()
     if f in ("escape", "detour", "mix"):
         return IntentDecision(
@@ -174,31 +257,47 @@ def decide_shape(
     if not p:
         return IntentDecision("escape", 0.2, "empty prompt → escape default")
 
-    if looks_like_escape_only(p) and looks_like_a_to_b(p):
+    # --- The three signals ---
+    dest_named = looks_like_a_to_b(p)  # origin AND destination extracted
+    direct_lang = looks_like_escape_only(p)  # "nonstop", "direct only"…
+    open_getaway = looks_like_open_getaway(p)  # no destination in mind
+    stop_lang = looks_like_stopover_intent(p)  # "via", "with a stopover"…
+    journey_lang = looks_like_journey_phrasing(p)  # "end up in", "arrive in"…
+
+    # Row: destination named + direct language → escape (they know where)
+    if direct_lang and dest_named:
         return IntentDecision("escape", 0.92, "direct/one-way language + A→B")
-    if looks_like_escape_only(p) and not looks_like_open_getaway(p):
+    if direct_lang and not open_getaway:
         return IntentDecision("escape", 0.85, "direct/one-way language")
 
-    if looks_like_open_getaway(p) and not looks_like_a_to_b(p):
+    # Row: no destination at all → detour (open getaway, home → X → home)
+    if open_getaway and not dest_named:
         return IntentDecision("detour", 0.9, "open getaway / somewhere new")
-    if looks_like_open_getaway(p) and looks_like_stopover_intent(p):
+    if open_getaway and stop_lang:
         return IntentDecision("detour", 0.88, "getaway + stop language")
 
-    if looks_like_a_to_b(p) and looks_like_stopover_intent(p):
+    # Row: origin + destination + explicit stop markers → mix (directs AND
+    # the named-stop packages both make sense)
+    if dest_named and stop_lang:
         return IntentDecision("mix", 0.8, "A→B with intentional stops")
-    if looks_like_a_to_b(p) and looks_like_journey_phrasing(p):
-        # "leave Vancouver, end up in Rome" — journey phrasing means they
-        # want the routed trip (origin → vibe stop → destination), not a
-        # plain round trip.
+    # Row: origin + destination + journey phrasing → detour routed
+    # origin → vibe stop → destination ("leave Vancouver, end up in Rome")
+    if dest_named and journey_lang:
         return IntentDecision("detour", 0.85, "A→B with journey/arrival phrasing")
-    if looks_like_a_to_b(p):
-        # Clear route: mix so user can see directs + optional stop packages
+    # Row: plain A→B → mix so user sees directs first + stop options
+    if dest_named:
         return IntentDecision("mix", 0.72, "clear A→B → straight shots + stop options")
 
-    if looks_like_stopover_intent(p):
+    if stop_lang:
         return IntentDecision("detour", 0.7, "stopover language without clear O/D")
 
-    # Ambiguous vibes / COL / food without anchors
+    # Row: ambiguous — no anchors, no direct/getaway language. Vibe prior
+    # decides the lean; static table adjusted by the signal store.
+    prior = vibe_shape_prior(vibe, demo=demo)
+    if prior == "detour":
+        return IntentDecision("detour", 0.6, f"ambiguous → vibe prior ({vibe}) leans detour")
+    if prior == "escape":
+        return IntentDecision("escape", 0.6, f"ambiguous → vibe prior ({vibe}) leans escape")
     return IntentDecision("mix", 0.55, "ambiguous → try both shapes under budget")
 
 

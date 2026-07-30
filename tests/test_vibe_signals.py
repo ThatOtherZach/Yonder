@@ -311,3 +311,39 @@ def test_top_for_vibe_no_cross_vibe_leakage():
     culture_iatas = [r["iata"] for r in culture]
     assert "CDG" not in beach_iatas
     assert "CUN" not in culture_iatas
+
+
+# ---------------------------------------------------------------------------
+# Learned shape lean (Escape vs Detour prior adjustment)
+# ---------------------------------------------------------------------------
+
+
+class TestShapeLeanForVibe:
+    def test_empty_store_returns_zero(self):
+        assert vs.shape_lean_for_vibe("adventure") == 0.0
+
+    def test_detour_heavy_vibe_leans_positive(self):
+        for i in range(4):
+            vs.record_search(vibe="adventure", origin="YVR", dest_iata="LIS",
+                             search_type="detour", signal_strength=4)
+        vs.record_search(vibe="adventure", origin="YVR", dest_iata="LIS",
+                         search_type="escape", signal_strength=1)
+        assert vs.shape_lean_for_vibe("adventure") > 0.5
+
+    def test_escape_heavy_vibe_leans_negative(self):
+        for i in range(4):
+            vs.record_search(vibe="luxury", origin="YVR", dest_iata="CDG",
+                             search_type="escape", signal_strength=4)
+        assert vs.shape_lean_for_vibe("luxury") < -0.5
+
+    def test_demo_and_mock_return_zero(self, monkeypatch):
+        vs.record_search(vibe="adventure", origin="YVR", dest_iata="LIS",
+                         search_type="detour", signal_strength=4)
+        assert vs.shape_lean_for_vibe("adventure", demo=True) == 0.0
+        monkeypatch.setenv("MOCK", "1")
+        assert vs.shape_lean_for_vibe("adventure") == 0.0
+
+    def test_other_search_types_ignored(self):
+        vs.record_search(vibe="adventure", origin="YVR", dest_iata="LIS",
+                         search_type="save", signal_strength=4)
+        assert vs.shape_lean_for_vibe("adventure") == 0.0

@@ -452,7 +452,8 @@ class GrokClient:
             '"candidates":[{"iata":"PDX","city":"Portland","country":"US",'
             '"stay_days":3,"why":"...","vibe_tags":["city","cheap"]}]'
             "}\n"
-            "trip_kind rules (IMPORTANT):\n"
+            "trip_kind rules (IMPORTANT — same model as local routing: "
+            "no destination → getaway; named destination → detour):\n"
             "- getaway: ONLY when the user names NO second city anywhere in the text — they just "
             "want OUT OF a home base for a few days "
             "(e.g. 'get out of Vancouver', 'somewhere I haven't been', 'cheap escape', "
