@@ -1198,7 +1198,7 @@
                   </div>
                   {% endif %}
                   {% if escape_place_book.vibe %}
-                  <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ escape_place_book.vibe }}</div>
+                  <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ escape_place_book.vibe | title }}</div>
                   {% endif %}
                   {% if escape_place_book.era_note %}<p class="pb-closer">{{ escape_place_book.era_note }}</p>{% endif %}
                   {% else %}
@@ -1298,7 +1298,7 @@
             <div class="bp-main">
               <div class="bp-top">
                 <span class="bp-label">Boarding pass · detour</span>
-                <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{{ it.theme_label or '#' ~ loop.index }}</span>
+                <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{% if it.vibe %}{{ it.vibe | vibe_emoji }} {% endif %}{{ it.theme_label or '#' ~ loop.index }}</span>
               </div>
               {% if it.legs and it.legs|length >= 1 %}
               <div class="bp-route">
@@ -1370,7 +1370,7 @@
                     </div>
                     {% endif %}
                     {% if pb.vibe %}
-                    <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe }}</div>
+                    <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
                     {% endif %}
                     {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
                     {% elif it.stop_iata %}

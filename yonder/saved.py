@@ -104,7 +104,7 @@ class SavedItinerary:
     @property
     def saved_at_iso(self) -> str:
         return datetime.fromtimestamp(self.saved_at, tz=timezone.utc).strftime(
-            "%Y-%m-%d %H:%M UTC"
+            "%B %d, %Y"
         )
 
     @property
@@ -112,7 +112,7 @@ class SavedItinerary:
         if self.priced_at is None:
             return None
         return datetime.fromtimestamp(self.priced_at, tz=timezone.utc).strftime(
-            "%Y-%m-%d %H:%M UTC"
+            "%B %d, %Y"
         )
 
     @property
@@ -142,11 +142,12 @@ class SavedItinerary:
         if age_h < 0.2:
             return "just now"
         if age_h < 1:
-            return f"~{max(1, int(age_h * 60))}m ago"
+            return f"~{max(1, int(age_h * 60))} Minutes"
         if age_h < 48:
-            return f"~{int(age_h)}h ago"
+            h = int(age_h)
+            return f"~{h} Hour" if h == 1 else f"~{h} Hours"
         days = int(age_h / 24)
-        return f"~{days}d ago"
+        return f"~{days} Day" if days == 1 else f"~{days} Days"
 
     @property
     def last_refresh_status(self) -> str | None:

@@ -235,7 +235,7 @@
         </div>
         <div class="bp-stub">
           <div>
-            <div class="bp-stub-label">Total</div>
+            <div class="bp-stub-label">Approx fare</div>
             <div class="bp-stub-price">
               {% if it.total_price is not none %}
               {{ it.display_price_base or it.display_price or ('~' ~ it.currency ~ ' ' ~ '%.0f'|format(it.total_price)) }}
@@ -268,7 +268,7 @@
           </div>
           {% endif %}
           {% if pb.vibe %}
-          <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe }}</div>
+          <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
           {% endif %}
           {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
           {% if pb.culture or pb.food or pb.caution %}
@@ -309,7 +309,7 @@
           </div>
           {% endif %}
           {% if pb.vibe %}
-          <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe }}</div>
+          <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
           {% endif %}
           {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
           {% if pb.culture or pb.food or pb.caution %}
