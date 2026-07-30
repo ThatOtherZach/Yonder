@@ -1092,7 +1092,10 @@
             }
             document.dispatchEvent(new CustomEvent("yonder:xpupdate", { detail: data.xp }));
             document.dispatchEvent(new CustomEvent("yonder:mapchange", { detail: { visited: data.visited, avoid: data.avoid } }));
-            setStatus("Backup restored — refreshing…");
+            var extras = [];
+            if (typeof data.trips_imported === "number") extras.push(data.trips_imported + " trip" + (data.trips_imported === 1 ? "" : "s") + " restored");
+            if (typeof data.trips_skipped === "number" && data.trips_skipped > 0) extras.push(data.trips_skipped + " already saved");
+            setStatus("Backup restored" + (extras.length ? " — " + extras.join(", ") : "") + " — refreshing…");
             setTimeout(function(){ location.reload(); }, 600);
           } catch (e) {
             pendingBackup = null;
@@ -1128,7 +1131,7 @@
               if (!parsed || parsed.format !== "yonder-backup") throw new Error("bad file");
               pendingBackup = text;
               impBtn.textContent = "Are you sure? 😮";
-              setStatus("This will overwrite your map stamps and settings. Click again to confirm.");
+              setStatus("This will overwrite your map stamps and settings, and merge in saved trips + price history. Click again to confirm.");
             } catch (err) {
               pendingBackup = null;
               setStatus("That file isn't a Yonder backup.", true);

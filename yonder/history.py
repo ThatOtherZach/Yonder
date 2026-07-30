@@ -254,6 +254,83 @@ def recent_samples(limit: int = 20) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+_EXPORT_COLUMNS = (
+    "origin", "destination", "depart_date", "return_date", "price", "currency",
+    "source", "price_kind", "stops", "airlines", "duration_minutes", "notes",
+    "google_flights_url", "deep_link", "raw_id", "observed_at", "model_source",
+)
+
+
+def export_all() -> list[dict[str, Any]]:
+    """All price samples as raw row dicts (without local ids) — for backup export."""
+    with _connect() as conn:
+        rows = conn.execute("SELECT * FROM price_samples ORDER BY id").fetchall()
+    return [{k: r[k] for k in _EXPORT_COLUMNS} for r in rows]
+
+
+def _sample_key(row: dict[str, Any]) -> tuple:
+    try:
+        price = round(float(row.get("price") or 0), 2)
+    except (TypeError, ValueError):
+        price = 0.0
+    return (
+        str(row.get("origin") or "").upper(),
+        str(row.get("destination") or "").upper(),
+        str(row.get("depart_date") or ""),
+        str(row.get("observed_at") or ""),
+        price,
+        str(row.get("source") or ""),
+    )
+
+
+def import_samples(items: list[dict[str, Any]]) -> tuple[int, int]:
+    """Restore exported price samples. Returns (imported, skipped).
+
+    Dedupes on (origin, destination, depart_date, observed_at, price, source)
+    so re-imports never double-count observations.
+    """
+    imported = skipped = 0
+    with _connect() as conn:
+        existing = {
+            _sample_key({c: r[c] for c in _EXPORT_COLUMNS})
+            for r in conn.execute("SELECT * FROM price_samples").fetchall()
+        }
+        placeholders = ",".join("?" * len(_EXPORT_COLUMNS))
+        for raw in items:
+            if not isinstance(raw, dict):
+                skipped += 1
+                continue
+            origin = str(raw.get("origin") or "").strip().upper()
+            dest = str(raw.get("destination") or "").strip().upper()
+            if not origin or not dest or not raw.get("depart_date") or not raw.get("observed_at"):
+                skipped += 1
+                continue
+            try:
+                price = float(raw["price"])
+            except (TypeError, KeyError, ValueError):
+                skipped += 1
+                continue
+            row = dict(raw)
+            row["origin"] = origin
+            row["destination"] = dest
+            row["price"] = price
+            row["currency"] = str(raw.get("currency") or "USD").upper()
+            row["source"] = str(raw.get("source") or "import")
+            key = _sample_key(row)
+            if key in existing:
+                skipped += 1
+                continue
+            conn.execute(
+                f"INSERT INTO price_samples ({', '.join(_EXPORT_COLUMNS)}) "
+                f"VALUES ({placeholders})",
+                tuple(row.get(c) for c in _EXPORT_COLUMNS),
+            )
+            existing.add(key)
+            imported += 1
+        conn.commit()
+    return imported, skipped
+
+
 def export_jsonl(path: Path | None = None) -> Path:
     out = path or (ROOT / "price_history_export.jsonl")
     with _connect() as conn, out.open("w", encoding="utf-8") as f:

@@ -411,6 +411,103 @@ def delete(saved_id: str) -> bool:
         return cur.rowcount > 0
 
 
+_EXPORT_COLUMNS = (
+    "id", "saved_at", "priced_at", "title", "kind", "currency", "total_price",
+    "display_price", "stop_city", "stop_iata", "stay_days", "origin", "destination",
+    "adults", "cabin", "vibe", "trip_prompt", "theme_country", "theme_primary",
+    "theme_accent", "theme_gradient", "theme_flag_img", "theme_label",
+    "google_flights_url", "kayak_url", "ground_display", "ground_compare_line",
+    "all_in_display", "notes_json", "itinerary_json", "trip_meta_json",
+)
+
+
+def export_all() -> list[dict[str, Any]]:
+    """All saved trips as raw row dicts — for backup export."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM saved_itineraries ORDER BY saved_at"
+        ).fetchall()
+    return [{k: r[k] for k in _EXPORT_COLUMNS} for r in rows]
+
+
+def _route_key(row: dict[str, Any]) -> tuple | None:
+    """Dedupe key beyond id: kind + route + first-leg depart date + title."""
+    try:
+        it = json.loads(row.get("itinerary_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        it = {}
+    legs = it.get("legs") or [] if isinstance(it, dict) else []
+    depart = legs[0].get("depart_date") if legs and isinstance(legs[0], dict) else None
+    origin = str(row.get("origin") or "").upper()
+    dest = str(row.get("destination") or "").upper()
+    if not origin and not dest:
+        return None
+    return (
+        str(row.get("kind") or ""),
+        origin,
+        dest,
+        str(depart or ""),
+        str(row.get("title") or ""),
+    )
+
+
+def import_rows(items: list[dict[str, Any]]) -> tuple[int, int]:
+    """Restore exported saved trips. Returns (imported, skipped).
+
+    Dedupes by id first, then by kind+route+depart-date+title so re-imports
+    and cross-device merges never duplicate a trip.
+    """
+    imported = skipped = 0
+    with _connect() as conn:
+        existing_ids = {
+            r["id"] for r in conn.execute("SELECT id FROM saved_itineraries")
+        }
+        existing_keys = set()
+        for r in conn.execute("SELECT * FROM saved_itineraries").fetchall():
+            k = _route_key({c: r[c] for c in _EXPORT_COLUMNS})
+            if k:
+                existing_keys.add(k)
+        placeholders = ",".join("?" * len(_EXPORT_COLUMNS))
+        for raw in items:
+            if not isinstance(raw, dict):
+                skipped += 1
+                continue
+            sid = str(raw.get("id") or "").strip()
+            it_json = raw.get("itinerary_json")
+            if not sid or not it_json or raw.get("saved_at") is None:
+                skipped += 1
+                continue
+            key = _route_key(raw)
+            if sid in existing_ids or (key and key in existing_keys):
+                skipped += 1
+                continue
+            try:
+                saved_at = float(raw["saved_at"])
+                priced_at = (
+                    float(raw["priced_at"]) if raw.get("priced_at") is not None else None
+                )
+            except (TypeError, ValueError):
+                skipped += 1
+                continue
+            row = dict(raw)
+            row["saved_at"] = saved_at
+            row["priced_at"] = priced_at
+            row["title"] = str(raw.get("title") or "Saved trip")
+            row["kind"] = str(raw.get("kind") or "stopover")
+            row["currency"] = str(raw.get("currency") or "USD").upper()
+            conn.execute(
+                f"INSERT INTO saved_itineraries ({', '.join(_EXPORT_COLUMNS)}) "
+                f"VALUES ({placeholders})",
+                tuple(row.get(c) for c in _EXPORT_COLUMNS),
+            )
+            existing_ids.add(sid)
+            if key:
+                existing_keys.add(key)
+            imported += 1
+        conn.commit()
+    return imported, skipped
+
+
 def count_saved() -> int:
     with _connect() as conn:
         row = conn.execute("SELECT COUNT(*) AS n FROM saved_itineraries").fetchone()

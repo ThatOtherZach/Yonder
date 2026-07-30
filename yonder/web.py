@@ -2817,7 +2817,8 @@ async def api_travel_map(request: Request) -> JSONResponse:
 
 
 _BACKUP_FORMAT = "yonder-backup"
-_BACKUP_VERSION = 1
+_BACKUP_VERSION = 2
+_BACKUP_ACCEPTED_VERSIONS = (1, 2)  # v1 = prefs/map only; v2 adds trips + history
 # Non-secret .env settings included in backups (never API keys)
 _BACKUP_ENV_KEYS = ("HOME_IATA", "DEFAULT_CURRENCY")
 
@@ -2830,6 +2831,8 @@ async def api_backup_export() -> JSONResponse:
     non-secret env prefs (home airport, currency). XP is derived from the
     map and recomputed on import, so it is not stored.
     """
+    from yonder.history import export_all as _export_history
+    from yonder.saved import export_all as _export_saved
     from yonder.settings_store import read_env as _read_env
     from yonder.user_prefs import PREF_DEFAULTS, get_all_prefs
 
@@ -2849,6 +2852,8 @@ async def api_backup_export() -> JSONResponse:
         },
         "prefs": prefs,
         "settings": {k: (env.get(k) or "").strip() for k in _BACKUP_ENV_KEYS},
+        "saved_trips": _export_saved(),
+        "price_history": _export_history(),
     }
     fname = f"yonder-backup-{date.today().isoformat()}.json"
     return JSONResponse(
@@ -2873,7 +2878,7 @@ async def api_backup_import(request: Request) -> JSONResponse:
         version = int(body.get("version"))
     except (TypeError, ValueError):
         version = -1
-    if version != _BACKUP_VERSION:
+    if version not in _BACKUP_ACCEPTED_VERSIONS:
         return JSONResponse(
             {"ok": False, "error": f"Unsupported backup version {body.get('version')!r}."},
             status_code=400,
@@ -2948,11 +2953,28 @@ async def api_backup_import(request: Request) -> JSONResponse:
     if len(cur) == 3 and cur.isalpha():
         env_updates["DEFAULT_CURRENCY"] = cur
 
+    # Saved trips + price history (v2 sections; merged, deduped, never wiped)
+    raw_trips = body.get("saved_trips") or []
+    raw_history = body.get("price_history") or []
+    if not isinstance(raw_trips, list):
+        return JSONResponse(
+            {"ok": False, "error": "Malformed saved_trips section."}, status_code=400
+        )
+    if not isinstance(raw_history, list):
+        return JSONResponse(
+            {"ok": False, "error": "Malformed price_history section."}, status_code=400
+        )
+
     try:
         _set_prefs(pref_updates)
         if env_updates or clear_keys:
             write_env(env_updates, clear_keys=clear_keys)
         reload_settings()
+        from yonder.history import import_samples as _import_history
+        from yonder.saved import import_rows as _import_saved
+
+        trips_imported, trips_skipped = _import_saved(raw_trips)
+        history_imported, history_skipped = _import_history(raw_history)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 
@@ -2964,6 +2986,10 @@ async def api_backup_import(request: Request) -> JSONResponse:
             "ok": True,
             "visited": visited,
             "avoid": avoid,
+            "trips_imported": trips_imported,
+            "trips_skipped": trips_skipped,
+            "history_imported": history_imported,
+            "history_skipped": history_skipped,
             "avoid_names": [country_label(c) for c in avoid],
             "visited_names": [country_label(c) for c in visited],
             "xp": xp_profile,
