@@ -47,7 +47,11 @@ class GrokClient:
         self._usage_log: list[dict] = []
 
     def is_configured(self) -> bool:
-        return bool(self.settings.xai_api_key)
+        byom_on = bool(
+            getattr(self.settings, "byom_base_url", "")
+            and getattr(self.settings, "byom_api_key", "")
+        )
+        return byom_on or bool(self.settings.xai_api_key)
 
     async def __aenter__(self) -> GrokClient:
         if self._client is None:
@@ -90,11 +94,22 @@ class GrokClient:
     async def _chat(self, system: str, user: str, *, temperature: float = 0.2) -> str:
         if not self.is_configured():
             raise RuntimeError("XAI_API_KEY not set — add it in Settings")
-        model = self.settings.xai_model or DEFAULT_MODEL
+        # BYOM takes precedence over built-in Grok when fully configured
+        byom_base = getattr(self.settings, "byom_base_url", "").strip().rstrip("/")
+        byom_key = getattr(self.settings, "byom_api_key", "").strip()
+        byom_model = getattr(self.settings, "byom_model", "").strip()
+        if byom_base and byom_key:
+            base_url = byom_base
+            api_key = byom_key
+            model = byom_model or DEFAULT_MODEL
+        else:
+            base_url = XAI_BASE
+            api_key = self.settings.xai_api_key
+            model = self.settings.xai_model or DEFAULT_MODEL
         resp = await self.client.post(
-            f"{XAI_BASE}/chat/completions",
+            f"{base_url}/chat/completions",
             headers={
-                "Authorization": f"Bearer {self.settings.xai_api_key}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={
@@ -107,7 +122,7 @@ class GrokClient:
             },
         )
         if resp.status_code >= 400:
-            raise RuntimeError(f"xAI HTTP {resp.status_code}: {resp.text[:400]}")
+            raise RuntimeError(f"AI HTTP {resp.status_code}: {resp.text[:400]}")
         data = resp.json()
         usage = data.get("usage") or {}
         if usage:

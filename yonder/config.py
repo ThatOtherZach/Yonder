@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     xai_api_key: str = ""
     xai_model: str = "grok-4.5"
 
+    # BYOM — Bring Your Own Model (OpenAI-compatible override)
+    byom_base_url: str = ""
+    byom_api_key: str = ""
+    byom_model: str = ""
+
     default_currency: str = "USD"
     # Home / default origin airport (IATA). Blank → first visited map country → YVR
     home_iata: str = ""
@@ -179,7 +184,9 @@ class Settings(BaseSettings):
         return names
 
     def grok_ready(self) -> bool:
-        return bool(self.xai_api_key)
+        """True when any AI backend is configured (built-in Grok or BYOM)."""
+        byom_ready = bool(self.byom_base_url and self.byom_api_key)
+        return byom_ready or bool(self.xai_api_key)
 
     def avoid_country_list(self) -> list[str]:
         from yonder.countries import normalize_avoid_list

@@ -1,28 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Settings · Yonder{% endblock %}
 {% block extra_css %}
-    .provider-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-      gap: 0.75rem;
-      margin-bottom: 0.25rem;
-    }
-    .provider-card {
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 0.9rem 1rem;
-      background: var(--bg);
-    }
-    .provider-card h3 {
-      margin: 0 0 0.35rem;
-      font-size: 0.95rem;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
-    }
-    .provider-card p { margin: 0 0 0.5rem; color: var(--muted); font-size: 0.82rem; }
-    .provider-card a { font-size: 0.8rem; }
+    /* ── shared field helpers ──────────────────────────────── */
     .field-grid {
       display: grid;
       gap: 1rem;
@@ -39,13 +18,30 @@
       grid-column: 2;
       padding-bottom: 0.15rem;
     }
-    .help { font-size: 0.78rem; color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 400; margin-top: 0.2rem; }
-    .status-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      display: inline-block;
-      background: var(--bad);
+    .help {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 400;
+      margin-top: 0.2rem;
     }
-    .status-dot.on { background: var(--good); }
+    .section-title {
+      margin: 1.5rem 0 0.75rem;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .hint-box {
+      border-left: 3px solid var(--accent);
+      padding: 0.5rem 0.75rem;
+      margin: 0 0 1rem;
+      background: rgba(42,111,173,0.06);
+      border-radius: 0 8px 8px 0;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
     .actions {
       display: flex;
       flex-wrap: wrap;
@@ -59,34 +55,23 @@
       color: var(--muted);
       word-break: break-all;
     }
-    .section-title {
-      margin: 1.5rem 0 0.75rem;
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--muted);
+    .prefs-grid {
+      display: grid;
+      gap: 0.85rem;
+      grid-template-columns: 1fr 1fr;
     }
-    .hint-box {
-      border-left: 3px solid var(--accent);
-      padding: 0.5rem 0.75rem;
-      margin: 0 0 1rem;
-      background: rgba(61,156,240,0.06);
-      border-radius: 0 8px 8px 0;
-      font-size: 0.88rem;
-      color: var(--muted);
+    @media (max-width: 560px) {
+      .prefs-grid { grid-template-columns: 1fr; }
     }
-    .map-status {
-      font-size: 0.85rem;
-      margin: 0.5rem 0 0;
-      color: var(--muted);
-    }
-    .map-status strong { color: var(--text); }
+
+    /* ── travel map summary ────────────────────────────────── */
     .travel-map-summary {
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 0.9rem 1rem;
+      margin-bottom: 1rem;
       background:
-        linear-gradient(165deg, rgba(94, 234, 212, 0.06) 0%, transparent 45%),
+        linear-gradient(165deg, rgba(94,234,212,0.06) 0%, transparent 45%),
         var(--bg);
     }
     .travel-map-summary .chip-row {
@@ -118,6 +103,12 @@
       gap: 0.5rem;
       margin-top: 0.75rem;
     }
+    .map-status {
+      font-size: 0.85rem;
+      margin: 0.5rem 0 0;
+      color: var(--muted);
+    }
+    .map-status strong { color: var(--text); }
 
     /* ── XP comfort rank card ─────────────────────────────── */
     .xp-card {
@@ -129,7 +120,7 @@
         100% 0 / 7px 14px repeat-y,
         color-mix(in srgb, var(--accent, #1d6b4f) 8%, var(--paper-2, #f0ede6));
       border-radius: 10px;
-      padding: 0.85rem 1rem 0.85rem 1rem;
+      padding: 0.85rem 1rem;
       margin-bottom: 0.9rem;
       border: 1px solid color-mix(in srgb, var(--accent, #1d6b4f) 22%, var(--border));
     }
@@ -215,121 +206,262 @@
       font-variant-numeric: tabular-nums;
       font-size: 0.7rem;
     }
+
+    /* ── BYOM card ────────────────────────────────────────── */
+    .byom-badge {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--sky-bright);
+      background: var(--sky-mist);
+      border: 1px solid color-mix(in srgb, var(--sky-bright) 30%, transparent);
+      border-radius: 999px;
+      padding: 0.15rem 0.55rem;
+      vertical-align: middle;
+      margin-left: 0.4rem;
+    }
+
+    /* ── Dev tools zone ───────────────────────────────────── */
+    .dev-zone {
+      border: 1.5px dashed color-mix(in srgb, var(--warn) 45%, var(--border));
+      background: color-mix(in srgb, var(--brass-mist) 35%, var(--white));
+    }
+    .dev-zone-header {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin-bottom: 0.5rem;
+    }
+    .dev-zone-header h2 { margin: 0; }
+    .dev-zone-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--warn);
+      background: var(--brass-mist);
+      border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+      border-radius: 999px;
+      padding: 0.18rem 0.6rem;
+    }
+    .dev-zone-pill::before {
+      content: "";
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--warn);
+    }
+    .dev-section {
+      border-top: 1px solid var(--border);
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+    }
+    .dev-section:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
+    .provider-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 0.25rem;
+    }
+    .provider-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      background: var(--bg);
+    }
+    .provider-card h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .provider-card p { margin: 0 0 0.5rem; color: var(--muted); font-size: 0.82rem; }
+    .provider-card a { font-size: 0.8rem; }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      display: inline-block;
+      background: var(--bad);
+    }
+    .status-dot.on { background: var(--good); }
 {% endblock %}
 {% block body %}
   <header class="page-head">
     <h1>Settings</h1>
-    <p>API keys stay on this machine in <code>.env</code> — never sent anywhere except the providers themselves.</p>
+    <p>Your travel profile and preferences.</p>
   </header>
   <main>
     {% if flash %}
       <div class="flash {{ flash.kind }}">{{ flash.message }}</div>
     {% endif %}
 
-    <div class="card">
-      <h2>Provider status</h2>
-      <p class="sub">Keys present ≠ active. Router probes health first, then budgets. <button type="button" id="btn-probe" class="secondary" style="padding:0.3rem 0.6rem;font-size:0.8rem">Re-probe now</button></p>
-      <div class="provider-grid">
-        {% for p in view.providers %}
-        <div class="provider-card">
-          <h3>
-            {{ p.name }}
-            <span class="status-dot {% if p.ready %}on{% endif %}" title="{% if p.ready %}Key set{% else %}Missing keys{% endif %}"></span>
-          </h3>
-          <p>{{ p.blurb }}</p>
-          <span class="pill {% if p.ready %}ok{% else %}bad{% endif %}">{% if p.ready %}key set{% else %}needs keys{% endif %}</span>
-          <div style="margin-top:0.5rem"><a href="{{ p.signup }}" target="_blank" rel="noopener">Get free key ↗</a></div>
+    <form method="post" action="/settings" autocomplete="off">
+
+      {# ════════════════════════════════════════════════
+         Section 1 — You
+         ════════════════════════════════════════════════ #}
+      <div class="card">
+        <h2>You</h2>
+
+        {# XP / Travel Comfort Rank — prominent at top #}
+        {% if xp_profile %}
+        <div class="xp-card" id="xp-card">
+          <div class="xp-card-body">
+            <div class="xp-rank-line">
+              <span class="xp-emoji" id="xp-emoji">{{ xp_profile.rank_emoji }}</span>
+              <span class="xp-rank-name" id="xp-rank-name">{{ xp_profile.rank }}</span>
+              <span class="xp-amount" id="xp-amount">{{ xp_profile.xp }} XP</span>
+            </div>
+            <p class="xp-blurb" id="xp-blurb">{{ xp_profile.rank_blurb }}</p>
+            <div id="xp-progress">
+              {% if xp_profile.next_rank %}
+              <div class="xp-bar-wrap">
+                <div class="xp-bar-fill" id="xp-bar-fill" style="width:{{ xp_profile.progress_pct }}%"></div>
+              </div>
+              <p class="xp-bar-label" id="xp-bar-label">
+                <strong>{{ xp_profile.xp_to_next }} XP</strong> to {{ xp_profile.next_rank_emoji }} {{ xp_profile.next_rank }}
+              </p>
+              {% else %}
+              <p class="xp-bar-label" id="xp-bar-label">Maximum rank — you've been everywhere. ✦</p>
+              {% endif %}
+            </div>
+            <div class="xp-ladder" id="xp-ladder">
+              {% for rung in xp_profile.ladder %}
+              <div class="xp-ladder-row{% if rung.current %} is-current{% endif %}">
+                <span class="xp-ladder-dot"></span>
+                <span>{{ rung.emoji }} {{ rung.rank }}</span>
+                <span class="xp-ladder-xp">{{ rung.xp }} XP</span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
         </div>
-        {% endfor %}
-      </div>
-    </div>
+        {% endif %}
 
-    <div class="card">
-      <h2>Price history journal</h2>
-      <p class="sub">Every search (with API keys) is saved locally to <code>price_history.db</code> — your free historical dataset.</p>
-      <p style="margin:0;font-size:1.1rem"><strong>{{ history_count }}</strong> <span class="muted">samples logged</span></p>
-      <p class="muted" style="margin:0.5rem 0 0;font-size:0.85rem">CLI: <code>python -m yonder.cli history</code> · export: <code>… history --export</code></p>
-    </div>
-
-    <div class="card">
-      <h2>API budgets &amp; health</h2>
-      <p class="sub">Live remaining where APIs expose it (e.g. SerpAPI account). Inactive/empty keys are skipped automatically.</p>
-      <div id="budget-table">
-        <table style="width:100%;border-collapse:collapse;font-size:0.88rem">
-          <thead>
-            <tr style="color:var(--muted);text-align:left">
-              <th style="padding:0.4rem">Provider</th>
-              <th>Active</th>
-              <th>Quota</th>
-              <th>Session</th>
-              <th>Notes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for b in budgets %}
-            <tr style="border-top:1px solid var(--border)">
-              <td style="padding:0.45rem 0.4rem;font-family:ui-monospace,Consolas,monospace">{{ b.name }}</td>
-              <td>
-                {% if b.usable %}<span class="pill ok">usable</span>
-                {% elif b.configured %}<span class="pill warn">{{ 'cooldown' if b.in_cooldown else 'down' }}</span>
-                {% else %}<span class="pill">no key</span>{% endif %}
-              </td>
-              <td class="muted">
-                {% if b.monthly_remaining is not none and b.monthly_limit is not none %}
-                  {{ b.monthly_remaining }} / {{ b.monthly_limit }} left
-                {% elif b.rpm_remaining is not none %}
-                  rpm {{ b.rpm_remaining }}{% if b.rpm_limit %}/{{ b.rpm_limit }}{% endif %}
-                {% else %}—{% endif %}
-              </td>
-              <td class="muted">{{ b.calls_this_session }}</td>
-              <td class="muted" style="max-width:220px">{{ b.last_error or b.notes or '' }}</td>
-            </tr>
+        {# Travel map summary #}
+        <div class="travel-map-summary">
+          <p class="map-status" style="margin:0">
+            Visited: <strong id="xp-visited-count">{{ (visited_defaults or [])|length }}</strong>
+            · Avoid: <strong id="xp-avoid-count">{{ (avoid_defaults or [])|length }}</strong>/10
+            <span style="margin-left:0.5rem;font-size:0.75rem;opacity:0.7">(+10 XP / −10 XP)</span>
+          </p>
+          <div class="chip-row" id="xp-visited-chips" aria-label="Visited countries">
+            {% for code in visited_defaults or [] %}
+              <span class="chip visited">{{ code }}</span>
             {% else %}
-            <tr><td colspan="5" class="muted" style="padding:0.5rem">No budget data yet — click Re-probe or run a search.</td></tr>
+              <span class="muted" style="font-size:0.8rem">No stamps yet</span>
             {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <pre id="probe-out" class="muted" style="font-size:0.78rem;margin-top:0.75rem;white-space:pre-wrap"></pre>
-    </div>
-    <script>
-      document.getElementById("btn-probe")?.addEventListener("click", async function () {
-        var out = document.getElementById("probe-out");
-        out.textContent = "Probing…";
-        try {
-          var r = await fetch("/api/providers/probe", { method: "POST" });
-          var j = await r.json();
-          out.textContent = "Active: " + (j.active || []).join(", ") + "\\n" + JSON.stringify(j.budgets, null, 2);
-          location.reload();
-        } catch (e) {
-          out.textContent = String(e);
-        }
-      });
-    </script>
+          </div>
+          <div class="chip-row" id="xp-avoid-chips" aria-label="Avoid countries">
+            {% for code in avoid_defaults or [] %}
+              <span class="chip avoid">{{ code }}</span>
+            {% else %}
+              <span class="muted" style="font-size:0.8rem">No avoid countries</span>
+            {% endfor %}
+          </div>
+          <div class="map-links">
+            <a class="btn secondary" href="/?mode=escape" style="padding:0.4rem 0.75rem;font-size:0.85rem">Open Escape</a>
+            <a class="btn secondary" href="/?mode=detour" style="padding:0.4rem 0.75rem;font-size:0.85rem">Open Detour</a>
+          </div>
+        </div>
 
-    <div class="card">
-      <h2>Keys &amp; defaults</h2>
-      <p class="sub path-line">Saved to: {{ view.env_path }}</p>
-      <div class="hint-box">
-        Leave secret fields blank to keep the existing value. Check <strong>Clear</strong> to wipe a key.
-        Masked values show only the last 4 characters.
+        {# Preferences #}
+        <div class="prefs-grid">
+          <label for="HOME_IATA">Home airport
+            <span class="help">Default origin (e.g. <code>YVR</code>). Blank → first passport stamp → currency country → USA.
+              Currently resolves to <strong>{{ view.home_resolved or 'JFK' }}</strong>.</span>
+            <input id="HOME_IATA" name="HOME_IATA" type="text" maxlength="3" pattern="[A-Za-z]{0,3}"
+              placeholder="YVR" value="{{ view.home_iata or '' }}"
+              style="max-width:100px;text-transform:uppercase;letter-spacing:0.08em;font-weight:700" />
+          </label>
+
+          <label for="DEFAULT_CURRENCY">Default currency
+            <span class="help">Fare display currency for Escape &amp; Detour. Default <strong>USD</strong>.</span>
+            <select id="DEFAULT_CURRENCY" name="DEFAULT_CURRENCY" style="max-width:140px">
+              {% set cur_def = (view.default_currency or 'USD')|upper %}
+              {% for code in ['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY', 'CHF', 'MXN'] %}
+              <option value="{{ code }}" {% if cur_def == code %}selected{% endif %}>{{ code }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+
+        <div class="section-title" style="margin-top:1.25rem">Daily budget</div>
+        <p class="muted" style="margin:0 0 0.65rem;font-size:0.85rem">
+          Personal target per person/day in your default currency.
+          Leave <strong>0</strong> to show destination cost-of-living without ranking.
+        </p>
+        <div class="prefs-grid">
+          <label for="COL_EXPECTED_DAILY">Cost / day
+            <span class="help">Your total daily spend (hotel + food + transit + culture)</span>
+            <input id="COL_EXPECTED_DAILY" name="COL_EXPECTED_DAILY" type="number" min="0" max="5000" step="5"
+              value="{{ view.col_expected_daily }}" />
+          </label>
+          <label for="COL_TOLERANCE_PCT">Over / under %
+            <span class="help">Acceptable % above your target before a penalty</span>
+            <input id="COL_TOLERANCE_PCT" name="COL_TOLERANCE_PCT" type="number" min="0" max="100" step="1"
+              value="{{ view.col_tolerance_pct }}" />
+          </label>
+        </div>
+        <p class="map-status" style="margin-top:0.55rem">
+          Daily target: <strong id="col-sum-display">0</strong>
+          · OK up to <strong id="col-ceil-display">0</strong>
+        </p>
+
+        <div class="section-title">Stop length</div>
+        <div class="prefs-grid">
+          <label for="DETOUR_MIN_STOP_DAYS">Min stop days
+            <span class="help">Shortest multi-day stopover (default 4)</span>
+            <input id="DETOUR_MIN_STOP_DAYS" name="DETOUR_MIN_STOP_DAYS" type="number" min="1" max="21" step="1"
+              value="{{ view.detour_min_stop_days }}" />
+          </label>
+          <label for="DETOUR_MAX_STOP_DAYS">Max stop days
+            <span class="help">Longest multi-day stopover (default 5)</span>
+            <input id="DETOUR_MAX_STOP_DAYS" name="DETOUR_MAX_STOP_DAYS" type="number" min="1" max="30" step="1"
+              value="{{ view.detour_max_stop_days }}" />
+          </label>
+        </div>
       </div>
 
-      <form method="post" action="/settings" autocomplete="off">
-        <div class="section-title">Amadeus</div>
+      {# ════════════════════════════════════════════════
+         Section 2 — BYOM
+         ════════════════════════════════════════════════ #}
+      <div class="card">
+        <h2>BYOM <span class="byom-badge">Bring Your Own Model</span></h2>
+        <p class="sub">Plug in your own OpenAI-compatible endpoint instead of the built-in Grok.
+          Leave all three blank to use the default.</p>
+
+        <div class="hint-box">
+          Leave the API key blank to keep the existing value. Check <strong>Clear</strong> to wipe it.
+          Masked values show only the last 4 characters.
+        </div>
+
         <div class="field-grid">
-          {% for f in view.fields if f.key.startswith('AMADEUS_') and f.key != 'AMADEUS_ENV' %}
+          <label for="BYOM_BASE_URL">Endpoint URL
+            <span class="help">OpenAI-compatible base URL, e.g. <code>https://api.openai.com/v1</code> or <code>https://api.anthropic.com/v1</code></span>
+            <input id="BYOM_BASE_URL" name="BYOM_BASE_URL" type="text"
+              placeholder="https://api.openai.com/v1"
+              value="{{ view.byom_base_url or '' }}" spellcheck="false" />
+          </label>
+
+          {% for f in view.fields if f.key == 'BYOM_API_KEY' %}
           <div class="field-row">
-            <label for="{{ f.key }}">{{ f.label }}
+            <label for="{{ f.key }}">API key
               {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
-              <span class="help">{{ f.help }}</span>
+              <span class="help">Key for your model endpoint</span>
             </label>
             <div class="input-wrap">
               <input
                 id="{{ f.key }}"
                 name="{{ f.key }}"
                 type="password"
-                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste key{% endif %}"
+                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste API key{% endif %}"
                 value=""
                 spellcheck="false"
               />
@@ -339,498 +471,524 @@
             </div>
           </div>
           {% endfor %}
-          <label for="AMADEUS_ENV">Amadeus environment
-            <span class="help">test = sandbox sample data · production = live market (enable in Amadeus portal)</span>
-            <select id="AMADEUS_ENV" name="AMADEUS_ENV">
-              <option value="test" {% if view.amadeus_env == 'test' %}selected{% endif %}>test (sandbox)</option>
-              <option value="production" {% if view.amadeus_env == 'production' %}selected{% endif %}>production (live)</option>
-            </select>
+
+          <label for="BYOM_MODEL">Model name
+            <span class="help">e.g. <code>gpt-4o</code>, <code>claude-3-5-sonnet-20241022</code> — blank uses the built-in default</span>
+            <input id="BYOM_MODEL" name="BYOM_MODEL" type="text"
+              placeholder="gpt-4o"
+              value="{{ view.byom_model or '' }}" style="max-width:280px" />
           </label>
         </div>
 
-        <div class="section-title">Travelpayouts</div>
-        <div class="field-grid">
-          {% for f in view.fields if f.key == 'TRAVELPAYOUTS_TOKEN' %}
-          <div class="field-row">
-            <label for="{{ f.key }}">{{ f.label }}
-              {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
-              <span class="help">{{ f.help }}</span>
-            </label>
-            <div class="input-wrap">
-              <input id="{{ f.key }}" name="{{ f.key }}" type="password"
-                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste token{% endif %}"
-                value="" spellcheck="false" />
-            </div>
-            <div class="clear-wrap">
-              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
-            </div>
-          </div>
-          {% endfor %}
+        {% if view.byom_ready %}
+        <p class="map-status" style="margin-top:0.75rem">
+          <span class="pill ok" style="display:inline">BYOM active</span>
+          All AI calls are routed to your endpoint.
+        </p>
+        {% endif %}
+      </div>
+
+      {# ════════════════════════════════════════════════
+         Save button — always visible
+         ════════════════════════════════════════════════ #}
+      {% if not testing %}
+      <div class="actions" style="margin-bottom:1rem">
+        <button type="submit">Save settings</button>
+        <a class="btn secondary" href="/">Back to search</a>
+      </div>
+      {% endif %}
+
+      {# ════════════════════════════════════════════════
+         Section 3 — Dev tools (testing mode only)
+         ════════════════════════════════════════════════ #}
+      {% if testing %}
+      <div class="card dev-zone">
+        <div class="dev-zone-header">
+          <h2>Dev tools</h2>
+          <span class="dev-zone-pill">testing mode</span>
+        </div>
+        <p class="sub" style="margin-bottom:0">
+          Provider keys, search knobs, and monitoring — only visible when testing mode is on.
+          Saved to <span class="path-line">{{ view.env_path }}</span>
+        </p>
+
+        <div class="hint-box" style="margin-top:1rem">
+          Leave secret fields blank to keep the existing value. Check <strong>Clear</strong> to wipe a key.
+          Masked values show only the last 4 characters.
         </div>
 
-        <div class="section-title">Duffel</div>
-        <div class="field-grid">
-          <p class="muted" style="margin:0 0 0.5rem;font-size:0.85rem">
-            Tokens starting with <code>duffel_test_</code> are <strong>sandbox</strong> — demo fares only.
-            Use a <strong>live</strong> token for real prices. Until then we prefer SerpAPI (Google Flights snapshots).
-          </p>
-          {% for f in view.fields if f.key == 'DUFFEL_ACCESS_TOKEN' %}
-          <div class="field-row">
-            <label for="{{ f.key }}">{{ f.label }}
-              {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
-              <span class="help">{{ f.help }}</span>
+        {# — Testing & routing knobs — #}
+        <div class="dev-section">
+          <div class="section-title" style="margin-top:0">Mode &amp; routing</div>
+          <div class="prefs-grid">
+            <label for="TESTING">Testing mode
+              <span class="help">When on, Escape/Detour show a <strong>Test Data</strong> checkbox (fake demo fares).</span>
+              <select id="TESTING" name="TESTING">
+                <option value="false" {% if not view.testing %}selected{% endif %}>false (live only)</option>
+                <option value="true" {% if view.testing %}selected{% endif %}>true (allow Test Data)</option>
+              </select>
             </label>
-            <div class="input-wrap">
-              <input id="{{ f.key }}" name="{{ f.key }}" type="password"
-                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste token{% endif %}"
-                value="" spellcheck="false" />
-            </div>
-            <div class="clear-wrap">
-              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
-            </div>
+            <label for="PROVIDER_MODE">Provider routing
+              <span class="help">smart = probe health then pick by budget · scan_all = hit every configured key</span>
+              <select id="PROVIDER_MODE" name="PROVIDER_MODE">
+                <option value="smart" {% if view.provider_mode != 'scan_all' %}selected{% endif %}>smart (recommended)</option>
+                <option value="scan_all" {% if view.provider_mode == 'scan_all' %}selected{% endif %}>scan all configured</option>
+              </select>
+            </label>
           </div>
-          {% endfor %}
         </div>
 
-        <div class="section-title">SerpAPI (Google Flights)</div>
-        <div class="field-grid">
-          {% for f in view.fields if f.key == 'SERPAPI_KEY' %}
-          <div class="field-row">
-            <label for="{{ f.key }}">{{ f.label }}
-              {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
-              <span class="help">{{ f.help }}</span>
-            </label>
-            <div class="input-wrap">
-              <input id="{{ f.key }}" name="{{ f.key }}" type="password"
-                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste key{% endif %}"
-                value="" spellcheck="false" />
-            </div>
-            <div class="clear-wrap">
-              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-
-        <div class="section-title">AviationStack</div>
-        <div class="field-grid">
-          {% for f in view.fields if f.key == 'AVIATIONSTACK_KEY' %}
-          <div class="field-row">
-            <label for="{{ f.key }}">{{ f.label }}
-              {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
-              <span class="help">{{ f.help }} · <a href="https://aviationstack.com/" target="_blank" rel="noopener">aviationstack.com</a></span>
-            </label>
-            <div class="input-wrap">
-              <input id="{{ f.key }}" name="{{ f.key }}" type="password"
-                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste access key{% endif %}"
-                value="" spellcheck="false" />
-            </div>
-            <div class="clear-wrap">
-              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-
-        <div class="section-title">Grok (xAI) — natural language + analysis</div>
-        <div class="field-grid">
-          {% for f in view.fields if f.key == 'XAI_API_KEY' %}
-          <div class="field-row">
-            <label for="{{ f.key }}">{{ f.label }}
-              {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
-              <span class="help">{{ f.help }} · <a href="https://console.x.ai/" target="_blank" rel="noopener">console.x.ai</a></span>
-            </label>
-            <div class="input-wrap">
-              <input id="{{ f.key }}" name="{{ f.key }}" type="password"
-                placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste xAI API key{% endif %}"
-                value="" spellcheck="false" />
-            </div>
-            <div class="clear-wrap">
-              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
-            </div>
-          </div>
-          {% endfor %}
-          <label for="XAI_MODEL">Grok model
-            <span class="help">Usually grok-4.5</span>
-            <input id="XAI_MODEL" name="XAI_MODEL" type="text"
-              value="{{ view.xai_model }}" style="max-width:220px" />
-          </label>
-        </div>
-
-        <div class="section-title">Defaults</div>
-        <div class="field-grid">
-          <label for="DEFAULT_CURRENCY">Default currency
-            <span class="help">Escape + Detour fare display currency (providers converted into this). Default <strong>USD</strong>.</span>
-            <select id="DEFAULT_CURRENCY" name="DEFAULT_CURRENCY" style="max-width:140px">
-              {% set cur_def = (view.default_currency or 'USD')|upper %}
-              {% for code in ['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY', 'CHF', 'MXN'] %}
-              <option value="{{ code }}" {% if cur_def == code %}selected{% endif %}>{{ code }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label for="HOME_IATA">Home airport
-            <span class="help">
-              Default <strong>origin</strong> for Escape/Detour when you don’t name a city
-              (e.g. <code>YVR</code>). Blank → <strong>first country you stamp</strong> on the
-              passport map (selection order) → default currency’s country → USA.
-              Currently resolves to <strong>{{ view.home_resolved or 'JFK' }}</strong>.
-            </span>
-            <input id="HOME_IATA" name="HOME_IATA" type="text" maxlength="3" pattern="[A-Za-z]{0,3}"
-              placeholder="YVR" value="{{ view.home_iata or '' }}"
-              style="max-width:100px;text-transform:uppercase;letter-spacing:0.08em;font-weight:700" />
-          </label>
-          <label for="PROVIDER_MODE">Provider routing
-            <span class="help">smart = probe which keys work, then pick by budget · scan_all = hit every configured key</span>
-            <select id="PROVIDER_MODE" name="PROVIDER_MODE">
-              <option value="smart" {% if view.provider_mode != 'scan_all' %}selected{% endif %}>smart (recommended)</option>
-              <option value="scan_all" {% if view.provider_mode == 'scan_all' %}selected{% endif %}>scan all configured</option>
-            </select>
-          </label>
-          <label for="TESTING">Testing mode
-            <span class="help">When on, Escape/Detour show a <strong>Test Data</strong> checkbox (fake demo fares). Off = live signals only.</span>
-            <select id="TESTING" name="TESTING">
-              <option value="false" {% if not view.testing %}selected{% endif %}>false (live only)</option>
-              <option value="true" {% if view.testing %}selected{% endif %}>true (allow Test Data)</option>
-            </select>
-          </label>
-
-          <div class="section-title" style="margin-top:0.35rem;border-top:1px solid var(--border);padding-top:1rem">Your preferences <span class="help" style="text-transform:none;letter-spacing:0;font-weight:400">— stored locally, not in environment variables</span></div>
-          <div style="margin-bottom:0.75rem">
-            <label style="margin-bottom:0.45rem">Your daily budget
-              <span class="help">
-                Personal target per person/day in your default currency.
-                Leave <strong>0</strong> to show destination COL without under/over ranking.
-              </span>
-            </label>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0.65rem;align-items:end">
-              <label for="COL_EXPECTED_DAILY">Cost / day
-                <span class="help">Your total daily spend (hotel + food + transit + culture)</span>
-                <input id="COL_EXPECTED_DAILY" name="COL_EXPECTED_DAILY" type="number" min="0" max="5000" step="5"
-                  value="{{ view.col_expected_daily }}" />
-              </label>
-              <label for="COL_TOLERANCE_PCT">Over / under %
-                <span class="help">OK band above your target</span>
-                <input id="COL_TOLERANCE_PCT" name="COL_TOLERANCE_PCT" type="number" min="0" max="100" step="1"
-                  value="{{ view.col_tolerance_pct }}" />
-              </label>
-            </div>
-            <p class="map-status" style="margin-top:0.55rem">
-              Daily target: <strong id="col-sum-display2">0</strong>
-              · OK up to <strong id="col-ceil-display2">0</strong>
-            </p>
-          </div>
-          <script>
-            (function () {
-              var dailyEl = document.getElementById("COL_EXPECTED_DAILY");
-              var pctEl   = document.getElementById("COL_TOLERANCE_PCT");
-              var sumEl   = document.getElementById("col-sum-display2");
-              var ceilEl  = document.getElementById("col-ceil-display2");
-              function num(el) { var v = parseFloat(el && el.value ? el.value : "0"); return isFinite(v) && v > 0 ? v : 0; }
-              function sync() {
-                var sum = num(dailyEl), pct = num(pctEl), ceil = sum * (1 + pct / 100);
-                if (sumEl) sumEl.textContent = sum ? ("~" + Math.round(sum)) : "0 (off)";
-                if (ceilEl) ceilEl.textContent = sum ? ("~" + Math.round(ceil)) : "—";
-              }
-              if (dailyEl) dailyEl.addEventListener("input", sync);
-              if (pctEl)   pctEl.addEventListener("input", sync);
-              sync();
-            })();
-          </script>
-
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:0.65rem;align-items:end;margin-bottom:0.75rem">
-            <label for="DETOUR_MIN_STOP_DAYS">Min stop days
-              <span class="help">Shortest multi-day stopover (default 4)</span>
-              <input id="DETOUR_MIN_STOP_DAYS" name="DETOUR_MIN_STOP_DAYS" type="number" min="1" max="21" step="1"
-                value="{{ view.detour_min_stop_days }}" />
-            </label>
-            <label for="DETOUR_MAX_STOP_DAYS">Max stop days
-              <span class="help">Longest multi-day stopover (default 5)</span>
-              <input id="DETOUR_MAX_STOP_DAYS" name="DETOUR_MAX_STOP_DAYS" type="number" min="1" max="30" step="1"
-                value="{{ view.detour_max_stop_days }}" />
-            </label>
-          </div>
-
-          <div class="section-title" style="margin-top:0.35rem">Detour defaults</div>
-          <p class="muted" style="margin:0 0 0.65rem;font-size:0.85rem">
-            App-level search knobs — change here, not on the compose form.
-          </p>
+        {# — Search timing + candidates — #}
+        <div class="dev-section">
+          <div class="section-title">Search timing &amp; candidates</div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:0.75rem;align-items:end">
             <label for="DETOUR_MAX_CANDIDATES">Options to price
-              <span class="help">Ideas to invent &amp; price (2–5, default 5). Each search shows at most 5 results.</span>
+              <span class="help">Ideas to invent &amp; price (2–5, default 5).</span>
               <input id="DETOUR_MAX_CANDIDATES" name="DETOUR_MAX_CANDIDATES" type="number" min="2" max="5" step="1"
                 value="{{ view.detour_max_candidates }}" />
             </label>
             <label for="SEARCH_BUDGET_SECONDS">Soft aim (sec)
-              <span class="help">Try to finish by this (default 30). Pacing only — not a hard kill.</span>
+              <span class="help">Try to finish by this (default 30). Pacing only.</span>
               <input id="SEARCH_BUDGET_SECONDS" name="SEARCH_BUDGET_SECONDS" type="number" min="8" max="180" step="1"
                 value="{{ view.search_budget_seconds }}" />
             </label>
             <label for="SEARCH_MAX_SECONDS">Skip after (sec)
-              <span class="help">When <strong>Skip</strong> appears on the progress screen (default 42). Without Skip, search can run longer.</span>
+              <span class="help">When <strong>Skip</strong> appears on the progress screen (default 42).</span>
               <input id="SEARCH_MAX_SECONDS" name="SEARCH_MAX_SECONDS" type="number" min="8" max="600" step="1"
                 value="{{ view.search_max_seconds }}" />
             </label>
-            <div>
-              <label for="AFFILIATE_TAG">Affiliate tag
-                <span class="help">
-                  Partner id stamped on outbound booking links (optional product attribution).
-                  {% if is_deployed %}
-                    <strong style="color:var(--warn)">Running on Replit — tag is suppressed by default. Check the box below to enable it.</strong>
-                  {% endif %}
-                </span>
-                <input id="AFFILIATE_TAG" name="AFFILIATE_TAG" type="text" maxlength="80"
-                  value="{{ view.affiliate_tag or '' }}" placeholder="your-partner-id" />
-              </label>
-              <label class="check" style="margin-top:0.5rem;display:flex;align-items:center;gap:0.45rem;font-size:0.85rem">
-                <input type="checkbox" id="AFFILIATE_TAG_LIVE" name="AFFILIATE_TAG_LIVE" value="true"
-                  {% if view.affiliate_tag_live %}checked{% endif %} />
-                Apply affiliate tag in the published / production app
-                <span class="help" style="display:inline">— off by default so test clicks don't pollute your affiliate stats</span>
-              </label>
-            </div>
           </div>
-
-          <div>
-            <label style="margin-bottom:0.45rem">Travel map
-              <span class="help">
-                Full interactive map (visited → avoid → clear) lives on
-                <strong>Escape</strong> and <strong>Detour</strong> — zoomable atlas, autosaves here.
-              </span>
-            </label>
-            <div class="travel-map-summary">
-
-              {% if xp_profile %}
-              {# ── Travel Comfort Rank card ── #}
-              <div class="xp-card" id="xp-card">
-                <div class="xp-card-body">
-                  <div class="xp-rank-line">
-                    <span class="xp-emoji" id="xp-emoji">{{ xp_profile.rank_emoji }}</span>
-                    <span class="xp-rank-name" id="xp-rank-name">{{ xp_profile.rank }}</span>
-                    <span class="xp-amount" id="xp-amount">{{ xp_profile.xp }} XP</span>
-                  </div>
-                  <p class="xp-blurb" id="xp-blurb">{{ xp_profile.rank_blurb }}</p>
-                  <div id="xp-progress">
-                    {% if xp_profile.next_rank %}
-                    <div class="xp-bar-wrap">
-                      <div class="xp-bar-fill" id="xp-bar-fill" style="width:{{ xp_profile.progress_pct }}%"></div>
-                    </div>
-                    <p class="xp-bar-label" id="xp-bar-label">
-                      <strong>{{ xp_profile.xp_to_next }} XP</strong> to {{ xp_profile.next_rank_emoji }} {{ xp_profile.next_rank }}
-                    </p>
-                    {% else %}
-                    <p class="xp-bar-label" id="xp-bar-label">Maximum rank — you've been everywhere. ✦</p>
-                    {% endif %}
-                  </div>
-
-                  <div class="xp-ladder" id="xp-ladder">
-                    {% for rung in xp_profile.ladder %}
-                    <div class="xp-ladder-row{% if rung.current %} is-current{% endif %}">
-                      <span class="xp-ladder-dot"></span>
-                      <span>{{ rung.emoji }} {{ rung.rank }}</span>
-                      <span class="xp-ladder-xp">{{ rung.xp }} XP</span>
-                    </div>
-                    {% endfor %}
-                  </div>
-                </div>
-              </div>
-              {% endif %}
-
-              <p class="map-status" style="margin:0">
-                Visited: <strong id="xp-visited-count">{{ (visited_defaults or [])|length }}</strong>
-                · Avoid: <strong id="xp-avoid-count">{{ (avoid_defaults or [])|length }}</strong>/10
-                <span style="margin-left:0.5rem;font-size:0.75rem;opacity:0.7">(+10 XP / −10 XP)</span>
-              </p>
-              <div class="chip-row" id="xp-visited-chips" aria-label="Visited countries">
-                {% for code in visited_defaults or [] %}
-                  <span class="chip visited">{{ code }}</span>
-                {% else %}
-                  <span class="muted" style="font-size:0.8rem">No stamps yet</span>
-                {% endfor %}
-              </div>
-              <div class="chip-row" id="xp-avoid-chips" aria-label="Avoid countries">
-                {% for code in avoid_defaults or [] %}
-                  <span class="chip avoid">{{ code }}</span>
-                {% else %}
-                  <span class="muted" style="font-size:0.8rem">No avoid countries</span>
-                {% endfor %}
-              </div>
-              <div class="map-links">
-                <a class="btn secondary" href="/?mode=escape" style="padding:0.4rem 0.75rem;font-size:0.85rem">Open Escape</a>
-                <a class="btn secondary" href="/?mode=detour" style="padding:0.4rem 0.75rem;font-size:0.85rem">Open Detour</a>
-              </div>
-            </div>
-          </div>
-          <script>
-          (function () {
-            /* Live-update the XP rank card + country chip summary
-               when a yonder:xpupdate event arrives (fired by country_map.js
-               after every successful /api/travel-map save). */
-
-            function setText(id, val) {
-              var el = document.getElementById(id);
-              if (el) el.textContent = val;
-            }
-            function setHTML(id, val) {
-              var el = document.getElementById(id);
-              if (el) el.innerHTML = val;
-            }
-
-            function updateXpCard(xp) {
-              if (!xp) return;
-              setText("xp-emoji",     xp.rank_emoji || "");
-              setText("xp-rank-name", xp.rank       || "");
-              setText("xp-amount",    (xp.xp || 0) + " XP");
-              setText("xp-blurb",     xp.rank_blurb || "");
-              setText("xp-visited-count", String(xp.visited_count || 0));
-              setText("xp-avoid-count",   String(xp.avoid_count   || 0));
-
-              // Progress bar / label
-              var progEl = document.getElementById("xp-progress");
-              if (progEl) {
-                if (xp.next_rank) {
-                  progEl.innerHTML =
-                    '<div class="xp-bar-wrap">' +
-                      '<div class="xp-bar-fill" style="width:' + xp.progress_pct + '%"></div>' +
-                    '</div>' +
-                    '<p class="xp-bar-label" id="xp-bar-label">' +
-                      '<strong>' + xp.xp_to_next + ' XP</strong> to ' +
-                      xp.next_rank_emoji + ' ' + xp.next_rank +
-                    '</p>';
-                } else {
-                  progEl.innerHTML =
-                    '<p class="xp-bar-label" id="xp-bar-label">Maximum rank — you\'ve been everywhere. ✦</p>';
-                }
-              }
-
-              // Rank ladder
-              var ladderEl = document.getElementById("xp-ladder");
-              if (ladderEl && xp.ladder) {
-                ladderEl.innerHTML = xp.ladder.map(function (r) {
-                  return '<div class="xp-ladder-row' + (r.current ? ' is-current' : '') + '">' +
-                    '<span class="xp-ladder-dot"></span>' +
-                    '<span>' + r.emoji + ' ' + r.rank + '</span>' +
-                    '<span class="xp-ladder-xp">' + r.xp + ' XP</span>' +
-                  '</div>';
-                }).join('');
-              }
-            }
-
-            function updateChips(detail) {
-              var names = detail.country_names || {};
-              var visited = detail.visited || [];
-              var avoid   = detail.avoid   || [];
-
-              var vc = document.getElementById("xp-visited-chips");
-              if (vc) {
-                if (visited.length) {
-                  vc.innerHTML = visited.map(function (c) {
-                    return '<span class="chip visited">' + (names[c] || c) + '</span>';
-                  }).join('');
-                } else {
-                  vc.innerHTML = '<span class="muted" style="font-size:0.8rem">No stamps yet</span>';
-                }
-              }
-
-              var ac = document.getElementById("xp-avoid-chips");
-              if (ac) {
-                if (avoid.length) {
-                  ac.innerHTML = avoid.map(function (c) {
-                    return '<span class="chip avoid">' + (names[c] || c) + '</span>';
-                  }).join('');
-                } else {
-                  ac.innerHTML = '<span class="muted" style="font-size:0.8rem">No avoid countries</span>';
-                }
-              }
-            }
-
-            document.addEventListener("yonder:xpupdate", function (e) {
-              updateXpCard(e.detail);
-            });
-
-            document.addEventListener("yonder:mapchange", function (e) {
-              if (e.detail) updateChips(e.detail);
-            });
-          })();
-          </script>
         </div>
 
-        <div class="actions">
+        {# — Affiliate — #}
+        <div class="dev-section">
+          <div class="section-title">Affiliate tag</div>
+          <label for="AFFILIATE_TAG">Partner id
+            <span class="help">
+              Stamped on outbound booking links (optional product attribution).
+              {% if is_deployed %}
+                <strong style="color:var(--warn)">Running on Replit — tag is suppressed by default. Check the box below to enable it.</strong>
+              {% endif %}
+            </span>
+            <input id="AFFILIATE_TAG" name="AFFILIATE_TAG" type="text" maxlength="80"
+              value="{{ view.affiliate_tag or '' }}" placeholder="your-partner-id" style="max-width:320px" />
+          </label>
+          <label class="check" style="margin-top:0.5rem;display:flex;align-items:center;gap:0.45rem;font-size:0.85rem">
+            <input type="checkbox" id="AFFILIATE_TAG_LIVE" name="AFFILIATE_TAG_LIVE" value="true"
+              {% if view.affiliate_tag_live %}checked{% endif %} />
+            Apply affiliate tag in the published / production app
+            <span class="help" style="display:inline">— off by default so test clicks don't pollute your stats</span>
+          </label>
+        </div>
+
+        {# — Grok/xAI primary key — #}
+        <div class="dev-section">
+          <div class="section-title">Grok (xAI) — primary AI key</div>
+          <div class="field-grid">
+            {% for f in view.fields if f.key == 'XAI_API_KEY' %}
+            <div class="field-row">
+              <label for="{{ f.key }}">{{ f.label }}
+                {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+                <span class="help">{{ f.help }} · <a href="https://console.x.ai/" target="_blank" rel="noopener">console.x.ai</a></span>
+              </label>
+              <div class="input-wrap">
+                <input id="{{ f.key }}" name="{{ f.key }}" type="password"
+                  placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste xAI API key{% endif %}"
+                  value="" spellcheck="false" />
+              </div>
+              <div class="clear-wrap">
+                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+              </div>
+            </div>
+            {% endfor %}
+            <label for="XAI_MODEL">Grok model
+              <span class="help">Usually grok-4.5</span>
+              <input id="XAI_MODEL" name="XAI_MODEL" type="text"
+                value="{{ view.xai_model }}" style="max-width:220px" />
+            </label>
+          </div>
+        </div>
+
+        {# — Provider API keys — #}
+        <div class="dev-section">
+          <div class="section-title">Amadeus</div>
+          <div class="field-grid">
+            {% for f in view.fields if f.key.startswith('AMADEUS_') and f.key != 'AMADEUS_ENV' %}
+            <div class="field-row">
+              <label for="{{ f.key }}">{{ f.label }}
+                {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+                <span class="help">{{ f.help }}</span>
+              </label>
+              <div class="input-wrap">
+                <input id="{{ f.key }}" name="{{ f.key }}" type="password"
+                  placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste key{% endif %}"
+                  value="" spellcheck="false" />
+              </div>
+              <div class="clear-wrap">
+                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+              </div>
+            </div>
+            {% endfor %}
+            <label for="AMADEUS_ENV">Amadeus environment
+              <span class="help">test = sandbox sample data · production = live market (enable in Amadeus portal)</span>
+              <select id="AMADEUS_ENV" name="AMADEUS_ENV">
+                <option value="test" {% if view.amadeus_env == 'test' %}selected{% endif %}>test (sandbox)</option>
+                <option value="production" {% if view.amadeus_env == 'production' %}selected{% endif %}>production (live)</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="dev-section">
+          <div class="section-title">Travelpayouts</div>
+          <div class="field-grid">
+            {% for f in view.fields if f.key == 'TRAVELPAYOUTS_TOKEN' %}
+            <div class="field-row">
+              <label for="{{ f.key }}">{{ f.label }}
+                {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+                <span class="help">{{ f.help }}</span>
+              </label>
+              <div class="input-wrap">
+                <input id="{{ f.key }}" name="{{ f.key }}" type="password"
+                  placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste token{% endif %}"
+                  value="" spellcheck="false" />
+              </div>
+              <div class="clear-wrap">
+                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="dev-section">
+          <div class="section-title">Duffel</div>
+          <div class="field-grid">
+            <p class="muted" style="margin:0 0 0.5rem;font-size:0.85rem">
+              Tokens starting with <code>duffel_test_</code> are <strong>sandbox</strong> — demo fares only.
+              Use a <strong>live</strong> token for real prices. Until then we prefer SerpAPI (Google Flights snapshots).
+            </p>
+            {% for f in view.fields if f.key == 'DUFFEL_ACCESS_TOKEN' %}
+            <div class="field-row">
+              <label for="{{ f.key }}">{{ f.label }}
+                {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+                <span class="help">{{ f.help }}</span>
+              </label>
+              <div class="input-wrap">
+                <input id="{{ f.key }}" name="{{ f.key }}" type="password"
+                  placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste token{% endif %}"
+                  value="" spellcheck="false" />
+              </div>
+              <div class="clear-wrap">
+                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="dev-section">
+          <div class="section-title">SerpAPI (Google Flights)</div>
+          <div class="field-grid">
+            {% for f in view.fields if f.key == 'SERPAPI_KEY' %}
+            <div class="field-row">
+              <label for="{{ f.key }}">{{ f.label }}
+                {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+                <span class="help">{{ f.help }}</span>
+              </label>
+              <div class="input-wrap">
+                <input id="{{ f.key }}" name="{{ f.key }}" type="password"
+                  placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste key{% endif %}"
+                  value="" spellcheck="false" />
+              </div>
+              <div class="clear-wrap">
+                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="dev-section">
+          <div class="section-title">AviationStack</div>
+          <div class="field-grid">
+            {% for f in view.fields if f.key == 'AVIATIONSTACK_KEY' %}
+            <div class="field-row">
+              <label for="{{ f.key }}">{{ f.label }}
+                {% if f.set %}<span class="pill ok" style="display:inline;margin-left:0.4rem">set · {{ f.display }}</span>{% endif %}
+                <span class="help">{{ f.help }} · <a href="https://aviationstack.com/" target="_blank" rel="noopener">aviationstack.com</a></span>
+              </label>
+              <div class="input-wrap">
+                <input id="{{ f.key }}" name="{{ f.key }}" type="password"
+                  placeholder="{% if f.set %}•••• keep existing · paste new to replace{% else %}paste access key{% endif %}"
+                  value="" spellcheck="false" />
+              </div>
+              <div class="clear-wrap">
+                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        {# — Provider status — #}
+        <div class="dev-section">
+          <div class="section-title">Provider status</div>
+          <p class="muted" style="margin:0 0 0.75rem;font-size:0.88rem">
+            Keys present ≠ active. Router probes health first, then budgets.
+            <button type="button" id="btn-probe" class="secondary" style="padding:0.3rem 0.6rem;font-size:0.8rem;margin-left:0.4rem">Re-probe now</button>
+          </p>
+          <div class="provider-grid">
+            {% for p in view.providers %}
+            <div class="provider-card">
+              <h3>
+                {{ p.name }}
+                <span class="status-dot {% if p.ready %}on{% endif %}" title="{% if p.ready %}Key set{% else %}Missing keys{% endif %}"></span>
+              </h3>
+              <p>{{ p.blurb }}</p>
+              <span class="pill {% if p.ready %}ok{% else %}bad{% endif %}">{% if p.ready %}key set{% else %}needs keys{% endif %}</span>
+              <div style="margin-top:0.5rem"><a href="{{ p.signup }}" target="_blank" rel="noopener">Get free key ↗</a></div>
+            </div>
+            {% endfor %}
+          </div>
+          <pre id="probe-out" class="muted" style="font-size:0.78rem;margin-top:0.75rem;white-space:pre-wrap"></pre>
+        </div>
+
+        {# — Price history — #}
+        <div class="dev-section">
+          <div class="section-title">Price history journal</div>
+          <p class="muted" style="margin:0 0 0.4rem;font-size:0.88rem">Every search (with API keys) is saved locally to <code>price_history.db</code> — your free historical dataset.</p>
+          <p style="margin:0;font-size:1.1rem"><strong>{{ history_count }}</strong> <span class="muted">samples logged</span></p>
+          <p class="muted" style="margin:0.5rem 0 0;font-size:0.85rem">CLI: <code>python -m yonder.cli history</code> · export: <code>… history --export</code></p>
+        </div>
+
+        {# — API budgets & health — #}
+        <div class="dev-section">
+          <div class="section-title">API budgets &amp; health</div>
+          <p class="muted" style="margin:0 0 0.65rem;font-size:0.88rem">Live remaining where APIs expose it. Inactive/empty keys are skipped automatically.</p>
+          <div id="budget-table">
+            <table style="width:100%;border-collapse:collapse;font-size:0.88rem">
+              <thead>
+                <tr style="color:var(--muted);text-align:left">
+                  <th style="padding:0.4rem">Provider</th>
+                  <th>Active</th>
+                  <th>Quota</th>
+                  <th>Session</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for b in budgets %}
+                <tr style="border-top:1px solid var(--border)">
+                  <td style="padding:0.45rem 0.4rem;font-family:ui-monospace,Consolas,monospace">{{ b.name }}</td>
+                  <td>
+                    {% if b.usable %}<span class="pill ok">usable</span>
+                    {% elif b.configured %}<span class="pill warn">{{ 'cooldown' if b.in_cooldown else 'down' }}</span>
+                    {% else %}<span class="pill">no key</span>{% endif %}
+                  </td>
+                  <td class="muted">
+                    {% if b.monthly_remaining is not none and b.monthly_limit is not none %}
+                      {{ b.monthly_remaining }} / {{ b.monthly_limit }} left
+                    {% elif b.rpm_remaining is not none %}
+                      rpm {{ b.rpm_remaining }}{% if b.rpm_limit %}/{{ b.rpm_limit }}{% endif %}
+                    {% else %}—{% endif %}
+                  </td>
+                  <td class="muted">{{ b.calls_this_session }}</td>
+                  <td class="muted" style="max-width:220px">{{ b.last_error or b.notes or '' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="muted" style="padding:0.5rem">No budget data yet — click Re-probe or run a search.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {# — AI spend history — #}
+        <div class="dev-section">
+          <div class="section-title">AI spend history</div>
+          <p class="muted" style="margin:0 0 0.5rem;font-size:0.88rem">Token usage logged to <code>data/ai_usage.db</code> on every Grok call.</p>
+          <div id="ai-spend-body">
+            <p class="muted" style="font-size:0.88rem">Loading…</p>
+          </div>
+        </div>
+
+        {# — Quick start — #}
+        <div class="dev-section">
+          <div class="section-title">Quick start</div>
+          <p class="muted" style="margin:0 0 0.5rem;font-size:0.88rem">Fastest path to real prices:</p>
+          <ol class="muted" style="margin:0;padding-left:1.2rem;font-size:0.88rem">
+            <li><a href="https://console.x.ai/" target="_blank" rel="noopener">xAI / Grok</a> — API key for "Ask Grok" natural-language search</li>
+            <li><a href="https://developers.amadeus.com/" target="_blank" rel="noopener">Amadeus</a> — free app → Client ID + Secret for live fares</li>
+            <li><a href="https://www.travelpayouts.com/" target="_blank" rel="noopener">Travelpayouts</a> — Profile → API token (instant)</li>
+            <li>Save, then on Search: type a trip in English → <strong>Ask Grok &amp; scan</strong></li>
+          </ol>
+        </div>
+
+        {# Dev zone save button #}
+        <div class="actions" style="margin-top:1.5rem">
           <button type="submit">Save settings</button>
           <a class="btn secondary" href="/">Back to search</a>
         </div>
-      </form>
-    </div>
-
-    <div class="card" id="ai-spend-card">
-      <h2>AI spend history</h2>
-      <p class="sub">Token usage logged to <code>data/ai_usage.db</code> on every Grok call.</p>
-      <div id="ai-spend-body">
-        <p class="muted" style="font-size:0.88rem">Loading…</p>
       </div>
-    </div>
-    <script>
-      (function () {
-        function fmtTok(n) {
-          if (!n) return "0 tok";
-          return n >= 1000 ? "~" + (n / 1000).toFixed(1) + "k tok" : n + " tok";
-        }
-        function fmtCost(c) {
-          return "$" + (c || 0).toFixed(4);
-        }
-        function fmtCalls(n) {
-          if (!n) return "0 searches";
-          return n + " search" + (n === 1 ? "" : "es");
-        }
-        function renderRow(label, d) {
-          if (!d || !d.calls) return '<tr><td style="padding:0.4rem 0.5rem;color:var(--muted)">' + label + '</td><td colspan="3" class="muted" style="padding:0.4rem 0.5rem">no data yet</td></tr>';
-          return '<tr style="border-top:1px solid var(--border)">'
-            + '<td style="padding:0.45rem 0.5rem">' + label + '</td>'
-            + '<td style="padding:0.45rem 0.5rem">' + fmtTok(d.total_tokens) + '</td>'
-            + '<td style="padding:0.45rem 0.5rem">' + fmtCost(d.est_cost_usd) + '</td>'
-            + '<td style="padding:0.45rem 0.5rem;color:var(--muted)">' + fmtCalls(d.calls) + '</td>'
-            + '</tr>';
-        }
-        fetch("/api/usage/summary")
-          .then(function (r) { return r.json(); })
-          .then(function (j) {
-            var body = document.getElementById("ai-spend-body");
-            if (!body) return;
-            var any = (j.all_time && j.all_time.calls);
-            if (!any) {
-              body.innerHTML = '<p class="muted" style="font-size:0.88rem">No AI usage recorded yet — run a Grok search first.</p>';
-              return;
-            }
-            body.innerHTML =
-              '<table style="width:100%;border-collapse:collapse;font-size:0.88rem">'
-              + '<thead><tr style="color:var(--muted);text-align:left">'
-              + '<th style="padding:0.4rem 0.5rem">Window</th>'
-              + '<th style="padding:0.4rem 0.5rem">Tokens</th>'
-              + '<th style="padding:0.4rem 0.5rem">Est. cost</th>'
-              + '<th style="padding:0.4rem 0.5rem">Calls</th>'
-              + '</tr></thead><tbody>'
-              + renderRow("Last 7 days", j.last_7d)
-              + renderRow("Last 30 days", j.last_30d)
-              + renderRow("All time", j.all_time)
-              + '</tbody></table>'
-              + '<p class="muted" style="font-size:0.78rem;margin-top:0.5rem">Costs are estimates based on published xAI pricing.</p>';
-          })
-          .catch(function () {
-            var body = document.getElementById("ai-spend-body");
-            if (body) body.innerHTML = '<p class="muted" style="font-size:0.88rem">Could not load usage data.</p>';
-          });
-      })();
-    </script>
+      {% else %}
+      {# Non-dev save button already rendered above; this block intentionally empty #}
+      {% endif %}
 
-    <div class="card">
-      <h2>Quick start</h2>
-      <p class="sub" style="margin-bottom:0.5rem">Fastest path to real prices:</p>
-      <ol class="muted" style="margin:0;padding-left:1.2rem">
-        <li><a href="https://console.x.ai/" target="_blank" rel="noopener">xAI / Grok</a> — API key for “Ask Grok” natural-language search</li>
-        <li><a href="https://developers.amadeus.com/" target="_blank" rel="noopener">Amadeus</a> — free app → Client ID + Secret for live fares</li>
-        <li><a href="https://www.travelpayouts.com/" target="_blank" rel="noopener">Travelpayouts</a> — Profile → API token (instant)</li>
-        <li>Save, then on Search: type a trip in English → <strong>Ask Grok &amp; scan</strong></li>
-      </ol>
-    </div>
+    </form>
   </main>
-  <footer>Personal use · keys never leave this machine except when calling each provider’s API.</footer>
+  <footer class="site-foot">Personal use · keys never leave this machine except when calling each provider's API.</footer>
+
+  {# ── JavaScript ──────────────────────────────────────── #}
+  <script>
+    /* Budget live preview */
+    (function () {
+      var dailyEl = document.getElementById("COL_EXPECTED_DAILY");
+      var pctEl   = document.getElementById("COL_TOLERANCE_PCT");
+      var sumEl   = document.getElementById("col-sum-display");
+      var ceilEl  = document.getElementById("col-ceil-display");
+      function num(el) { var v = parseFloat(el && el.value ? el.value : "0"); return isFinite(v) && v > 0 ? v : 0; }
+      function sync() {
+        var sum = num(dailyEl), pct = num(pctEl), ceil = sum * (1 + pct / 100);
+        if (sumEl) sumEl.textContent = sum ? ("~" + Math.round(sum)) : "0 (off)";
+        if (ceilEl) ceilEl.textContent = sum ? ("~" + Math.round(ceil)) : "—";
+      }
+      if (dailyEl) dailyEl.addEventListener("input", sync);
+      if (pctEl)   pctEl.addEventListener("input", sync);
+      sync();
+    })();
+
+    /* XP live-update from travel map events */
+    (function () {
+      function setText(id, val) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = val;
+      }
+
+      function updateXpCard(xp) {
+        if (!xp) return;
+        setText("xp-emoji",     xp.rank_emoji || "");
+        setText("xp-rank-name", xp.rank       || "");
+        setText("xp-amount",    (xp.xp || 0) + " XP");
+        setText("xp-blurb",     xp.rank_blurb || "");
+        setText("xp-visited-count", String(xp.visited_count || 0));
+        setText("xp-avoid-count",   String(xp.avoid_count   || 0));
+
+        var progEl = document.getElementById("xp-progress");
+        if (progEl) {
+          if (xp.next_rank) {
+            progEl.innerHTML =
+              '<div class="xp-bar-wrap">' +
+                '<div class="xp-bar-fill" style="width:' + xp.progress_pct + '%"></div>' +
+              '</div>' +
+              '<p class="xp-bar-label" id="xp-bar-label">' +
+                '<strong>' + xp.xp_to_next + ' XP</strong> to ' +
+                xp.next_rank_emoji + ' ' + xp.next_rank +
+              '</p>';
+          } else {
+            progEl.innerHTML =
+              '<p class="xp-bar-label" id="xp-bar-label">Maximum rank — you\'ve been everywhere. ✦</p>';
+          }
+        }
+
+        var ladderEl = document.getElementById("xp-ladder");
+        if (ladderEl && xp.ladder) {
+          ladderEl.innerHTML = xp.ladder.map(function (r) {
+            return '<div class="xp-ladder-row' + (r.current ? ' is-current' : '') + '">' +
+              '<span class="xp-ladder-dot"></span>' +
+              '<span>' + r.emoji + ' ' + r.rank + '</span>' +
+              '<span class="xp-ladder-xp">' + r.xp + ' XP</span>' +
+            '</div>';
+          }).join('');
+        }
+      }
+
+      function updateChips(detail) {
+        var names = detail.country_names || {};
+        var visited = detail.visited || [];
+        var avoid   = detail.avoid   || [];
+
+        var vc = document.getElementById("xp-visited-chips");
+        if (vc) {
+          if (visited.length) {
+            vc.innerHTML = visited.map(function (c) {
+              return '<span class="chip visited">' + (names[c] || c) + '</span>';
+            }).join('');
+          } else {
+            vc.innerHTML = '<span class="muted" style="font-size:0.8rem">No stamps yet</span>';
+          }
+        }
+
+        var ac = document.getElementById("xp-avoid-chips");
+        if (ac) {
+          if (avoid.length) {
+            ac.innerHTML = avoid.map(function (c) {
+              return '<span class="chip avoid">' + (names[c] || c) + '</span>';
+            }).join('');
+          } else {
+            ac.innerHTML = '<span class="muted" style="font-size:0.8rem">No avoid countries</span>';
+          }
+        }
+      }
+
+      document.addEventListener("yonder:xpupdate", function (e) { updateXpCard(e.detail); });
+      document.addEventListener("yonder:mapchange", function (e) { if (e.detail) updateChips(e.detail); });
+    })();
+
+    /* Re-probe button (dev tools only) */
+    document.getElementById("btn-probe") && document.getElementById("btn-probe").addEventListener("click", async function () {
+      var out = document.getElementById("probe-out");
+      out.textContent = "Probing…";
+      try {
+        var r = await fetch("/api/providers/probe", { method: "POST" });
+        var j = await r.json();
+        out.textContent = "Active: " + (j.active || []).join(", ") + "\n" + JSON.stringify(j.budgets, null, 2);
+        location.reload();
+      } catch (e) {
+        out.textContent = String(e);
+      }
+    });
+
+    /* AI spend (dev tools only) */
+    (function () {
+      var body = document.getElementById("ai-spend-body");
+      if (!body) return;
+      function fmtTok(n) { return n >= 1000 ? "~" + (n / 1000).toFixed(1) + "k tok" : (n || 0) + " tok"; }
+      function fmtCost(c) { return "$" + (c || 0).toFixed(4); }
+      function fmtCalls(n) { return !n ? "0 searches" : n + " search" + (n === 1 ? "" : "es"); }
+      function renderRow(label, d) {
+        if (!d || !d.calls) return '<tr><td style="padding:0.4rem 0.5rem;color:var(--muted)">' + label + '</td><td colspan="3" class="muted" style="padding:0.4rem 0.5rem">no data yet</td></tr>';
+        return '<tr style="border-top:1px solid var(--border)">'
+          + '<td style="padding:0.45rem 0.5rem">' + label + '</td>'
+          + '<td style="padding:0.45rem 0.5rem">' + fmtTok(d.total_tokens) + '</td>'
+          + '<td style="padding:0.45rem 0.5rem">' + fmtCost(d.est_cost_usd) + '</td>'
+          + '<td style="padding:0.45rem 0.5rem;color:var(--muted)">' + fmtCalls(d.calls) + '</td>'
+          + '</tr>';
+      }
+      fetch("/api/usage/summary")
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!j.all_time || !j.all_time.calls) {
+            body.innerHTML = '<p class="muted" style="font-size:0.88rem">No AI usage recorded yet — run a Grok search first.</p>';
+            return;
+          }
+          body.innerHTML =
+            '<table style="width:100%;border-collapse:collapse;font-size:0.88rem">'
+            + '<thead><tr style="color:var(--muted);text-align:left">'
+            + '<th style="padding:0.4rem 0.5rem">Window</th>'
+            + '<th style="padding:0.4rem 0.5rem">Tokens</th>'
+            + '<th style="padding:0.4rem 0.5rem">Est. cost</th>'
+            + '<th style="padding:0.4rem 0.5rem">Calls</th>'
+            + '</tr></thead><tbody>'
+            + renderRow("Last 7 days", j.last_7d)
+            + renderRow("Last 30 days", j.last_30d)
+            + renderRow("All time", j.all_time)
+            + '</tbody></table>'
+            + '<p class="muted" style="font-size:0.78rem;margin-top:0.5rem">Costs are estimates based on published xAI pricing.</p>';
+        })
+        .catch(function () {
+          body.innerHTML = '<p class="muted" style="font-size:0.88rem">Could not load usage data.</p>';
+        });
+    })();
+  </script>
 {% endblock %}

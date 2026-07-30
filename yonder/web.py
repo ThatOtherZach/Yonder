@@ -537,7 +537,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
             _compose_page_ctx(
                 settings,
                 mode="escape",
-                error="Grok needs an xAI API key. Add XAI_API_KEY in Settings → console.x.ai, then Save.",
+                error="No AI model configured — add XAI_API_KEY in Settings (console.x.ai) or set a BYOM endpoint, then Save.",
                 escape_override={"ask": ask, "form": empty_form},
             ),
             status_code=400,
@@ -920,7 +920,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             errors.append("Escape skipped — user hit Skip")
             return
         if not settings.grok_ready() and not mock:
-            errors.append("Escape skipped — add XAI_API_KEY or enable Test Data")
+            errors.append("Escape skipped — add XAI_API_KEY, configure BYOM, or enable Test Data")
             return
         remaining = _soft_remaining()
         if remaining <= 0 and search_id and is_cancelled(search_id):
@@ -2806,7 +2806,7 @@ async def api_ask(request: Request) -> dict:
     if not ask:
         return {"ok": False, "error": "ask is required"}
     if not settings.grok_ready():
-        return {"ok": False, "error": "XAI_API_KEY not configured"}
+        return {"ok": False, "error": "No AI model configured — add XAI_API_KEY or set a BYOM endpoint in Settings."}
     if not settings.configured_providers():
         mock = True
 

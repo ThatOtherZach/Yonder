@@ -19,6 +19,10 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
     ("AVIATIONSTACK_KEY", "AviationStack access key", "aviationstack.com — schedules; free ~100/mo", True),
     ("XAI_API_KEY", "xAI / Grok API key", "console.x.ai — powers natural-language search + analysis", True),
     ("XAI_MODEL", "Grok model", "Default grok-4.5", False),
+    # BYOM — user-visible override (always shown in Settings)
+    ("BYOM_BASE_URL", "BYOM endpoint URL", "OpenAI-compatible base URL, e.g. https://api.openai.com/v1", False),
+    ("BYOM_API_KEY", "BYOM API key", "Key for your model endpoint", True),
+    ("BYOM_MODEL", "BYOM model name", "e.g. gpt-4o or claude-3-5-sonnet (blank = use built-in default)", False),
     ("DEFAULT_CURRENCY", "Default currency", "e.g. USD, CAD, EUR", False),
     (
         "HOME_IATA",
@@ -243,6 +247,7 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
         ("SerpAPI", ["SERPAPI_KEY"]),
         ("AviationStack", ["AVIATIONSTACK_KEY"]),
         ("Grok / xAI", ["XAI_API_KEY", "XAI_MODEL"]),
+        ("BYOM", ["BYOM_BASE_URL", "BYOM_API_KEY", "BYOM_MODEL"]),
         (
             "Defaults",
             [
@@ -354,7 +359,11 @@ def settings_view() -> dict:
         "default_currency": env.get("DEFAULT_CURRENCY") or "USD",
         "home_iata": (env.get("HOME_IATA") or "").strip().upper(),
         "xai_model": env.get("XAI_MODEL") or "grok-4.5",
-        "grok_ready": bool(env.get("XAI_API_KEY")),
+        "grok_ready": bool(env.get("XAI_API_KEY"))
+                      or bool(env.get("BYOM_BASE_URL") and env.get("BYOM_API_KEY")),
+        "byom_base_url": env.get("BYOM_BASE_URL") or "",
+        "byom_model": env.get("BYOM_MODEL") or "",
+        "byom_ready": bool(env.get("BYOM_BASE_URL") and env.get("BYOM_API_KEY")),
         "avoid_countries": env.get("AVOID_COUNTRIES") or "",
         "avoid_list": [
             c.strip().upper()
