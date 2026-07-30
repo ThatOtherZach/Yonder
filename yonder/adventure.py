@@ -79,7 +79,7 @@ SEED_STOPOVERS: list[dict[str, Any]] = [
     {"iata": "BKK", "city": "Bangkok", "country": "TH", "why": "Street food + easy multi-day chaos", "vibe_tags": ["city", "food", "cheap", "velvet", "warmnights", "vivid", "lush", "hazy", "electric"]},
     # Extra getaway seeds for "cheap + food + safe + not visited" after a full passport map
     {"iata": "HAN", "city": "Hanoi", "country": "VN", "why": "Street food capital with low daily spend", "vibe_tags": ["city", "food", "cheap", "safe", "nostalgic", "ancient", "hazy", "vivid"]},
-    {"iata": "SGN", "city": "Ho Chi Minh City", "country": "VN", "why": "Vietnamese food chaos, still traveler-friendly", "vibe_tags": ["city", "food", "cheap", "gritty", "raw", "hazy"]},
+    {"iata": "SGN", "city": "Ho Chi Minh City", "country": "VN", "why": "Vietnamese food chaos, still traveler-friendly", "vibe_tags": ["city", "food", "cheap", "gritty", "raw", "hazy", "vivid"]},
     {"iata": "KUL", "city": "Kuala Lumpur", "country": "MY", "why": "Cheap hawker food + modern safe core", "vibe_tags": ["city", "food", "cheap", "safe", "electric"]},
     {"iata": "DPS", "city": "Denpasar / Bali", "country": "ID", "why": "Island food + beach without wrecking the budget", "vibe_tags": ["beach", "food", "cheap", "relax", "serene", "lush"]},
     {"iata": "CGK", "city": "Jakarta", "country": "ID", "why": "Huge food scene, low ground costs", "vibe_tags": ["city", "food", "cheap", "gritty", "raw"]},
@@ -94,7 +94,7 @@ SEED_STOPOVERS: list[dict[str, Any]] = [
     {"iata": "OTP", "city": "Bucharest", "country": "RO", "why": "Low COL European capital", "vibe_tags": ["city", "food", "cheap", "safe", "nostalgic", "gritty", "moody"]},
     {"iata": "SOF", "city": "Sofia", "country": "BG", "why": "Cheap Balkans capital with solid food", "vibe_tags": ["city", "food", "cheap", "safe", "gritty", "sleepy"]},
     {"iata": "CMN", "city": "Casablanca", "country": "MA", "why": "North Africa food + moderate spend", "vibe_tags": ["city", "food", "cheap", "culture", "ancient", "vivid", "hazy"]},
-    {"iata": "CPT", "city": "Cape Town", "country": "ZA", "why": "Food + nature with well-trodden tourist circuits", "vibe_tags": ["city", "food", "nature", "cheap", "rugged", "feral", "untamed", "raw", "stormy", "seasalt", "goldenhour"]},
+    {"iata": "CPT", "city": "Cape Town", "country": "ZA", "why": "Food + nature with well-trodden tourist circuits", "vibe_tags": ["city", "food", "nature", "cheap", "rugged", "feral", "untamed", "raw", "gritty", "stormy", "seasalt", "goldenhour"]},
     {"iata": "CMB", "city": "Colombo", "country": "LK", "why": "Island food and low daily costs", "vibe_tags": ["city", "food", "cheap", "beach", "serene", "tender", "sleepy"]},
     {"iata": "TPE", "city": "Taipei", "country": "TW", "why": "Night markets + very safe city", "vibe_tags": ["city", "food", "safe", "cheap", "whimsical", "electric"]},
     {"iata": "AKL", "city": "Auckland", "country": "NZ", "why": "Safe Pacific city break", "vibe_tags": ["city", "nature", "safe", "rugged", "feral", "untamed", "crisp", "seasalt"]},
