@@ -898,6 +898,10 @@ async def explore_run(request: Request) -> HTMLResponse:
 
     escape_override: dict = {"ask": prompt, "form": empty_esc, "result": None}
     detour_override: dict = {"form": det_form, "result": None}
+    # Route resolved by the Escape half's parse (origin, destination IATAs).
+    # The Detour half reuses it when the AI is unavailable so non-English
+    # prompts keep their route instead of collapsing to a home getaway.
+    resolved_route: tuple[str, str] | None = None
     errors: list[str] = []
     _route_usage: list[dict] = []  # accumulates grok.accumulated_usage from each block
     active_mode = "detour" if decision.shape == "detour" else "escape"
@@ -927,7 +931,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     }
 
     async def _do_escape() -> None:
-        nonlocal escape_override, active_mode, restored_first
+        nonlocal escape_override, active_mode, restored_first, resolved_route
         if search_id and is_cancelled(search_id):
             errors.append("Escape skipped — user hit Skip")
             return
@@ -1022,6 +1026,16 @@ async def explore_run(request: Request) -> HTMLResponse:
             query = query.model_copy(
                 update={"currency": currency, "adults": 1, "cabin": CabinClass.ECONOMY}
             )
+            # Remember the parsed route for the Detour half — the parse
+            # understood the prompt (any language); text re-detection may not.
+            _ro = (query.origin or "").upper()
+            _rd = (query.destination or "").upper()
+            if (
+                len(_ro) == 3 and _ro.isalpha()
+                and len(_rd) == 3 and _rd.isalpha()
+                and _ro != _rd
+            ):
+                resolved_route = (_ro, _rd)
             fare_timeout = min(18.0, max(5.0, remaining * 0.5 if remaining < 100 else 14.0))
             result = await search_flights(
                 query,
@@ -1156,8 +1170,10 @@ async def explore_run(request: Request) -> HTMLResponse:
             home = origin_override if origin_pinned else (_guess_home_iata(prompt) or home_iata)
             # Honor a clearly-named A→B route even without Grok: the traveler
             # said where they want to end up, so plan origin → stop → dest,
-            # not a round trip back home.
-            _route = detect_route_iatas(prompt)
+            # not a round trip back home. Prefer the route the Escape half
+            # already resolved (works for non-English prompts), then the
+            # English text detector, then a home getaway as last resort.
+            _route = resolved_route or detect_route_iatas(prompt)
             _dest = _route[1] if _route else home
             if _route and not origin_pinned:
                 home = _route[0]
@@ -1247,8 +1263,9 @@ async def explore_run(request: Request) -> HTMLResponse:
                 trip_kind = (req.trip_kind or "detour").lower()
                 if req.origin == req.destination:
                     # Prompt clearly names two different cities → correct the
-                    # parse instead of silently forcing a getaway
-                    route = detect_route_iatas(prompt)
+                    # parse instead of silently forcing a getaway. The route
+                    # the Escape half resolved wins over raw text detection.
+                    route = resolved_route or detect_route_iatas(prompt)
                     if route:
                         req = req.model_copy(
                             update={"origin": route[0], "destination": route[1]}
@@ -1778,13 +1795,18 @@ async def adventure_run(request: Request) -> HTMLResponse:
         # On failure, fall back to passport map + local home-city guess (seed ideas).
         from yonder.grok import _guess_home_iata
 
+        # Legacy /adventure has no Escape half, so no already-resolved route to
+        # reuse — kept for ordering parity with /explore's fallback (resolved
+        # route → text detector → home getaway).
+        resolved_route: tuple[str, str] | None = None
+
         def _local_getaway_fallback(reason: str = "") -> tuple:
             home = (
                 _guess_home_iata(prompt)
                 or settings.resolve_home_iata()
             )
             # Honor a clearly-named A→B route even without Grok
-            _route = detect_route_iatas(prompt)
+            _route = resolved_route or detect_route_iatas(prompt)
             _dest = _route[1] if _route else home
             if _route:
                 home = _route[0]
@@ -1848,7 +1870,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
                     if req.origin == req.destination:
                         # Prompt clearly names two different cities → correct
                         # the parse instead of silently forcing a getaway
-                        route = detect_route_iatas(prompt)
+                        route = resolved_route or detect_route_iatas(prompt)
                         if route:
                             req = req.model_copy(
                                 update={"origin": route[0], "destination": route[1]}
