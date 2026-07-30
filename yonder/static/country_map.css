@@ -608,6 +608,13 @@
   padding: 0.12rem;
 }
 
+/* XP badge sits directly left of the zoom tools in the compact bar */
+.ymap-compact-bar .xp-rank-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .ymap.ymap-compact .ymap-tools button {
   width: 1.95rem;
   height: 1.95rem;

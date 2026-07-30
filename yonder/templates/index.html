@@ -1186,9 +1186,9 @@
     document.addEventListener("DOMContentLoaded", function() {
       var tpl = document.getElementById("xp-badge-tpl");
       if (!tpl) return;
-      var meta = document.querySelector("#explore-map .ymap-compact-meta");
-      if (meta) {
-        meta.insertBefore(tpl.content.cloneNode(true), meta.firstChild);
+      var tools = document.querySelector("#explore-map .ymap-compact-bar .ymap-tools");
+      if (tools) {
+        tools.parentNode.insertBefore(tpl.content.cloneNode(true), tools);
       }
       tpl.remove();
     });
