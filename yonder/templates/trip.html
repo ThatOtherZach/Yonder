@@ -159,7 +159,7 @@
       <article class="boarding-pass">
         <div class="bp-main">
           <div class="bp-top">
-            <span class="bp-label">Boarding pass · signal</span>
+            <span class="bp-label">Signal</span>
             <span class="bp-badge soft"{% if share_vibe %} style="background:{{ share_vibe.color }};color:#fff;border:none"{% endif %}>{% if share_vibe %}{{ share_vibe.emoji }} {{ share_vibe.label }}{% else %}Escape{% endif %}</span>
           </div>
           <div class="bp-route">
@@ -200,7 +200,7 @@
       <article class="boarding-pass is-adventure"{% if it.theme_primary %} style="--bp-accent: {{ it.theme_primary }}; border-color: color-mix(in srgb, {{ it.theme_primary }} 35%, var(--line));"{% endif %}>
         <div class="bp-main">
           <div class="bp-top">
-            <span class="bp-label">Boarding pass · {{ it.kind or 'detour' }}</span>
+            <span class="bp-label">{{ (it.kind or 'detour') | title }}</span>
             <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{% if share_vibe %}{{ share_vibe.emoji }} {{ share_vibe.label }}{% else %}{{ it.theme_label or 'Detour' }}{% endif %}</span>
           </div>
           {% if legs|length >= 1 %}
@@ -213,6 +213,7 @@
           </div>
           {% endif %}
           <p class="bp-cities">{{ it.title or share.title }}</p>
+          {% if it.stay_days %}<p class="bp-stop-days">{{ it.stay_days }} Day Stop</p>{% endif %}
           {% if it.why %}<p class="bp-why">{{ it.why }}</p>{% endif %}
           {% if legs %}
           <div class="bp-legs">
@@ -237,7 +238,10 @@
             {% if it.ground_display %}<p class="bp-note" style="margin:0.55rem 0 0">{{ it.ground_display }}</p>{% endif %}
             {% if it.ground_compare_line %}<p class="bp-note muted" style="margin:0.2rem 0 0">{{ it.ground_compare_line }}</p>{% endif %}
             {% if it.ground_budget_line %}<p class="bp-note" style="margin:0.2rem 0 0">{{ it.ground_budget_line }}</p>{% endif %}
-            {% if it.all_in_display %}<p class="bp-note" style="margin:0.25rem 0 0;font-weight:650">{{ it.all_in_display }}</p>{% endif %}
+            {% if it.all_in_display %}
+            <p class="bp-note" style="margin:0.25rem 0 0;font-weight:650">{{ it.all_in_display | replace('All-in signal ', '') | replace(' (flights + ground est.)', '') }}</p>
+            <p class="bp-note muted" style="margin:0.1rem 0 0;font-size:0.78rem">Flights + Daily Spend</p>
+            {% endif %}
           </div>
           {% endif %}
           <div class="bp-actions">
@@ -261,7 +265,7 @@
               {% else %}—{% endif %}
             </div>
           </div>
-          <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }} Day Stop{% else %}multi-leg{% endif %}</div>
+          <div class="bp-stub-meta">{% if not it.stay_days %}multi-leg{% endif %}</div>
         </div>
       </article>
     {% else %}
@@ -280,7 +284,6 @@
         <div class="place-book"{% if share_vibe %} style="--bp-accent: {{ share_vibe.color }}"{% endif %}>
           <span class="pb-tag">Field note</span>
           <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
-          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
           {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
           {% if pb.facts %}
           <div class="pb-fast-facts" aria-label="Fast facts">
@@ -290,6 +293,7 @@
           {% if pb.vibe %}
           <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
           {% endif %}
+          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
           {% if pb.culture or pb.food or pb.caution %}
           <button type="button" class="pb-toggle" aria-expanded="false">
             <span class="pb-toggle-label">Culture, food &amp; heads-up</span>
@@ -321,7 +325,6 @@
         <div class="place-book" style="{% if it.theme_primary %}--bp-accent: {{ it.theme_primary }};{% endif %}{% if not loop.first %}margin-top:0.75rem{% endif %}">
           <span class="pb-tag">Field note · {{ iata }}</span>
           <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
-          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
           {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
           {% if pb.facts %}
           <div class="pb-fast-facts" aria-label="Fast facts">
@@ -331,6 +334,7 @@
           {% if pb.vibe %}
           <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
           {% endif %}
+          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
           {% if pb.culture or pb.food or pb.caution %}
           <button type="button" class="pb-toggle" aria-expanded="false">
             <span class="pb-toggle-label">Culture, food &amp; heads-up</span>

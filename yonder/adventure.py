@@ -844,13 +844,13 @@ async def plan_adventure(
                         "ground_daily_origin": gcmp.daily_origin,
                         "ground_total": gcmp.ground_total,
                         "ground_display": (
-                            f"+ {gcmp.display_ground} ground "
-                            f"({stay}× {gcmp.display_daily_stop}/day)"
+                            f"+{gcmp.display_ground} "
+                            f"({gcmp.display_daily_stop} per Day for {stay} Days)"
                         ),
                         "ground_compare_line": gcmp.ground_compare_line
                         or (
-                            f"{gcmp.display_daily_stop}/day in {gcmp.stop_name} vs "
-                            f"{gcmp.display_daily_origin}/day at home ({gcmp.origin_name})"
+                            f"{gcmp.display_daily_stop}/Day vs. "
+                            f"{gcmp.display_daily_origin}/Day ({gcmp.origin_name})"
                         ),
                         "ground_budget_status": gcmp.budget_status,
                         "ground_budget_line": gcmp.budget_line or None,
@@ -882,7 +882,7 @@ async def plan_adventure(
                 err_bits = [x for x in (leg1.error, leg2.error) if x]
                 title = (
                     f"{format_place(req.origin)} ↺ "
-                    f"{format_place(idea.iata, idea.city)} ({stay} Days)"
+                    f"{format_place(idea.iata, idea.city)}"
                     if getaway
                     else (
                         f"{format_place(req.origin)} → "
@@ -940,13 +940,11 @@ async def plan_adventure(
                 all_in = format_approx(
                     total + float(ground_fields["ground_total"]), cur
                 )
-                ground_fields["all_in_display"] = (
-                    f"All-in signal {all_in} (flights + ground est.)"
-                )
+                ground_fields["all_in_display"] = all_in
 
             title = (
                 f"{format_place(req.origin)} ↺ "
-                f"{format_place(idea.iata, idea.city)} ({stay} Days)"
+                f"{format_place(idea.iata, idea.city)}"
                 if getaway
                 else (
                     f"{format_place(req.origin)} → "
@@ -1241,10 +1239,7 @@ async def reprice_itinerary(
 
     all_in_display = itinerary.all_in_display
     if itinerary.ground_total is not None:
-        all_in_display = (
-            f"All-in signal {format_approx(total + float(itinerary.ground_total), cur)} "
-            f"(flights + ground est.)"
-        )
+        all_in_display = format_approx(total + float(itinerary.ground_total), cur)
 
     vs_delta = meta["delta"]
     tot_pd = price_display(total, cur, vs_delta=vs_delta)

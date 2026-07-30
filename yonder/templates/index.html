@@ -1281,7 +1281,7 @@
       data-signal-dest="{{ (ep.get('trip_meta') or {}).get('destination', '') if ep else '' }}"
       data-signal-vibe="{{ (ep.get('trip_meta') or {}).get('vibe', '') if ep else '' }}"
       data-mock="{{ 'true' if (ep.get('trip_meta') or {}).get('mock') else '' }}">
-    {% if escape_result %}
+    {% if escape_result and escape_result.offers %}
       <div class="card" id="escape-results-card">
         <h2>Direct Escape{% if escape_result.offers and escape_result.offers|length != 1 %}s{% endif %}</h2>
         <p class="sub">
@@ -1372,7 +1372,6 @@
                   {% if escape_place_book %}
                   <span class="pb-tag">Field note</span>
                   <h3 style="font-size:1.15rem">{{ escape_place_book.title }}</h3>
-                  {% if escape_place_book.era_note %}<p class="pb-closer">{{ escape_place_book.era_note }}</p>{% endif %}
                   {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
                   {% if escape_place_book.facts %}
                   <div class="pb-fast-facts" aria-label="Fast facts">
@@ -1382,6 +1381,7 @@
                   {% if escape_place_book.vibe %}
                   <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ escape_place_book.vibe | title }}</div>
                   {% endif %}
+                  {% if escape_place_book.era_note %}<p class="pb-closer">{{ escape_place_book.era_note }}</p>{% endif %}
                   {% else %}
                   <span class="pb-tag">Field note</span>
                   <p class="pb-loading-msg">Writing field note…</p>
@@ -1465,7 +1465,7 @@
 
     {# ——— Detour results ——— #}
     <div class="results-panel" id="detour-results" data-result-kind="detour">
-    {% if detour_result %}
+    {% if detour_result and detour_result.itineraries %}
       <div class="card" id="adv-results" data-trip-meta='{{ (detour_trip_meta or {}) | tojson }}'>
         <h2>Detour</h2>
         <p class="sub">
@@ -1486,7 +1486,7 @@
           <article class="boarding-pass is-adventure" data-stop-iata="{{ it.stop_iata or '' }}"{% if it.theme_primary %} style="--bp-accent: {{ it.theme_primary }}; border-color: color-mix(in srgb, {{ it.theme_primary }} 35%, var(--line));"{% endif %}>
             <div class="bp-main">
               <div class="bp-top">
-                <span class="bp-label">Boarding pass · detour</span>
+                <span class="bp-label">Detour</span>
                 <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{% set _bem = (it.theme_label or '') | lower | vibe_emoji %}{% if _bem %}{{ _bem }} {% endif %}{{ it.theme_label or '#' ~ loop.index }}</span>
               </div>
               {% if it.legs and it.legs|length >= 1 %}
@@ -1499,6 +1499,7 @@
               </div>
               {% endif %}
               <p class="bp-cities">{{ it.title }}</p>
+              {% if it.stay_days %}<p class="bp-stop-days">{{ it.stay_days }} Day Stop</p>{% endif %}
               {% if it.why %}<p class="bp-why">{{ it.why }}</p>{% endif %}
               {% if it.legs %}
               <div class="bp-legs">
@@ -1549,7 +1550,6 @@
                     {% if pb %}
                     <span class="pb-tag">Field note</span>
                     <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
-                    {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
                     {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
                     {% if pb.facts %}
                     <div class="pb-fast-facts" aria-label="Fast facts">
@@ -1559,6 +1559,7 @@
                     {% if pb.vibe %}
                     <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
                     {% endif %}
+                    {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
                     {% elif it.stop_iata %}
                     <span class="pb-tag">Field note</span>
                     <p class="pb-loading-msg">Writing field note…</p>
@@ -1600,7 +1601,7 @@
                       {% endif %}
                       {% if it.all_in_display %}
                       <div class="pb-block pb-col pb-col-allin">
-                        <h4>All-in estimate</h4>
+                        <h4>Flights + Daily Spend</h4>
                         <p>{{ it.all_in_display }}</p>
                       </div>
                       {% endif %}
@@ -1628,7 +1629,7 @@
               </div>
             </div>
             <div class="bp-stub">
-              <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }} Day Stop{% else %}multi-leg{% endif %}</div>
+              <div class="bp-stub-meta">{% if not it.stay_days %}multi-leg{% endif %}</div>
               <div>
                 <div class="bp-stub-label">Approx fare</div>
                 <div class="bp-stub-price price-with-sign">
@@ -2605,7 +2606,7 @@
         }
         if (col.allin) {
           h +=
-            '<div class="pb-block pb-col pb-col-allin"><h4>All-in estimate</h4><p>' +
+            '<div class="pb-block pb-col pb-col-allin"><h4>Flights + Daily Spend</h4><p>' +
             escapeHtml(col.allin) +
             "</p></div>";
         }
@@ -2623,8 +2624,6 @@
             ">" +
             escapeHtml(brief.title || "Somewhere") +
             "</h3>";
-          if (brief.era_note)
-            h += '<p class="pb-closer">' + escapeHtml(brief.era_note) + "</p>";
           if (brief.subtitle)
             h += '<p class="pb-sub">' + escapeHtml(brief.subtitle) + "</p>";
           var facts = brief.facts || [];
@@ -2641,6 +2640,8 @@
               escapeHtml(brief.vibe) +
               "</div>";
           }
+          if (brief.era_note)
+            h += '<p class="pb-closer">' + escapeHtml(brief.era_note) + "</p>";
         } else if (hasColData(col)) {
           h += '<span class="pb-tag">On the ground</span>';
           h += '<h3 style="font-size:1.15rem">Stop details</h3>';

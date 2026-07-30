@@ -462,7 +462,7 @@ def settings_ground_fields(
         "ground_daily_stop": float(daily),
         "ground_daily_origin": float(daily),  # same bag — no city COL model
         "ground_total": ground,
-        "ground_display": f"+ {ground_disp} ground ({stay}× {daily_disp}/day day bag)",
+        "ground_display": f"+{ground_disp} ({daily_disp} per Day for {stay} Days)",
         "ground_compare_line": compare,
         "ground_budget_status": "within",
         "ground_budget_line": budget_line,
@@ -579,8 +579,7 @@ def build_compare(
             )
         notes.insert(2 if bag_txt else 1, budget_line)
         compare_line = (
-            f"Grok {format_approx(d_s, cur)}/day in {s_name} vs your "
-            f"{exp_disp}/day bag ({budget_status or 'n/a'} · +{tol:.0f}% ok)"
+            f"{format_approx(d_s, cur)}/Day vs. {format_approx(d_o, cur)}/Day ({o_name})"
         )
 
     if payload.get("blurb") and src != "fallback":

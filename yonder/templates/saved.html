@@ -73,7 +73,7 @@
         <article class="boarding-pass is-adventure"{% if s.theme_primary or it.theme_primary %} style="--bp-accent: {{ s.theme_primary or it.theme_primary }}; border-color: color-mix(in srgb, {{ s.theme_primary or it.theme_primary }} 35%, var(--line));"{% endif %}>
           <div class="bp-main">
             <div class="bp-top">
-              <span class="bp-label">{% if s.kind == 'escape' %}Direct Escape{% elif s.kind == 'getaway' %}Boarding pass · getaway{% else %}Boarding pass · detour{% endif %}</span>
+              <span class="bp-label">{% if s.kind == 'escape' %}Direct Escape{% elif s.kind == 'getaway' %}Getaway{% else %}Detour{% endif %}</span>
               <span class="bp-badge soft"{% if s.theme_primary %} style="background:{{ s.theme_primary }};color:#fff;border:none"{% endif %}>{% if s.vibe %}{{ s.vibe | vibe_emoji }} {% endif %}{{ it.theme_label or s.theme_label or it.kind or 'Trip' }}</span>
             </div>
             {% if it.legs and it.legs|length >= 1 %}
@@ -207,7 +207,7 @@
         <article class="boarding-pass is-adventure">
           <div class="bp-main">
             <div class="bp-top">
-              <span class="bp-label">Boarding pass · saved</span>
+              <span class="bp-label">Saved</span>
               <span class="bp-badge soft">Recover</span>
             </div>
             <p class="bp-cities">{{ s.title }}</p>
