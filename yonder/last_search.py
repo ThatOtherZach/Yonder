@@ -129,7 +129,7 @@ def clear_last(mode: str | None = None) -> None:
 
 def hydrate_escape(snap: dict[str, Any]) -> dict[str, Any]:
     """Rebuild template context pieces for Escape from a snapshot."""
-    from yonder.grok import GrokAnalysis, ParsedTrip
+    from yonder.grok import ParsedTrip
     from yonder.types import UnifiedSearchResult
 
     out: dict[str, Any] = {
@@ -154,11 +154,7 @@ def hydrate_escape(snap: dict[str, Any]) -> dict[str, Any]:
             out["parsed"] = ParsedTrip.model_validate(snap["parsed"])
     except Exception:
         out["parsed"] = None
-    try:
-        if snap.get("analysis"):
-            out["analysis"] = GrokAnalysis.model_validate(snap["analysis"])
-    except Exception:
-        out["analysis"] = None
+    # analysis is legacy (analyze_results removed) — always None
     return out
 
 

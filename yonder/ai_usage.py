@@ -50,13 +50,15 @@ def merge_usage(*usages: dict) -> dict:
 
 
 def fmt_usage(usage: dict) -> str:
-    """Human-readable pill text: '~3.2k tok · $0.0045'"""
+    """Human-readable pill text: '~3.2k tok · $0.0045 · 2 AI calls'"""
     total = usage.get("total_tokens", 0)
     if not total:
         return ""
     cost = usage.get("est_cost_usd", 0.0)
     tok_str = f"{total / 1000:.1f}k" if total >= 1000 else str(total)
-    return f"~{tok_str} tok · ${cost:.4f}"
+    calls = int(usage.get("calls", 0) or 0)
+    call_txt = f" · {calls} AI call{'s' if calls != 1 else ''}" if calls else ""
+    return f"~{tok_str} tok · ${cost:.4f}{call_txt}"
 
 
 # ── SQLite persistence ────────────────────────────────────────────────────────

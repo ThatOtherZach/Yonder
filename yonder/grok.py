@@ -1,20 +1,73 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import time
 from datetime import date, datetime
 from typing import Any  # noqa: F401 — used by translate_adventure form dict
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
-from yonder.adventure import AdventureRequest, AdventureResult, StopoverIdea
+from yonder.adventure import AdventureRequest, StopoverIdea
 from yonder.config import Settings
-from yonder.types import CabinClass, FlightOffer, SearchQuery, UnifiedSearchResult
+from yonder.types import CabinClass, FlightOffer, SearchQuery
 from yonder.xp import compute_xp as _compute_xp
 
 XAI_BASE = "https://api.x.ai/v1"
 DEFAULT_MODEL = "grok-4.5"
+
+# ── Parse cache: identical prompt + settings skips a round-trip ──────────────
+# Keyed on normalized prompt, currency, home, avoid/visited lists, and today
+# (relative dates parse against today, so day change busts naturally).
+_PARSE_CACHE: dict[str, tuple[float, dict]] = {}
+_PARSE_TTL_S = 6 * 3600.0
+_PARSE_CACHE_MAX = 256
+
+
+def _parse_cache_key(
+    prompt: str,
+    currency: str,
+    home: str,
+    avoid: list[str],
+    visited: list[str],
+    today: date,
+    backend: str = "",
+) -> str:
+    raw = "|".join(
+        [
+            backend,
+            " ".join((prompt or "").strip().lower().split()),
+            (currency or "").upper(),
+            home,
+            ",".join(sorted(avoid)),
+            ",".join(sorted(visited)),
+            today.isoformat(),
+        ]
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _parse_cache_get(key: str) -> dict | None:
+    hit = _PARSE_CACHE.get(key)
+    if not hit:
+        return None
+    ts, payload = hit
+    if (time.time() - ts) > _PARSE_TTL_S:
+        _PARSE_CACHE.pop(key, None)
+        return None
+    return payload
+
+
+def _parse_cache_put(key: str, payload: dict) -> None:
+    if len(_PARSE_CACHE) >= _PARSE_CACHE_MAX:
+        # Evict oldest entries (simple LRU-ish trim)
+        for k in sorted(_PARSE_CACHE, key=lambda k: _PARSE_CACHE[k][0])[
+            : _PARSE_CACHE_MAX // 4
+        ]:
+            _PARSE_CACHE.pop(k, None)
+    _PARSE_CACHE[key] = (time.time(), payload)
 
 
 class ParsedTrip(BaseModel):
@@ -28,15 +81,6 @@ class ParsedTrip(BaseModel):
     nonstop_only: bool = False
     intent_summary: str = ""
     assumptions: list[str] = Field(default_factory=list)
-
-
-class GrokAnalysis(BaseModel):
-    headline: str = ""
-    pick_index: int | None = None  # 1-based index into displayed offers
-    pick_reason: str = ""
-    tradeoffs: list[str] = Field(default_factory=list)
-    tips: list[str] = Field(default_factory=list)
-    raw_markdown: str = ""
 
 
 class GrokClient:
@@ -146,8 +190,14 @@ class GrokClient:
         today: date | None = None,
         avoid_countries: list[str] | None = None,
         visited_countries: list[str] | None = None,
+        use_cache: bool = True,
     ) -> ParsedTrip:
-        """Parse free-text into a trip. Honors passport map: avoid + visited ISO2 lists."""
+        """Parse free-text into a trip. Honors passport map: avoid + visited ISO2 lists.
+
+        use_cache: serve identical prompt+settings from a short-lived in-process
+        cache (no AI call). Pass False on Refresh-for-novelty, where a repeat
+        answer is exactly what the user does NOT want.
+        """
         from yonder.countries import country_for_iata, country_label
 
         today = today or date.today()
@@ -158,6 +208,22 @@ class GrokClient:
         home = (default_origin or "").strip().upper()
         if len(home) != 3 or not home.isalpha():
             home = "YVR"
+
+        # Backend fingerprint: a parse from one model/provider must not be
+        # served after the user switches models in Settings.
+        byom_base = getattr(self.settings, "byom_base_url", "").strip().rstrip("/")
+        byom_key = getattr(self.settings, "byom_api_key", "").strip()
+        if byom_base and byom_key:
+            backend = f"byom:{byom_base}:{getattr(self.settings, 'byom_model', '').strip() or DEFAULT_MODEL}"
+        else:
+            backend = f"xai:{self.settings.xai_model or DEFAULT_MODEL}"
+        cache_k = _parse_cache_key(
+            prompt, default_currency, home, avoid, visited, today, backend=backend
+        )
+        if use_cache:
+            cached = _parse_cache_get(cache_k)
+            if cached is not None:
+                return ParsedTrip.model_validate(cached)
 
         system = (
             "You are a flight-search query parser for a personal multi-provider scanner. "
@@ -232,7 +298,19 @@ class GrokClient:
                 f"Output a NEW destination IATA whose country is NOT in avoid_countries "
                 f"and NOT in visited_countries. Do not use {trip.destination}."
             )
-            text2 = await self._chat(system, _user_msg(retry_extra), temperature=0.2)
+            # Minimal retry prompt — the correction only needs schema + constraint,
+            # not the full parsing rulebook (cheaper tokens, same 1 call).
+            retry_system = (
+                "Flight query parser. STRICT JSON only (no markdown fences), schema: "
+                "{"
+                f'"origin":"{home}","destination":"NRT","depart_date":"YYYY-MM-DD",'
+                '"return_date":"YYYY-MM-DD"|null,"currency":"USD","nonstop_only":false,'
+                '"intent_summary":"one line","assumptions":["..."]'
+                "}\n"
+                "Use IATA codes for major commercial airports. "
+                "destination country must NOT be in avoid_countries or visited_countries."
+            )
+            text2 = await self._chat(retry_system, _user_msg(retry_extra), temperature=0.2)
             payload2 = _extract_json(text2)
             try:
                 trip2 = ParsedTrip.model_validate(payload2)
@@ -262,97 +340,9 @@ class GrokClient:
             ]
             trip.intent_summary = trip2.intent_summary or trip.intent_summary
 
+        if use_cache:
+            _parse_cache_put(cache_k, trip.model_dump(mode="json"))
         return trip
-
-    async def analyze_results(
-        self,
-        *,
-        prompt: str | None,
-        query: SearchQuery,
-        result: UnifiedSearchResult,
-        max_offers: int = 12,
-    ) -> GrokAnalysis:
-        offers = result.offers[:max_offers]
-        if not offers:
-            return GrokAnalysis(
-                headline="No offers to analyze",
-                tips=["Try different dates or disable nonstop-only."],
-            )
-
-        compact = []
-        for i, o in enumerate(offers, 1):
-            compact.append(
-                {
-                    "i": i,
-                    "provider": o.provider,
-                    "price": o.price,
-                    "currency": o.currency,
-                    "airlines": o.airlines,
-                    "stops_out": o.stops_out,
-                    "duration_out_minutes": o.duration_out_minutes,
-                    "notes": o.notes,
-                    "route": o.summary_route(),
-                }
-            )
-
-        system = (
-            "Travel co-pilot: Rick Steves practicality + Bourdain appetite + Thompson bite — "
-            "like three of them at a bar, one beer in. Short, sharp, never corporate. "
-            "Pick among REAL flight price snapshots only; do not invent fares. "
-            "Prices may be cached/sandbox — say so if notes mention that. "
-            "STRICT JSON only (no fences):\n"
-            "{"
-            '"headline":"short verdict",'
-            '"pick_index":1,'
-            '"pick_reason":"why this row",'
-            '"tradeoffs":["..."],'
-            '"tips":["..."],'
-            '"raw_markdown":"2 short paragraphs max"'
-            "}"
-        )
-        user = json.dumps(
-            {
-                "user_prompt": prompt,
-                "query": {
-                    "origin": query.origin,
-                    "destination": query.destination,
-                    "depart": query.depart_date.isoformat(),
-                    "return": query.return_date.isoformat() if query.return_date else None,
-                    "adults": query.adults,
-                    "cabin": query.cabin.value,
-                    "currency": query.currency,
-                    "nonstop_only": query.nonstop_only,
-                },
-                "providers_ok": result.providers_ok,
-                "providers_failed": [
-                    {"provider": r.provider, "error": r.error}
-                    for r in result.results
-                    if not r.ok
-                ],
-                "offers": compact,
-            },
-            default=str,
-        )
-        text = await self._chat(system, user, temperature=0.4)
-        try:
-            payload = _extract_json(text)
-            analysis = GrokAnalysis.model_validate(payload)
-        except (ValidationError, RuntimeError, json.JSONDecodeError):
-            # Fall back to free text if model didn't JSON
-            analysis = GrokAnalysis(
-                headline="Grok's take",
-                raw_markdown=text.strip(),
-            )
-        if not analysis.raw_markdown and analysis.headline:
-            parts = [f"**{analysis.headline}**"]
-            if analysis.pick_reason:
-                parts.append(analysis.pick_reason)
-            if analysis.tradeoffs:
-                parts.append("**Tradeoffs**\n" + "\n".join(f"- {t}" for t in analysis.tradeoffs))
-            if analysis.tips:
-                parts.append("**Tips**\n" + "\n".join(f"- {t}" for t in analysis.tips))
-            analysis.raw_markdown = "\n\n".join(parts)
-        return analysis
 
     async def place_brief(
         self,
@@ -945,50 +935,6 @@ class GrokClient:
             except (TypeError, ValueError, KeyError):
                 continue
         return offers
-
-    async def narrate_adventure(self, result: AdventureResult) -> str:
-        """Short story-style summary of priced adventure options."""
-        compact = []
-        for i, it in enumerate(result.itineraries[:8], 1):
-            compact.append(
-                {
-                    "i": i,
-                    "kind": it.kind,
-                    "title": it.title,
-                    "total": it.total_price,
-                    "currency": it.currency,
-                    "vs_direct": it.vs_direct_delta,
-                    "score": it.adventure_score,
-                    "why": it.why,
-                    "stop": it.stop_city,
-                    "stay_days": it.stay_days,
-                    "leg_prices": [
-                        {
-                            "route": f"{leg.from_iata}-{leg.to_iata}",
-                            "date": leg.depart_date.isoformat(),
-                            "price": leg.price,
-                            "airline": (leg.offer.airlines if leg.offer else None),
-                        }
-                        for leg in it.legs
-                    ],
-                }
-            )
-        system = (
-            "You are a witty adventure travel co-pilot. Given priced multi-leg detour "
-            "options (separate one-way tickets), write 3 short paragraphs of markdown: "
-            "1) which adventure is most compelling and why, 2) best value vs direct, "
-            "3) practical warnings (visa, bags, missed-connection risk). "
-            "No JSON — just markdown prose. Be concrete with numbers."
-        )
-        user = json.dumps(
-            {
-                "request": result.request.model_dump(mode="json"),
-                "direct_price": result.direct_price,
-                "itineraries": compact,
-            },
-            default=str,
-        )
-        return (await self._chat(system, user, temperature=0.5)).strip()
 
 
 # Cheap city→IATA hints for open-ended getaways (no extra Grok tokens)

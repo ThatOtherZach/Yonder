@@ -946,6 +946,8 @@ async def explore_run(request: Request) -> HTMLResponse:
                 default_origin=home_iata,
                 avoid_countries=avoid,
                 visited_countries=visited,
+                # Refresh wants novelty — a cached repeat defeats the point
+                use_cache=not is_refresh,
             )
             if search_id and is_cancelled(search_id):
                 errors.append("Escape skipped mid-parse — user hit Skip")
