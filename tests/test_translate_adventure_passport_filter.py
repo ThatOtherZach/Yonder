@@ -316,6 +316,102 @@ async def test_visited_country_candidate_kept_on_detour():
 
 
 # ---------------------------------------------------------------------------
+# avoid_countries normalises country code case
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_avoid_country_filter_catches_lowercase_country_code():
+    """A candidate whose country arrives as lowercase (e.g. "fr") must still be filtered.
+
+    The normalisation at yonder/grok.py calls .upper() on the candidate's country
+    field before comparing against avoid_set.  This test confirms that a lowercase
+    code is correctly caught even though avoid_countries stores the code in uppercase.
+    """
+    violating_candidate = {
+        "iata": "CDG",
+        "city": "Paris",
+        "country": "fr",   # <-- lowercase; avoid_countries has "FR"
+        "stay_days": 2,
+        "why": "Grok returned a lowercase country code",
+        "vibe_tags": ["city"],
+    }
+    safe_candidate = {
+        "iata": "AMS",
+        "city": "Amsterdam",
+        "country": "NL",   # <-- NOT in avoid_countries
+        "stay_days": 2,
+        "why": "allowed stop",
+        "vibe_tags": ["city"],
+    }
+    mock = _make_response(trip_kind="detour", candidates=[violating_candidate, safe_candidate])
+
+    iatas = await _run_translate(
+        mock_response=mock,
+        form={
+            "origin": "YVR",
+            "destination": "LHR",
+            "avoid_countries": ["FR"],
+            "visited_countries": [],
+            "max_candidates": 5,
+        },
+    )
+
+    assert "CDG" not in iatas, (
+        'CDG (country "fr") must be filtered out because FR is in avoid_countries; '
+        f"got candidates: {iatas}"
+    )
+    assert "AMS" in iatas, (
+        f"AMS (NL) is not in avoid_countries and should be kept; got candidates: {iatas}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_avoid_country_filter_catches_mixed_case_country_code():
+    """A candidate whose country arrives in mixed case (e.g. "Fr") must still be filtered.
+
+    Guards against a future change to the normalisation that might only handle
+    fully-uppercase or fully-lowercase codes and miss mixed-case variants.
+    """
+    violating_candidate = {
+        "iata": "CDG",
+        "city": "Paris",
+        "country": "Fr",   # <-- mixed-case; avoid_countries has "FR"
+        "stay_days": 2,
+        "why": "Grok returned a mixed-case country code",
+        "vibe_tags": ["city"],
+    }
+    safe_candidate = {
+        "iata": "AMS",
+        "city": "Amsterdam",
+        "country": "NL",   # <-- NOT in avoid_countries
+        "stay_days": 2,
+        "why": "allowed stop",
+        "vibe_tags": ["city"],
+    }
+    mock = _make_response(trip_kind="detour", candidates=[violating_candidate, safe_candidate])
+
+    iatas = await _run_translate(
+        mock_response=mock,
+        form={
+            "origin": "YVR",
+            "destination": "LHR",
+            "avoid_countries": ["FR"],
+            "visited_countries": [],
+            "max_candidates": 5,
+        },
+    )
+
+    assert "CDG" not in iatas, (
+        'CDG (country "Fr") must be filtered out because FR is in avoid_countries; '
+        f"got candidates: {iatas}"
+    )
+    assert "AMS" in iatas, (
+        f"AMS (NL) is not in avoid_countries and should be kept; got candidates: {iatas}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # avoid_countries wins when a candidate appears in BOTH lists (detour)
 # ---------------------------------------------------------------------------
 
