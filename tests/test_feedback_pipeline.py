@@ -470,3 +470,88 @@ class TestGenerateAnswer:
                 "SELECT COUNT(*) AS c FROM vibe_questions WHERE vibe = 'chaos'"
             ).fetchone()["c"]
         assert n == 1
+
+
+# ---------------------------------------------------------------------------
+# 5. Thumbs-down with missing or invalid dest_iata: no signal row, but
+#    vibe_questions row IS still created and ok: true is returned
+# ---------------------------------------------------------------------------
+
+
+class TestThumbsDownMissingDest:
+    """Contract: record_rejection is a no-op when dest is absent or invalid,
+    but the endpoint still returns ok: true and the vibe question is enqueued.
+    """
+
+    def test_no_dest_returns_ok(self, client):
+        resp = client.post(
+            "/api/result-feedback",
+            json={"direction": "down", "vibe": "adventure", "query": "somewhere warm"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_no_dest_no_signal_row(self, client):
+        client.post(
+            "/api/result-feedback",
+            json={"direction": "down", "vibe": "adventure", "query": "somewhere warm"},
+        )
+        with vs._connect() as conn:
+            n = conn.execute("SELECT COUNT(*) AS c FROM search_signals").fetchone()["c"]
+        assert n == 0, "no signal row should be written when dest_iata is absent"
+
+    def test_no_dest_vibe_question_created(self, client):
+        client.post(
+            "/api/result-feedback",
+            json={"direction": "down", "vibe": "adventure", "query": "somewhere warm"},
+        )
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT vibe, query_norm FROM vibe_questions WHERE vibe = 'adventure'"
+            ).fetchone()
+        assert row is not None, "vibe_questions row must be created even without dest"
+        assert "somewhere warm" in row["query_norm"]
+
+    def test_invalid_iata_returns_ok(self, client):
+        resp = client.post(
+            "/api/result-feedback",
+            json={
+                "direction": "down",
+                "dest_iata": "XX",
+                "vibe": "beach",
+                "query": "tropical getaway",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_invalid_iata_no_signal_row(self, client):
+        client.post(
+            "/api/result-feedback",
+            json={
+                "direction": "down",
+                "dest_iata": "XX",
+                "vibe": "beach",
+                "query": "tropical getaway",
+            },
+        )
+        with vs._connect() as conn:
+            n = conn.execute("SELECT COUNT(*) AS c FROM search_signals").fetchone()["c"]
+        assert n == 0, "no signal row should be written for a 2-letter invalid IATA"
+
+    def test_invalid_iata_vibe_question_created(self, client):
+        client.post(
+            "/api/result-feedback",
+            json={
+                "direction": "down",
+                "dest_iata": "XX",
+                "vibe": "beach",
+                "query": "tropical getaway",
+            },
+        )
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT vibe, query_norm FROM vibe_questions WHERE vibe = 'beach'"
+            ).fetchone()
+        assert row is not None, "vibe_questions row must be created even with invalid IATA"
+        assert "tropical" in row["query_norm"]
