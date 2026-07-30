@@ -107,35 +107,6 @@
       opacity: 0.65;
       cursor: not-allowed;
     }
-    button.btn-vibe-go.state-empty {
-      background: var(--muted-bg, #e8e4de);
-      color: var(--muted);
-      box-shadow: none;
-    }
-    button.btn-vibe-go.state-over {
-      background: var(--bad, #c0392b);
-      color: #fff;
-      box-shadow: none;
-    }
-    .compose-go-col {
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      flex: 0 0 auto;
-      max-width: 8.5rem;
-    }
-    .compose-charcount {
-      font-size: 0.58rem;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      text-align: right;
-      color: var(--muted);
-      padding: 0 0.1rem 0.2rem;
-      line-height: 1;
-      transition: color 0.15s ease;
-    }
-    .compose-charcount.near { color: var(--warn, #e67e22); }
-    .compose-charcount.over { color: var(--bad, #c0392b); }
     @media (max-width: 420px) {
       button.btn-vibe-go {
         min-width: 5.25rem;
@@ -1004,10 +975,7 @@
               maxlength="280"
               placeholder="Cheap to Japan in September… or get me out of town, somewhere new, good food…"
             >{{ det_text or esc_text }}</textarea>
-            <div class="compose-go-col">
-              <span class="compose-charcount" id="explore-charcount" aria-live="polite"></span>
-              <button type="submit" id="explore-submit" class="btn-vibe-go">Find ✈️</button>
-            </div>
+            <button type="submit" id="explore-submit" class="btn-vibe-go">Find ✈️</button>
           </div>
           <div
             data-vibe-slider
@@ -1524,58 +1492,6 @@
       var errBox = document.getElementById("ask-client-error");
       var grokReady = {{ "true" if grok_ready else "false" }};
 
-      var charCount = document.getElementById("explore-charcount");
-      var MAX_CHARS = 280;
-      var MIN_CHARS = 3;
-
-      function updateGoButton() {
-        if (!ta || !btn) return;
-        var len = ta.value.length;
-        var remaining = MAX_CHARS - len;
-
-        // Charcount display
-        if (charCount) {
-          if (len === 0) {
-            charCount.textContent = "";
-            charCount.className = "compose-charcount";
-          } else if (remaining <= 0) {
-            charCount.textContent = "0 Characters Left";
-            charCount.className = "compose-charcount over";
-          } else if (remaining <= 40) {
-            charCount.textContent = remaining + " Characters Left";
-            charCount.className = "compose-charcount near";
-          } else {
-            charCount.textContent = remaining + " Characters Left";
-            charCount.className = "compose-charcount";
-          }
-        }
-
-        // Button state
-        btn.classList.remove("state-empty", "state-over");
-        if (len >= MAX_CHARS) {
-          btn.textContent = "Too Many Vibes :(";
-          btn.classList.add("state-over");
-          btn.disabled = true;
-        } else if (len < MIN_CHARS) {
-          btn.textContent = "What's the vibe?";
-          btn.classList.add("state-empty");
-          btn.disabled = true;
-        } else {
-          btn.disabled = false;
-          // paintGoButtons will set the right emoji text; trigger it
-          if (typeof paintGoButtons === "function") {
-            paintGoButtons();
-          } else {
-            btn.textContent = "Find ✈️";
-          }
-        }
-      }
-
-      if (ta) {
-        ta.addEventListener("input", updateGoButton);
-        // Run once on load to set initial state
-        updateGoButton();
-      }
 
       function showError(msg) {
         if (!errBox) return;
