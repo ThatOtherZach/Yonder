@@ -1298,7 +1298,7 @@
             <div class="bp-main">
               <div class="bp-top">
                 <span class="bp-label">Boarding pass · detour</span>
-                <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{% if it.vibe %}{{ it.vibe | vibe_emoji }} {% endif %}{{ it.theme_label or '#' ~ loop.index }}</span>
+                <span class="bp-badge soft"{% if it.theme_primary %} style="background:{{ it.theme_primary }};color:#fff;border:none"{% endif %}>{% set _bem = (it.theme_label or '') | lower | vibe_emoji %}{% if _bem %}{{ _bem }} {% endif %}{{ it.theme_label or '#' ~ loop.index }}</span>
               </div>
               {% if it.legs and it.legs|length >= 1 %}
               <div class="bp-route">
