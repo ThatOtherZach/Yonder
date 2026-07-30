@@ -519,6 +519,18 @@ def _sort_by_comfort(
         "ember":     frozenset({"goldenhour", "warmnights", "tender", "lush"}),
         "rose":      frozenset({"tender", "goldenhour", "serene", "whimsical"}),
         "blush":     frozenset({"tender", "sleepy", "serene", "whimsical"}),
+        # New vibes added below
+        "billiards": frozenset({"gritty", "raw", "cheap", "moody", "city"}),
+        "gecko":     frozenset({"lush", "hazy", "warmnights", "cheap", "raw", "vivid"}),
+        "wildwest":  frozenset({"rugged", "raw", "feral", "untamed", "hazy", "ancient"}),
+        "nomad":     frozenset({"cheap", "gritty", "raw", "city", "hazy", "feral"}),
+        "meltdown":  frozenset({"electric", "vivid", "neon", "hazy", "warmnights", "gritty"}),
+        "vanish":    frozenset({"sleepy", "tender", "serene", "moody", "cheap"}),
+        "dissociate": frozenset({"sleepy", "tender", "serene", "moody", "hazy"}),
+        "spiral":    frozenset({"vivid", "gritty", "electric", "city", "ancient"}),
+        "delirium":  frozenset({"electric", "vivid", "neon", "hazy", "gritty", "city"}),
+        "burnout":   frozenset({"serene", "sleepy", "tender", "crisp", "nature"}),
+        "apocalypse": frozenset({"ancient", "gritty", "raw", "moody", "rugged"}),
     }
     _related_tags = _VIBE_TAG_MAP.get(vibe, frozenset())
 
