@@ -844,8 +844,7 @@ async def plan_adventure(
                         "ground_daily_origin": gcmp.daily_origin,
                         "ground_total": gcmp.ground_total,
                         "ground_display": (
-                            f"+{gcmp.display_ground} "
-                            f"({gcmp.display_daily_stop} per Day for {stay} Days)"
+                            f"+{gcmp.display_ground} ({gcmp.display_daily_stop} per Day for {stay} Days)"
                         ),
                         "ground_compare_line": gcmp.ground_compare_line
                         or (

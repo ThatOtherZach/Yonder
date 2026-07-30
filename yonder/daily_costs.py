@@ -504,8 +504,7 @@ def build_compare(
         delta_txt = "similar to home per day"
 
     compare_line = (
-        f"{format_approx(d_s, cur)}/day in {s_name} vs "
-        f"{format_approx(d_o, cur)}/day at home ({o_name})"
+        f"{format_approx(d_s, cur)}/Day vs. {format_approx(d_o, cur)}/Day ({o_name})"
     )
 
     notes = [
