@@ -561,6 +561,13 @@ def seed_ideas(
 
     _related_tags = _VIBE_TAG_MAP.get(vibe, frozenset())
 
+    # Travel comfort factor: 0.0 (no stamps) → 1.0 (100+ countries).
+    # Used as a subtle nudge — adventurous tags rise for seasoned travelers,
+    # approachable tags rise for newcomers. Never overrides an explicit vibe.
+    _comfort = min(1.0, len(req.visited_countries or []) / 100.0)
+    _ADVENTUROUS_TAGS = frozenset({"gritty", "raw", "feral", "untamed", "electric", "neon", "hazy", "cheap"})
+    _APPROACHABLE_TAGS = frozenset({"serene", "sleepy", "tender", "safe", "opulent"})
+
     def _score(idea: StopoverIdea) -> int:
         tags = {t.lower() for t in (idea.vibe_tags or [])}
         s = 0
@@ -578,6 +585,15 @@ def seed_ideas(
             s += 3
         if want_safe and "safe" in tags:
             s += 2
+        # Comfort nudge: seasoned travelers get a gentle push toward wilder
+        # destinations; newcomers get a gentle push toward approachable ones.
+        # Max ±2 pts — subtle, never overrides a strong vibe match.
+        adv_overlap = len(tags & _ADVENTUROUS_TAGS)
+        app_overlap = len(tags & _APPROACHABLE_TAGS)
+        if adv_overlap:
+            s += round(_comfort * min(adv_overlap, 2))
+        if app_overlap:
+            s += round((1.0 - _comfort) * min(app_overlap, 2))
         return s
 
     # Always sort by vibe-tag overlap so best-matched cities lead even when

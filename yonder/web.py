@@ -195,7 +195,10 @@ def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
     visited_codes = settings.visited_country_list()
     vt = vibe_theme(vibe) if vibe else None
     vibes_json, vibes_v = _vibes_data()
+    from yonder.xp import compute_xp as _compute_xp
+    _xp = _compute_xp(visited_codes, avoid_codes)
     return {
+        "xp_profile": _xp,
         "vibes_json": vibes_json,
         "vibes_v": vibes_v,
         "providers": settings.configured_providers(),

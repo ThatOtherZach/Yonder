@@ -173,6 +173,29 @@
       color: var(--ink-soft);
       font-weight: 400;
     }
+    /* ── XP rank badge (explore header) ── */
+    a.xp-rank-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-top: 0.65rem;
+      padding: 0.3rem 0.7rem 0.3rem 0.5rem;
+      background: color-mix(in srgb, var(--accent, #1d6b4f) 9%, var(--paper-2));
+      border: 1px solid color-mix(in srgb, var(--accent, #1d6b4f) 28%, var(--line));
+      border-radius: 999px;
+      text-decoration: none;
+      font-size: 0.78rem;
+      color: var(--ink);
+      font-weight: 550;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    a.xp-rank-badge:hover {
+      background: color-mix(in srgb, var(--accent, #1d6b4f) 16%, var(--paper-2));
+      border-color: color-mix(in srgb, var(--accent, #1d6b4f) 45%, var(--line));
+    }
+    .xp-rank-badge-emoji { font-size: 1rem; line-height: 1; }
+    .xp-rank-badge-name  { letter-spacing: -0.01em; }
+    .xp-rank-badge-xp    { color: var(--muted); font-weight: 400; font-size: 0.72rem; }
 
     main {
       max-width: var(--max);

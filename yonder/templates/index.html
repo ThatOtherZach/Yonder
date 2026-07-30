@@ -932,6 +932,13 @@
     <p id="explore-blurb">
       Buy The Ticket, Take The Ride
     </p>
+    {% if xp_profile and xp_profile.xp > 0 %}
+    <a href="/settings#travel-map" class="xp-rank-badge" title="{{ xp_profile.xp }} XP · {{ xp_profile.rank_blurb }}">
+      <span class="xp-rank-badge-emoji">{{ xp_profile.rank_emoji }}</span>
+      <span class="xp-rank-badge-name">{{ xp_profile.rank }}</span>
+      <span class="xp-rank-badge-xp">{{ xp_profile.xp }} XP</span>
+    </a>
+    {% endif %}
   </header>
   <main>
     {# ——— One compose card: Escape | Detour toggle, shared prompt + vibe + map ——— #}
