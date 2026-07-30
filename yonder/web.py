@@ -2485,7 +2485,7 @@ async def api_result_feedback(request: Request) -> JSONResponse:
                     async with GrokClient(settings) as grok:
                         text = await grok._chat(system, user, temperature=0.7)
                     import re
-                    iata_match = re.search(r"\(([A-Z]{3})\)\s*$", text.strip())
+                    iata_match = re.search(r"\(([A-Z]{3})\)\s*[.,!?;:]*\s*$", text.strip())
                     iata = iata_match.group(1) if iata_match else None
                     answer = {"suggestion": text.strip(), "dest_iata": iata}
                     save_vibe_answer(question_id, answer)
