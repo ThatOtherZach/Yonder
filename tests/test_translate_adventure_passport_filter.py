@@ -259,3 +259,57 @@ async def test_visited_country_all_candidates_filtered_yields_empty_list():
         "All candidates are from visited countries on a getaway; expected empty list, "
         f"got: {iatas}"
     )
+
+
+# ---------------------------------------------------------------------------
+# visited_countries filter does NOT apply to detour trips
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_visited_country_candidate_kept_on_detour():
+    """A candidate from a visited country must NOT be filtered out on a detour trip.
+
+    The visited-country constraint only applies to getaway trips ("somewhere new").
+    On a detour the traveller may legitimately stop in a country they've visited
+    before, so the filter at yonder/grok.py must leave those candidates in place.
+
+    Grok returns JP (Tokyo / TYO) and JP is in visited_countries, but trip_kind
+    is "detour" — translate_adventure() must keep it in the StopoverIdea list.
+    """
+    visited_candidate = {
+        "iata": "TYO",
+        "city": "Tokyo",
+        "country": "JP",   # <-- in visited_countries, but trip is a detour
+        "stay_days": 3,
+        "why": "Great stopover on the way to London",
+        "vibe_tags": ["city"],
+    }
+    other_candidate = {
+        "iata": "SIN",
+        "city": "Singapore",
+        "country": "SG",   # <-- NOT in visited_countries
+        "stay_days": 2,
+        "why": "Another option",
+        "vibe_tags": ["city"],
+    }
+    mock = _make_response(trip_kind="detour", candidates=[visited_candidate, other_candidate])
+
+    iatas = await _run_translate(
+        mock_response=mock,
+        form={
+            "origin": "YVR",
+            "destination": "LHR",
+            "visited_countries": ["JP"],
+            "avoid_countries": [],
+            "max_candidates": 5,
+        },
+    )
+
+    assert "TYO" in iatas, (
+        "TYO (JP) must be kept on a detour trip even though JP is in visited_countries; "
+        f"got candidates: {iatas}"
+    )
+    assert "SIN" in iatas, (
+        f"SIN (SG) is not in visited_countries and should also be kept; got candidates: {iatas}"
+    )
