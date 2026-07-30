@@ -1170,7 +1170,7 @@
       <ul class="vibe-suggest-list" id="vibe-suggest-list"></ul>
     </div>
 
-    {% if xp_profile and xp_profile.xp > 0 %}
+    {% if xp_profile %}
     <template id="xp-badge-tpl">
       <a href="/settings#travel-map" class="xp-rank-badge" title="{{ xp_profile.xp }} XP · {{ xp_profile.rank_blurb }}">
         <span class="xp-rank-badge-emoji">{{ xp_profile.rank_emoji }}</span>
