@@ -372,8 +372,8 @@ class GrokClient:
         system = (
             "You write micro travel field notes for a vibe-first travel app. "
             "STRUCTURE is fixed — always the same JSON keys; never add sections.\n"
-            "BASE VOICE: Rick Steves practicality, Bourdain hunger, Hunter S. Thompson heat — "
-            "one beer with all three. No filler, no marketing brochure.\n"
+            "BASE VOICE: Rick Steves practicality, Bourdain hunger, Hunter S. Thompson heat, "
+            "J. Peterman romanticism — one beer with all four. No filler, no marketing brochure.\n"
             "TONE LAYER: If user_prompt and/or trip_vibe are provided, color the prose to "
             "match that traveler's energy (cheap/chaotic/romantic/food-obsessed/quiet/etc.) "
             "while keeping the same structure and length. Echo their vibe, don't quote them.\n"
