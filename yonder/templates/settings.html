@@ -332,13 +332,27 @@
               {% endif %}
             </div>
             <div class="xp-ladder" id="xp-ladder">
+              {% set ns = namespace(prev=None, next_rung=None) %}
               {% for rung in xp_profile.ladder %}
-              <div class="xp-ladder-row{% if rung.current %} is-current{% endif %}">
-                <span class="xp-ladder-dot"></span>
-                <span>{{ rung.emoji }} {{ rung.rank }}</span>
-                <span class="xp-ladder-xp">{{ rung.xp }} XP</span>
-              </div>
+                {% if rung.current %}
+                  {% if not loop.first %}{% set ns.prev = xp_profile.ladder[loop.index0 - 1] %}{% endif %}
+                  {% if not loop.last %}{% set ns.next_rung = xp_profile.ladder[loop.index0 + 1] %}{% endif %}
+                {% endif %}
               {% endfor %}
+              {% if ns.prev %}
+              <div class="xp-ladder-row">
+                <span class="xp-ladder-dot"></span>
+                <span>{{ ns.prev.emoji }} {{ ns.prev.rank }}</span>
+                <span class="xp-ladder-xp">{{ ns.prev.xp }} XP</span>
+              </div>
+              {% endif %}
+              {% if ns.next_rung %}
+              <div class="xp-ladder-row">
+                <span class="xp-ladder-dot"></span>
+                <span>{{ ns.next_rung.emoji }} {{ ns.next_rung.rank }}</span>
+                <span class="xp-ladder-xp">{{ ns.next_rung.xp }} XP</span>
+              </div>
+              {% endif %}
             </div>
           </div>
         </div>
@@ -902,8 +916,12 @@
 
         var ladderEl = document.getElementById("xp-ladder");
         if (ladderEl && xp.ladder) {
-          ladderEl.innerHTML = xp.ladder.map(function (r) {
-            return '<div class="xp-ladder-row' + (r.current ? ' is-current' : '') + '">' +
+          var currIdx = xp.ladder.findIndex(function(r) { return r.current; });
+          var rungs = [];
+          if (currIdx > 0) rungs.push(xp.ladder[currIdx - 1]);
+          if (currIdx >= 0 && currIdx < xp.ladder.length - 1) rungs.push(xp.ladder[currIdx + 1]);
+          ladderEl.innerHTML = rungs.map(function (r) {
+            return '<div class="xp-ladder-row">' +
               '<span class="xp-ladder-dot"></span>' +
               '<span>' + r.emoji + ' ' + r.rank + '</span>' +
               '<span class="xp-ladder-xp">' + r.xp + ' XP</span>' +
