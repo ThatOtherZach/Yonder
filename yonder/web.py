@@ -2895,3 +2895,54 @@ async def api_probe_providers() -> dict:
     async with httpx.AsyncClient(timeout=45.0) as client:
         active = await get_registry().probe_active(s, client, force=True)
     return {"active": active, "budgets": budgets_snapshot(s)}
+
+
+@app.post("/api/byom/test")
+async def api_byom_test() -> JSONResponse:
+    """Send a minimal chat-completion ping to the saved BYOM endpoint.
+
+    Returns {"ok": true} on success, {"ok": false, "error": "..."} on failure.
+    The endpoint must be saved first (reads from current settings).
+    """
+    import httpx
+
+    s = reload_settings()
+    byom_base = (getattr(s, "byom_base_url", "") or "").strip().rstrip("/")
+    byom_key = (getattr(s, "byom_api_key", "") or "").strip()
+    byom_model = (getattr(s, "byom_model", "") or "").strip()
+
+    if not byom_base or not byom_key:
+        return JSONResponse({"ok": False, "error": "No BYOM endpoint configured — save URL and API key first."})
+
+    model = byom_model or "gpt-4o-mini"
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=8.0, read=20.0, write=8.0, pool=8.0)
+        ) as client:
+            resp = await client.post(
+                f"{byom_base}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {byom_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "max_tokens": 5,
+                    "messages": [{"role": "user", "content": "Hi"}],
+                },
+            )
+        if resp.status_code >= 400:
+            body = resp.text[:300].strip()
+            return JSONResponse({"ok": False, "error": f"HTTP {resp.status_code}: {body}"})
+        data = resp.json()
+        # Validate minimal OpenAI-compatible shape
+        choices = data.get("choices") or []
+        if not choices:
+            return JSONResponse({"ok": False, "error": f"Unexpected response (no choices): {str(data)[:200]}"})
+        return JSONResponse({"ok": True})
+    except httpx.ConnectError as exc:
+        return JSONResponse({"ok": False, "error": f"Connection refused or DNS failure: {exc}"})
+    except httpx.TimeoutException:
+        return JSONResponse({"ok": False, "error": "Request timed out — endpoint took too long to respond."})
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)[:300]})

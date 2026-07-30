@@ -472,12 +472,21 @@
           </div>
           {% endfor %}
 
-          <label for="BYOM_MODEL">Model name
-            <span class="help">e.g. <code>gpt-4o</code>, <code>claude-3-5-sonnet-20241022</code> — blank uses the built-in default</span>
-            <input id="BYOM_MODEL" name="BYOM_MODEL" type="text"
-              placeholder="gpt-4o"
-              value="{{ view.byom_model or '' }}" style="max-width:280px" />
-          </label>
+          <div>
+            <label for="BYOM_MODEL">Model name
+              <span class="help">e.g. <code>gpt-4o</code>, <code>claude-3-5-sonnet-20241022</code> — blank uses the built-in default</span>
+            </label>
+            <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-top:0.25rem">
+              <input id="BYOM_MODEL" name="BYOM_MODEL" type="text"
+                placeholder="gpt-4o"
+                value="{{ view.byom_model or '' }}" style="max-width:280px" />
+              {% if view.byom_ready %}
+              <button type="button" id="byom-test-btn" class="secondary"
+                style="padding:0.35rem 0.75rem;font-size:0.85rem;white-space:nowrap">Test</button>
+              <span id="byom-test-result" style="font-size:0.85rem"></span>
+              {% endif %}
+            </div>
+          </div>
         </div>
 
         {% if view.byom_ready %}
@@ -948,6 +957,36 @@
         out.textContent = String(e);
       }
     });
+
+    /* BYOM connection test */
+    (function () {
+      var btn = document.getElementById("byom-test-btn");
+      var res = document.getElementById("byom-test-result");
+      if (!btn || !res) return;
+      btn.addEventListener("click", async function () {
+        btn.disabled = true;
+        btn.textContent = "Testing…";
+        res.textContent = "";
+        res.style.color = "";
+        try {
+          var r = await fetch("/api/byom/test", { method: "POST" });
+          var j = await r.json();
+          if (j.ok) {
+            res.textContent = "✓ Connected";
+            res.style.color = "var(--good)";
+          } else {
+            res.textContent = j.error || "Connection failed";
+            res.style.color = "var(--bad)";
+          }
+        } catch (e) {
+          res.textContent = "Request failed: " + String(e);
+          res.style.color = "var(--bad)";
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Test";
+        }
+      });
+    })();
 
     /* AI spend (dev tools only) */
     (function () {
