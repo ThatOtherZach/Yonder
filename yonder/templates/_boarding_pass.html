@@ -90,15 +90,17 @@
       <div class="pb-story-body{% if not escape_place_book %} is-loading{% endif %}">
         {% if escape_place_book %}
         <span class="pb-tag">Field note</span>
-        <h3 style="font-size:1.15rem">{{ escape_place_book.title }}</h3>
+        {% set pb_tagline = escape_place_book.tagline or escape_place_book.era_note or escape_place_book.vibe %}
+        <div class="pb-title-line">
+          <h3 style="font-size:1.15rem">{{ escape_place_book.title }}</h3>
+          {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
+        </div>
         {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
         {% if escape_place_book.facts %}
         <div class="pb-fast-facts" aria-label="Fast facts">
           {% for f in escape_place_book.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
         </div>
         {% endif %}
-        {% set pb_tagline = escape_place_book.tagline or escape_place_book.era_note or escape_place_book.vibe %}
-        {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
         {% else %}
         <span class="pb-tag">Field note</span>
         <p class="pb-loading-msg">Writing field note…</p>
@@ -308,15 +310,17 @@
           <div class="pb-story-body{% if it.stop_iata and not pb %} is-loading{% endif %}">
             {% if pb %}
             <span class="pb-tag">Field note</span>
-            <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+            {% set pb_tagline = pb.tagline or pb.era_note or pb.vibe %}
+            <div class="pb-title-line">
+              <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+              {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
+            </div>
             {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
             {% if pb.facts %}
             <div class="pb-fast-facts" aria-label="Fast facts">
               {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
             </div>
             {% endif %}
-            {% set pb_tagline = pb.tagline or pb.era_note or pb.vibe %}
-            {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
             {% elif it.stop_iata %}
             <span class="pb-tag">Field note</span>
             <p class="pb-loading-msg">Writing field note…</p>
