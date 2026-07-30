@@ -40,6 +40,54 @@ class TestArrivalPhrasingIsAtoB:
         assert detect_route_iatas("YVR -> LHR") == ("YVR", "LHR")
 
 
+class TestJourneyPhrasingRoutesThroughVibeStop:
+    """Journey/arrival phrasing must classify as detour (origin → vibe stop
+    → destination), not mix (which shows a round trip first)."""
+
+    def test_journey_phrasing_is_detour(self):
+        prompts = [
+            "leave Vancouver and end up in Rome",
+            "depart Toronto and arrive in Paris",
+            "fly out of Calgary and wind up in Lisbon",
+            "leaving Montreal, arriving in London",
+            "leave Seattle and finish in Tokyo",
+            "depart Berlin, land in Helsinki",
+        ]
+        for p in prompts:
+            d = decide_shape(p)
+            assert d.shape == "detour", (p, d)
+
+    def test_journey_phrasing_plus_stopover_markers_is_mix(self):
+        prompts = [
+            "leave Vancouver and end up in Rome via Lisbon",
+            "depart Toronto, arrive in Paris with a stopover",
+            "fly out of Calgary and wind up in Lisbon with a few days somewhere",
+        ]
+        for p in prompts:
+            d = decide_shape(p)
+            assert d.shape == "mix", (p, d)
+
+    def test_plain_point_to_point_ask_is_mix(self):
+        prompts = [
+            "how do I get to Rome from Vancouver",
+            "how do I get to Paris from Toronto",
+        ]
+        for p in prompts:
+            d = decide_shape(p)
+            assert d.shape == "mix", (p, d)
+
+    def test_direct_nonstop_wording_is_escape(self):
+        prompts = [
+            "nonstop Vancouver to Rome",
+            "direct flight from Toronto to Paris",
+            "cheapest direct YVR to LHR",
+            "one way only from Seattle to Tokyo",
+        ]
+        for p in prompts:
+            d = decide_shape(p)
+            assert d.shape == "escape", (p, d)
+
+
 class TestGetawaysStayGetaways:
     def test_open_getaway_prompts(self):
         prompts = [
