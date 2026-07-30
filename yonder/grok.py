@@ -396,9 +396,18 @@ class GrokClient:
             },
             default=str,
         )
+        def _strip_emdash(obj: Any) -> Any:
+            if isinstance(obj, str):
+                return obj.replace("\u2014", ", ")
+            if isinstance(obj, list):
+                return [_strip_emdash(v) for v in obj]
+            if isinstance(obj, dict):
+                return {k: _strip_emdash(v) for k, v in obj.items()}
+            return obj
+
         text = await self._chat(system, user, temperature=0.5)
         try:
-            return _extract_json(text)
+            return _strip_emdash(_extract_json(text))
         except Exception:
             return {
                 "title": city or iata or "Somewhere",
