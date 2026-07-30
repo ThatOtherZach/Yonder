@@ -118,6 +118,103 @@
       gap: 0.5rem;
       margin-top: 0.75rem;
     }
+
+    /* ── XP comfort rank card ─────────────────────────────── */
+    .xp-card {
+      display: flex;
+      gap: 0.85rem;
+      align-items: stretch;
+      background:
+        radial-gradient(circle at 100% 50%, transparent 6px, color-mix(in srgb, var(--accent, #1d6b4f) 8%, var(--paper-2, #f0ede6)) 6px)
+        100% 0 / 7px 14px repeat-y,
+        color-mix(in srgb, var(--accent, #1d6b4f) 8%, var(--paper-2, #f0ede6));
+      border-radius: 10px;
+      padding: 0.85rem 1rem 0.85rem 1rem;
+      margin-bottom: 0.9rem;
+      border: 1px solid color-mix(in srgb, var(--accent, #1d6b4f) 22%, var(--border));
+    }
+    .xp-card-body { flex: 1 1 auto; min-width: 0; }
+    .xp-rank-line {
+      display: flex;
+      align-items: baseline;
+      gap: 0.45rem;
+      margin-bottom: 0.25rem;
+    }
+    .xp-emoji { font-size: 1.35rem; line-height: 1; }
+    .xp-rank-name {
+      font-size: 1.05rem;
+      font-weight: 780;
+      letter-spacing: -0.02em;
+      color: var(--ink);
+    }
+    .xp-amount {
+      margin-left: auto;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .xp-blurb {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin: 0 0 0.6rem;
+      line-height: 1.4;
+    }
+    .xp-bar-wrap {
+      height: 6px;
+      background: color-mix(in srgb, var(--ink) 12%, transparent);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 0.3rem;
+    }
+    .xp-bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: var(--accent, #1d6b4f);
+      transition: width 0.5s ease;
+    }
+    .xp-bar-label {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .xp-bar-label strong { color: var(--text); }
+    .xp-ladder {
+      margin-top: 0.85rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent);
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+    .xp-ladder-row {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.76rem;
+      color: var(--muted);
+      opacity: 0.55;
+    }
+    .xp-ladder-row.is-current {
+      opacity: 1;
+      color: var(--text);
+      font-weight: 650;
+    }
+    .xp-ladder-row.is-current .xp-ladder-dot {
+      background: var(--accent, #1d6b4f);
+    }
+    .xp-ladder-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: color-mix(in srgb, var(--ink) 22%, transparent);
+    }
+    .xp-ladder-xp {
+      margin-left: auto;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.7rem;
+    }
 {% endblock %}
 {% block body %}
   <header class="page-head">
@@ -501,9 +598,45 @@
               </span>
             </label>
             <div class="travel-map-summary">
+
+              {% if xp_profile %}
+              {# ── Travel Comfort Rank card ── #}
+              <div class="xp-card">
+                <div class="xp-card-body">
+                  <div class="xp-rank-line">
+                    <span class="xp-emoji">{{ xp_profile.rank_emoji }}</span>
+                    <span class="xp-rank-name">{{ xp_profile.rank }}</span>
+                    <span class="xp-amount">{{ xp_profile.xp }} XP</span>
+                  </div>
+                  <p class="xp-blurb">{{ xp_profile.rank_blurb }}</p>
+                  {% if xp_profile.next_rank %}
+                  <div class="xp-bar-wrap">
+                    <div class="xp-bar-fill" style="width:{{ xp_profile.progress_pct }}%"></div>
+                  </div>
+                  <p class="xp-bar-label">
+                    <strong>{{ xp_profile.xp_to_next }} XP</strong> to {{ xp_profile.next_rank_emoji }} {{ xp_profile.next_rank }}
+                  </p>
+                  {% else %}
+                  <p class="xp-bar-label">Maximum rank — you've been everywhere. ✦</p>
+                  {% endif %}
+
+                  <div class="xp-ladder">
+                    {% for rung in xp_profile.ladder %}
+                    <div class="xp-ladder-row{% if rung.current %} is-current{% endif %}">
+                      <span class="xp-ladder-dot"></span>
+                      <span>{{ rung.emoji }} {{ rung.rank }}</span>
+                      <span class="xp-ladder-xp">{{ rung.xp }} XP</span>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+              {% endif %}
+
               <p class="map-status" style="margin:0">
                 Visited: <strong>{{ (visited_defaults or [])|length }}</strong>
                 · Avoid: <strong>{{ (avoid_defaults or [])|length }}</strong>/10
+                <span style="margin-left:0.5rem;font-size:0.75rem;opacity:0.7">(+10 XP / −10 XP)</span>
               </p>
               <div class="chip-row" aria-label="Visited countries">
                 {% for code in visited_defaults or [] %}

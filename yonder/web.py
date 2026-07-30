@@ -2618,9 +2618,14 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
     elif err:
         flash = {"kind": "err", "message": err}
     import os as _os
+    from yonder.xp import compute_xp
     settings = reload_settings()
     view = settings_view()
     view["home_resolved"] = settings.resolve_home_iata()
+    xp_profile = compute_xp(
+        settings.visited_country_list(),
+        settings.avoid_country_list(),
+    )
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -2629,6 +2634,7 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
             "view": view,
             "flash": flash,
             "is_deployed": bool(_os.environ.get("REPLIT_DOMAINS")),
+            "xp_profile": xp_profile,
             **_base_ctx(settings),
         },
     )
