@@ -921,14 +921,24 @@
       image-rendering: crisp-edges;
     }
     .bp-stub-share {
+      display: inline-block;
       font-size: 0.6rem;
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--ink);
-      opacity: 0.6;
       text-align: center;
       line-height: 1.25;
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+      text-decoration: none;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .bp-stub-share:hover {
+      background: color-mix(in srgb, var(--bp-accent, var(--sky)) 12%, transparent);
+      border-color: color-mix(in srgb, var(--bp-accent, var(--sky)) 50%, transparent);
+      color: var(--ink);
     }
     @media (min-width: 576px) {
       a.bp-qr { width: 96px; height: 96px; padding: 7px; }

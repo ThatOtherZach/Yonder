@@ -1395,12 +1395,12 @@
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
                   <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
                 </a>
-                <div class="bp-stub-share">Scan · share</div>
+                <a class="bp-stub-share" href="{{ share.url }}" target="_blank" rel="noopener">Share</a>
               </div>
               {% elif share %}
               <div class="bp-stub-qr">
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
-                <div class="bp-stub-share">Scan · share</div>
+                <a class="bp-stub-share" href="{{ share.url }}" target="_blank" rel="noopener">Share</a>
               </div>
               {% else %}
               <div class="bp-barcode" aria-hidden="true"></div>
@@ -1608,12 +1608,12 @@
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
                   <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
                 </a>
-                <div class="bp-stub-share">Scan · share</div>
+                <a class="bp-stub-share" href="{{ share.url }}" target="_blank" rel="noopener">Share</a>
               </div>
               {% elif share %}
               <div class="bp-stub-qr">
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
-                <div class="bp-stub-share">Scan · share</div>
+                <a class="bp-stub-share" href="{{ share.url }}" target="_blank" rel="noopener">Share</a>
               </div>
               {% else %}
               <div class="bp-barcode" aria-hidden="true"></div>
