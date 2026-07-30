@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import random
 from datetime import datetime, timedelta
 
+import httpx
+
 from yonder.providers.base import FlightProvider
 from yonder.types import FlightOffer, SearchQuery, Segment
+
+log = logging.getLogger(__name__)
 
 _AIRLINES = ["AC", "UA", "DL", "AA", "WS", "BA", "LH", "AF", "EK", "QR"]
 
@@ -86,3 +91,47 @@ class MockProvider(FlightProvider):
                 )
             )
         return offers
+
+
+class AIDemoProvider(FlightProvider):
+    """Demo provider: Grok-invented fares when a key is present, seeded mock otherwise.
+
+    Fares are always marked mock/non-bookable and excluded from price history
+    (history.py skips price_kind=="mock").
+    """
+
+    name = "mock"
+
+    def __init__(
+        self,
+        settings: object,  # yonder.config.Settings — avoid circular at module level
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        super().__init__(client)
+        self._settings = settings
+        self._fallback = MockProvider(client)
+
+    def is_configured(self) -> bool:
+        return True
+
+    async def search(self, query: SearchQuery) -> list[FlightOffer]:
+        from yonder.ai_usage import log_usage
+        from yonder.grok import GrokClient
+
+        # Only attempt AI generation when a key is present
+        if not (self._settings.xai_api_key if hasattr(self._settings, "xai_api_key") else False):
+            return await self._fallback.search(query)
+
+        try:
+            async with GrokClient(self._settings, self._client) as grok:
+                offers = await grok.invent_demo_fares(query)
+            usage = grok.accumulated_usage
+            if usage:
+                await log_usage("demo_fares", usage)
+            if offers:
+                return offers
+            # Empty list → fall back to seeded
+        except Exception as exc:  # noqa: BLE001
+            log.warning("AIDemoProvider Grok call failed, falling back to seeded mock: %s", exc)
+
+        return await self._fallback.search(query)
