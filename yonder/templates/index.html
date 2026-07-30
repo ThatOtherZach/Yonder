@@ -23,6 +23,31 @@
     .compose-card > h2 {
       margin: 0 0 0.2rem;
     }
+    .prompt-shuffle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      margin-right: 0.45rem;
+      padding: 0;
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper);
+      font-size: 1.05rem;
+      line-height: 1;
+      cursor: pointer;
+      vertical-align: -0.2rem;
+      transition: border-color 0.12s, background 0.12s, transform 0.12s;
+    }
+    .prompt-shuffle:hover {
+      border-color: var(--vibe-now, var(--sky-bright));
+      background: var(--sky-mist);
+    }
+    .prompt-shuffle:active,
+    .prompt-shuffle.did-shuffle {
+      transform: rotate(180deg) scale(0.94);
+    }
     .compose-card > .sub {
       margin: 0 0 0.85rem;
       font-size: 0.9rem;
@@ -1083,7 +1108,14 @@
   <main class="container">
     {# ——— One compose card: Escape | Detour toggle, shared prompt + vibe + map ——— #}
     <div class="card compose-card{% if mode == 'detour' %} is-detour{% endif %}" id="compose-card">
-      <h2 id="compose-heading">Where to?</h2>
+      <h2 id="compose-heading"><button
+          type="button"
+          id="prompt-shuffle"
+          class="prompt-shuffle"
+          title="Shuffle a saved prompt"
+          aria-label="Shuffle a saved prompt"
+          hidden
+        >🔀</button>Where to?</h2>
 
 
       <form
@@ -1180,6 +1212,39 @@
       </a>
     </template>
     {% endif %}
+    <script>
+    // Shuffle a saved prompt + vibe into the compose form (no repeat twice in a row)
+    (function () {
+      var pool = {{ saved_shuffle | tojson }};
+      pool = (pool || []).filter(function (e) { return e && (e.prompt || e.vibe); });
+      var btn = document.getElementById("prompt-shuffle");
+      if (!btn || !pool.length) return;
+      btn.hidden = false;
+      var last = -1;
+      btn.addEventListener("click", function () {
+        var i = 0;
+        if (pool.length > 1) {
+          do { i = Math.floor(Math.random() * pool.length); } while (i === last);
+        }
+        last = i;
+        var entry = pool[i];
+        if (entry.prompt) {
+          var ta = document.getElementById("explore-text");
+          if (ta) {
+            ta.value = entry.prompt;
+            ta.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        }
+        if (entry.vibe) {
+          var host = document.querySelector("[data-vibe-slider]");
+          var api = host && host._vibeSlider;
+          if (api && api.setById) api.setById(entry.vibe);
+        }
+        btn.classList.add("did-shuffle");
+        setTimeout(function () { btn.classList.remove("did-shuffle"); }, 250);
+      });
+    })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
     <script src="/static/country_map.js?v=19"></script>

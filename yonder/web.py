@@ -393,6 +393,29 @@ def _detour_panel(settings, override: dict | None = None) -> dict:
     return base
 
 
+def _saved_shuffle_pool(limit: int = 100) -> list[dict]:
+    """Distinct {prompt, vibe} pairs from saved trips for the compose shuffle."""
+    pool: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    try:
+        for s in list_saved(limit=limit):
+            prompt = (s.trip_prompt or "").strip()
+            vibe = (s.vibe or "").strip().lower()
+            # Old rows may hold free text in the vibe column; ids are short slugs.
+            if len(vibe) > 40 or " " in vibe:
+                vibe = ""
+            if not prompt and not vibe:
+                continue
+            key = (prompt, vibe)
+            if key in seen:
+                continue
+            seen.add(key)
+            pool.append({"prompt": prompt, "vibe": vibe})
+    except Exception:
+        return []
+    return pool
+
+
 def _compose_page_ctx(
     settings,
     *,
@@ -454,6 +477,7 @@ def _compose_page_ctx(
         "escape_panel": esc,
         "detour_panel": det,
         "lock_vibe": bool(lock_vibe),
+        "saved_shuffle": _saved_shuffle_pool(),
     }
     form_vibe = form.get("vibe") if isinstance(form, dict) else None
     # Page chrome vibe only when locked (post-search); otherwise JS picks random
