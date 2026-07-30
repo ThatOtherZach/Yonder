@@ -167,8 +167,8 @@
               {% if it.legs|length > 1 and it.legs[1].google_flights_url %}
               <a class="btn secondary" href="{{ it.legs[1].google_flights_url }}" target="_blank" rel="noopener">{{ it.legs[1].from_iata }} → {{ it.legs[1].to_iata }} ↗</a>
               {% endif %}
-              <form method="post" action="/saved/{{ s.id }}/delete" onsubmit="return confirm('Remove this saved trip?');">
-                <button type="submit" class="danger">Remove</button>
+              <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form">
+                <button type="button" class="danger js-remove-confirm">Remove</button>
               </form>
             </div>
           </div>
@@ -216,8 +216,8 @@
               <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form">
                 <button type="submit" class="refresh-btn">Refresh fares</button>
               </form>
-              <form method="post" action="/saved/{{ s.id }}/delete" onsubmit="return confirm('Remove this saved trip?');">
-                <button type="submit" class="danger">Remove</button>
+              <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form">
+                <button type="button" class="danger js-remove-confirm">Remove</button>
               </form>
             </div>
           </div>
@@ -238,6 +238,32 @@
     Signals aren’t tickets. Re-check live fares before you book.
   </footer>
   <script>
+    (function () {
+      // Two-click confirm for Remove buttons (same pattern as Reset Map)
+      document.querySelectorAll(".js-remove-confirm").forEach(function (btn) {
+        var orig = btn.textContent;
+        var pending = false;
+        function cancelIfOutside(e) {
+          if (btn.contains(e.target)) return;
+          pending = false;
+          btn.textContent = orig;
+          document.removeEventListener("click", cancelIfOutside, true);
+        }
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!pending) {
+            pending = true;
+            btn.textContent = "Are you sure? 😮";
+            document.addEventListener("click", cancelIfOutside, true);
+          } else {
+            document.removeEventListener("click", cancelIfOutside, true);
+            btn.closest(".js-delete-form").submit();
+          }
+        });
+      });
+    })();
+
     (function () {
       function ready(fn) {
         if (window.YonderProgress) fn();
