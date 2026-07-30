@@ -452,12 +452,12 @@
       <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
         <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
       </a>
-      <a href="{{ share.url }}" target="_blank" rel="noopener" class="bp-stub-share btn-save-and-share">★ Saved</a>
+      <a href="{{ share.url }}" target="_blank" rel="noopener" class="bp-stub-share btn-save-and-share">Share ➤</a>
     </div>
     {% elif mode == 'saved' and share %}
     <div class="bp-stub-qr">
       <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
-      <a href="{{ share.url }}" target="_blank" rel="noopener" class="bp-stub-share btn-save-and-share">★ Saved</a>
+      <a href="{{ share.url }}" target="_blank" rel="noopener" class="bp-stub-share btn-save-and-share">Share ➤</a>
     </div>
     {% elif mode == 'share' %}
     <div class="bp-stub-meta">{% if not it.stay_days %}multi-leg{% endif %}</div>
