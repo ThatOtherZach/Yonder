@@ -1,0 +1,27 @@
+{# Practical travel-prep tip (server-side, model-agnostic). Renders only when
+   CODE_PROMO and/or LINK_PROMO are configured; omitted entirely otherwise. #}
+{% set _promo = promo_offers() %}
+{% if _promo %}
+<div class="place-book field-note-inset promo-note">
+  <div class="pb-story-body">
+    <span class="pb-tag">Field note</span>
+    <p class="pb-sub" style="margin:0.3rem 0 0.45rem">
+      You&rsquo;ll probably want a VPN on public Wi&#8209;Fi and reliable mobile data.
+    </p>
+    <div class="pb-fast-facts">
+      {% if _promo.code %}
+      <span class="pb-fact promo-fact">Saley data discount code:
+        <button type="button" class="promo-copy-btn" data-code="{{ _promo.code }}" aria-label="Copy code {{ _promo.code }}">
+          <code>{{ _promo.code }}</code><span class="promo-copy-label">tap to copy</span>
+        </button>
+      </span>
+      {% endif %}
+      {% if _promo.link %}
+      <span class="pb-fact promo-fact">ProtonVPN:
+        <a href="{{ _promo.link }}" target="_blank" rel="noopener">ProtonVPN&nbsp;&#8599;</a>
+      </span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}

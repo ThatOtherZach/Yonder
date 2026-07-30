@@ -238,6 +238,27 @@ templates.env.globals["place"] = format_place
 templates.env.globals["route"] = format_route
 templates.env.globals["airline_site_label"] = airline_site_label
 templates.env.globals["airline_name"] = airline_display_name
+def _promo_offers() -> dict | None:
+    """CODE_PROMO / LINK_PROMO from the environment (or .env) — None when unset."""
+    import os
+
+    code = (os.environ.get("CODE_PROMO") or "").strip()
+    link = (os.environ.get("LINK_PROMO") or "").strip()
+    if not code or not link:
+        try:
+            from yonder.settings_store import read_env as _read_env_promo
+
+            env = _read_env_promo()
+            code = code or (env.get("CODE_PROMO") or "").strip()
+            link = link or (env.get("LINK_PROMO") or "").strip()
+        except Exception:
+            pass
+    if not code and not link:
+        return None
+    return {"code": code or None, "link": link or None}
+
+
+templates.env.globals["promo_offers"] = _promo_offers
 templates.env.globals["share_escape"] = _share_escape
 templates.env.globals["share_detour"] = _share_detour
 _vj_boot, _vv_boot = _vibes_data()

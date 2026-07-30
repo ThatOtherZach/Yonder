@@ -615,6 +615,49 @@
       background: var(--bp-accent, var(--sky-bright));
     }
 
+    /* Practical-tip note (promo) — reads like the other field notes */
+    .promo-note .pb-sub { color: var(--ink-soft); }
+    .promo-note .pb-fact { display: inline-flex; align-items: center; gap: 0.4rem; }
+    .promo-copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin: 0;
+      padding: 0.16rem 0.55rem;
+      border-radius: 999px;
+      border: 1.5px solid var(--line-strong, var(--line));
+      background: var(--white);
+      color: var(--ink);
+      font-family: inherit;
+      cursor: pointer;
+      transition: border-color 0.12s, background 0.12s;
+    }
+    .promo-copy-btn code {
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      background: none;
+      padding: 0;
+    }
+    .promo-copy-btn .promo-copy-label {
+      font-size: 0.68rem;
+      font-weight: 600;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .promo-copy-btn:hover {
+      border-color: var(--sky-bright);
+      background: var(--sky-mist, #e8f4fc);
+    }
+    .promo-copy-btn.is-copied {
+      border-color: var(--good, #1a7f4b);
+      background: color-mix(in srgb, var(--good, #1a7f4b) 10%, var(--white));
+    }
+    .promo-copy-btn.is-copied .promo-copy-label {
+      color: var(--good, #1a7f4b);
+    }
+
     /* —— Boarding passes (shared: flights / adventures / saved) —— */
     .pass-stack {
       display: flex;
@@ -1205,6 +1248,40 @@
   <script>window.__VIBES__ = {{ vibes_json|safe }};</script>
   <script src="/static/vibe_slider.js?v={{ vibes_v }}" defer></script>
   <script src="/static/check_fares.js?v=1" defer></script>
+  <script>
+    // One-tap copy for the promo code in field notes (delegated, all pages)
+    document.addEventListener("click", function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest(".promo-copy-btn") : null;
+      if (!btn) return;
+      var code = btn.getAttribute("data-code") || "";
+      if (!code) return;
+      var label = btn.querySelector(".promo-copy-label");
+      function done() {
+        btn.classList.add("is-copied");
+        if (label) label.textContent = "copied ✓";
+        setTimeout(function () {
+          btn.classList.remove("is-copied");
+          if (label) label.textContent = "tap to copy";
+        }, 1600);
+      }
+      function fallback() {
+        var ta = document.createElement("textarea");
+        ta.value = code;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); done(); } catch (err) { /* ignore */ }
+        document.body.removeChild(ta);
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(done).catch(fallback);
+      } else {
+        fallback();
+      }
+    });
+  </script>
   {% block extra_head %}{% endblock %}
 </head>
 <body class="{% if vibe_theme and vibe_theme.color %}has-vibe-theme{% endif %}"{% if vibe_theme and vibe_theme.style %} style="{{ vibe_theme.style }}"{% endif %}>
