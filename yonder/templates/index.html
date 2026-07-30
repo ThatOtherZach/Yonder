@@ -1340,9 +1340,6 @@
                     {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
                       · <a href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
                     {% endif %}
-                    {% if o.google_flights_url %}
-                      · <a href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Google ↗</a>
-                    {% endif %}
                   </div>
                 </div>
               </div>
@@ -1506,9 +1503,6 @@
                     {% endif %}
                     {% if leg.offer and leg.offer.deep_link and 'kayak.com' not in leg.offer.deep_link %}
                       · <a href="{{ leg.offer.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(leg.offer.airlines) }} ↗</a>
-                    {% endif %}
-                    {% if leg.google_flights_url %}
-                      · <a href="{{ leg.google_flights_url }}" target="_blank" rel="noopener">Google ↗</a>
                     {% endif %}
                   </div>
                 </div>
