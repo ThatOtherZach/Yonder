@@ -517,7 +517,7 @@
           <div class="legs">
             {% for leg in it.legs %}
             <div class="leg">
-              <div class="route">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
+              <div class="route">{{ leg.from_iata }} → {{ leg.to_iata }}</div>
               <div class="muted">
                 {{ leg.depart_date | fmt_date }}
                 {% if leg.offer %}
