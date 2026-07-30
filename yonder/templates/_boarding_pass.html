@@ -96,21 +96,21 @@
           {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
         </div>
         {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
-        {% if escape_place_book.facts %}
         <div class="pb-fast-facts" aria-label="Fast facts">
-          {% for f in escape_place_book.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
+          {% if escape_place_book.facts %}{% for f in escape_place_book.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}{% endif %}
+          {% if escape_place_book.culture or escape_place_book.food or escape_place_book.caution %}
+          <button type="button" class="pb-toggle" aria-expanded="false">
+            <span class="pb-toggle-label">More · culture, food &amp; budget</span>
+            <span class="pb-chevron" aria-hidden="true">▾</span>
+          </button>
+          {% endif %}
         </div>
-        {% endif %}
         {% else %}
         <span class="pb-tag">Field note</span>
         <p class="pb-loading-msg">Writing field note…</p>
         {% endif %}
       </div>
       {% if escape_place_book and (escape_place_book.culture or escape_place_book.food or escape_place_book.caution) %}
-      <button type="button" class="pb-toggle" aria-expanded="false">
-        <span class="pb-toggle-label">More · culture, food &amp; budget</span>
-        <span class="pb-chevron" aria-hidden="true">▾</span>
-      </button>
       <div class="pb-details" hidden>
         <div class="pb-grid pb-mesh-grid">
           {% if escape_place_book.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ escape_place_book.culture }}</p></div>{% endif %}
@@ -316,11 +316,15 @@
               {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
             </div>
             {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
-            {% if pb.facts %}
             <div class="pb-fast-facts" aria-label="Fast facts">
-              {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
+              {% if pb.facts %}{% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}{% endif %}
+              {% if has_more %}
+              <button type="button" class="pb-toggle" aria-expanded="false">
+                <span class="pb-toggle-label">More · culture, food &amp; budget</span>
+                <span class="pb-chevron" aria-hidden="true">▾</span>
+              </button>
+              {% endif %}
             </div>
-            {% endif %}
             {% elif it.stop_iata %}
             <span class="pb-tag">Field note</span>
             <p class="pb-loading-msg">Writing field note…</p>
@@ -329,11 +333,13 @@
             <h3 style="font-size:1.15rem">{{ it.stop_city or it.stop_iata or 'Stop' }}</h3>
             {% endif %}
           </div>
-          {% if has_more or (it.stop_iata and not pb) %}
-          <button type="button" class="pb-toggle" aria-expanded="false"{% if it.stop_iata and not pb and not has_col %} hidden{% endif %}>
+          {% if it.stop_iata and not pb %}
+          <button type="button" class="pb-toggle" aria-expanded="false"{% if not has_col %} hidden{% endif %}>
             <span class="pb-toggle-label">More · culture, food &amp; budget</span>
             <span class="pb-chevron" aria-hidden="true">▾</span>
           </button>
+          {% endif %}
+          {% if has_more or (it.stop_iata and not pb) %}
           <div class="pb-details" hidden>
             <div class="pb-grid pb-mesh-grid">
               {% if pb %}
