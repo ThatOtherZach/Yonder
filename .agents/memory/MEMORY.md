@@ -2,3 +2,4 @@
 - [Mock provider cancellation fallback](mock-provider-cancellation.md) — CancelledError escapes `except Exception`; guard Grok awaits with internal timeouts, clear XAI_API_KEY in tests.
 - [Bootstrap grid shell](bootstrap-grid-shell.md) — pages lay out on vendored grid-only Bootstrap (container/row/col, sm/md/lg); no full Bootstrap, app overrides win by source order.
 - [Feedback vote dedup](feedback-vote-dedup.md) — dedup via DB unique index + server-trusted yv_sess/IP+UA session; "" means duplicate, None means error/MOCK.
+- [Static JS cache versioning](static-cache-versioning.md) — templates use manual ?v=N cache busters; bump on every static-file edit or users see stale code.

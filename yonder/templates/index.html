@@ -1181,7 +1181,7 @@
     {% endif %}
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
-    <script src="/static/country_map.js?v=16"></script>
+    <script src="/static/country_map.js?v=18"></script>
     <script>
     document.addEventListener("DOMContentLoaded", function() {
       var tpl = document.getElementById("xp-badge-tpl");
@@ -1191,6 +1191,19 @@
         meta.insertBefore(tpl.content.cloneNode(true), meta.firstChild);
       }
       tpl.remove();
+    });
+    // Keep the XP badge in sync with map stamp changes (server floors XP at 0)
+    document.addEventListener("yonder:xpupdate", function (e) {
+      var xp = e.detail || {};
+      var badge = document.querySelector(".xp-rank-badge");
+      if (!badge) return;
+      var emoji = badge.querySelector(".xp-rank-badge-emoji");
+      var name = badge.querySelector(".xp-rank-badge-name");
+      var xpEl = badge.querySelector(".xp-rank-badge-xp");
+      if (emoji && xp.rank_emoji) emoji.textContent = xp.rank_emoji;
+      if (name && xp.rank) name.textContent = xp.rank;
+      if (xpEl && typeof xp.xp === "number") xpEl.textContent = Math.max(0, xp.xp) + " XP";
+      if (xp.rank_blurb) badge.title = Math.max(0, xp.xp || 0) + " XP · " + xp.rank_blurb;
     });
     </script>
 

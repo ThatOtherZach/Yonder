@@ -31,9 +31,11 @@
     var originalLabel = btn.textContent;
     var pending = false;
 
-    function resetBtn() {
+    function cancelIfOutside(e) {
+      if (btn.contains(e.target)) return; // clicks on the button are handled below
       pending = false;
       btn.textContent = originalLabel;
+      document.removeEventListener("click", cancelIfOutside, true);
     }
 
     btn.addEventListener("click", function (e) {
@@ -43,10 +45,11 @@
         pending = true;
         btn.textContent = "Are you sure? 😮";
         // clicking anywhere else cancels
-        document.addEventListener("click", resetBtn, { once: true, capture: true });
+        document.addEventListener("click", cancelIfOutside, true);
       } else {
-        document.removeEventListener("click", resetBtn, { capture: true });
-        resetBtn();
+        document.removeEventListener("click", cancelIfOutside, true);
+        pending = false;
+        btn.textContent = originalLabel;
         mapInstance.clearMap();
       }
     });
@@ -515,16 +518,8 @@
   /** Wipe visited + avoid when the user wants a clean passport map. */
   YonderMap.prototype.clearMap = function () {
     var total = this.visited.size + this.avoid.size;
-    if (total <= 1) return;
-    if (
-      !global.confirm(
-        "Clear all " +
-          total +
-          " stamps (visited + avoid)? This saves to your passport map."
-      )
-    ) {
-      return;
-    }
+    if (total < 1) return;
+    // Confirmation handled by the two-click Reset Map button
     this.visited.clear();
     this.avoid.clear();
     this.paintAll();
