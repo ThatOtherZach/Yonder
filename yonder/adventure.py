@@ -453,60 +453,21 @@ def _is_getaway(req: AdventureRequest) -> bool:
     return req.origin.upper() == req.destination.upper()
 
 
-def seed_ideas(
+def _sort_by_comfort(
+    ideas: list[StopoverIdea],
     req: AdventureRequest,
     *,
-    exclude_iatas: set[str] | None = None,
     shuffle: bool = False,
 ) -> list[StopoverIdea]:
+    """Reorder *ideas* by vibe-tag overlap + traveler comfort fit.
+
+    Extracted so both seed ideas and Grok-sourced candidates get the same
+    scoring pass.  Does **not** truncate; callers slice to max_candidates.
+    """
     import random
 
-    origin = req.origin.upper()
-    dest = req.destination.upper()
-    avoid = normalize_avoid_list(req.avoid_countries)
-    visited = {
-        c.upper()
-        for c in normalize_country_list(req.visited_countries or [], max_n=250)
-    }
-    ban = {c.upper() for c in (exclude_iatas or set()) if c}
-    getaway = _is_getaway(req)
-    stay = max(
-        req.min_stop_days,
-        min(req.max_stop_days, (req.min_stop_days + req.max_stop_days) // 2),
-    )
-    ideas: list[StopoverIdea] = []
-    for row in SEED_STOPOVERS:
-        code = row["iata"]
-        if code in ban:
-            continue
-        if code == origin or (not getaway and code == dest):
-            continue
-        if getaway and code == dest and dest == origin:
-            pass  # home is already excluded via origin
-        cc = (row.get("country") or "").upper()
-        if cc and cc in avoid:
-            continue
-        if is_avoided_iata(code, avoid):
-            continue
-        # Getaways: respect passport map ("not anywhere I've been")
-        if getaway and visited:
-            stop_cc = cc or (country_for_iata(code) or "")
-            if stop_cc and stop_cc.upper() in visited:
-                continue
-        ideas.append(
-            StopoverIdea(
-                iata=code,
-                city=row["city"],
-                stay_days=stay,
-                why=row["why"],
-                vibe_tags=list(row.get("vibe_tags") or []),
-                country=cc or None,
-                source="seed",
-            )
-        )
     vibe = (req.vibe or "").lower()
     prompt_l = (req.prompt or "").lower()
-    # Boost seeds that match vibe + common getaway intents from free text
     want_food = vibe in ("food",) or "food" in prompt_l
     want_cheap = vibe in ("cheap", "budget") or any(
         w in prompt_l for w in ("cheap", "cost of living", "budget", "affordable")
@@ -558,7 +519,6 @@ def seed_ideas(
         "rose":      frozenset({"tender", "goldenhour", "serene", "whimsical"}),
         "blush":     frozenset({"tender", "sleepy", "serene", "whimsical"}),
     }
-
     _related_tags = _VIBE_TAG_MAP.get(vibe, frozenset())
 
     # Travel comfort factor: 0.0 (no stamps) → 1.0 (100+ countries).
@@ -596,14 +556,68 @@ def seed_ideas(
             s += round((1.0 - _comfort) * min(app_overlap, 2))
         return s
 
-    # Always sort by vibe-tag overlap so best-matched cities lead even when
-    # the AI is offline and seeds are the only result.
+    # Sort by vibe-tag overlap + comfort fit so best-matched cities lead.
     if shuffle:
         random.shuffle(ideas)
         ideas = sorted(ideas, key=lambda i: (_score(i), random.random()), reverse=True)
     else:
         ideas = sorted(ideas, key=_score, reverse=True)
-    return ideas[: req.max_candidates]
+    return ideas
+
+
+def seed_ideas(
+    req: AdventureRequest,
+    *,
+    exclude_iatas: set[str] | None = None,
+    shuffle: bool = False,
+) -> list[StopoverIdea]:
+    import random
+
+    origin = req.origin.upper()
+    dest = req.destination.upper()
+    avoid = normalize_avoid_list(req.avoid_countries)
+    visited = {
+        c.upper()
+        for c in normalize_country_list(req.visited_countries or [], max_n=250)
+    }
+    ban = {c.upper() for c in (exclude_iatas or set()) if c}
+    getaway = _is_getaway(req)
+    stay = max(
+        req.min_stop_days,
+        min(req.max_stop_days, (req.min_stop_days + req.max_stop_days) // 2),
+    )
+    ideas: list[StopoverIdea] = []
+    for row in SEED_STOPOVERS:
+        code = row["iata"]
+        if code in ban:
+            continue
+        if code == origin or (not getaway and code == dest):
+            continue
+        if getaway and code == dest and dest == origin:
+            pass  # home is already excluded via origin
+        cc = (row.get("country") or "").upper()
+        if cc and cc in avoid:
+            continue
+        if is_avoided_iata(code, avoid):
+            continue
+        # Getaways: respect passport map ("not anywhere I've been")
+        if getaway and visited:
+            stop_cc = cc or (country_for_iata(code) or "")
+            if stop_cc and stop_cc.upper() in visited:
+                continue
+        ideas.append(
+            StopoverIdea(
+                iata=code,
+                city=row["city"],
+                stay_days=stay,
+                why=row["why"],
+                vibe_tags=list(row.get("vibe_tags") or []),
+                country=cc or None,
+                source="seed",
+            )
+        )
+    # Sort by vibe-tag overlap + comfort fit (same pass used for Grok candidates).
+    return _sort_by_comfort(ideas, req, shuffle=shuffle)[: req.max_candidates]
 
 
 async def plan_adventure(
@@ -667,6 +681,9 @@ async def plan_adventure(
             idea = idea.model_copy(update={"city": city, "country": cc})
         unique_ideas.append(idea)
     ideas = unique_ideas
+    # Apply comfort-fit reranking — same scoring pass as seeds — so
+    # Grok-sourced candidates are ordered by comfort fit before pricing.
+    ideas = _sort_by_comfort(ideas, req)
     errors: list[str] = []
     itineraries: list[AdventureItinerary] = []
     direct_price: float | None = None

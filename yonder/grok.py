@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, ValidationError
 from yonder.adventure import AdventureRequest, AdventureResult, StopoverIdea
 from yonder.config import Settings
 from yonder.types import CabinClass, FlightOffer, SearchQuery, UnifiedSearchResult
+from yonder.xp import compute_xp as _compute_xp
 
 XAI_BASE = "https://api.x.ai/v1"
 DEFAULT_MODEL = "grok-4.5"
@@ -467,12 +468,15 @@ class GrokClient:
             "- country = ISO2 for each candidate"
         )
         # Codes only in the prompt (names bloat tokens / latency for large passport maps)
+        _xp = _compute_xp(visited, avoid)
         user = json.dumps(
             {
                 "today": today.isoformat(),
                 "default_currency": default_currency,
                 "avoid_countries": avoid,
                 "visited_countries": visited,
+                "traveler_comfort": _xp["rank"],
+                "visited_country_count": len(visited),
                 "max_candidates": form.get("max_candidates", 5),
                 "form": {
                     "origin": form.get("origin"),
@@ -646,6 +650,7 @@ class GrokClient:
                 "currency": req.currency,
                 "vibe": req.vibe,
                 "avoid_countries": req.avoid_countries,
+                "visited_countries": req.visited_countries,
             },
             default_currency=req.currency,
         )
