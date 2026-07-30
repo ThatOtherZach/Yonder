@@ -107,49 +107,23 @@
       opacity: 0.65;
       cursor: not-allowed;
     }
-    @media (max-width: 420px) {
+    /* Phones (below the grid's sm breakpoint): compact submit, fluid depart strip */
+    @media (max-width: 575.98px) {
       button.btn-vibe-go {
         min-width: 5.25rem;
         max-width: 6.25rem;
         font-size: 0.84rem;
         padding: 0.55rem 0.55rem;
       }
-    }
-    /* ── Very narrow phones (320 px) ── */
-    @media (max-width: 360px) {
-      /* Depart strip: each field stretches to fill the row so nothing clips */
       .compose-field-top {
         gap: 0.35rem 0.45rem;
         padding: 0.4rem 0.5rem;
       }
-      .compose-field-top label.date-field,
-      .compose-field-top label.currency-field {
+      .compose-field-top label.date-field {
         flex: 1 1 auto;
-        flex-shrink: 1;
         min-width: 0;
       }
-      /* Date input: give up its rigid min-width and fill the pill */
-      .compose-field-top label.date-field input[type="date"],
       label.date-field input[type="date"] {
-        min-width: 0;
-        width: 100%;
-      }
-      /* Currency select: same treatment */
-      .compose-field-top label.currency-field select,
-      label.currency-field select,
-      #ask-currency {
-        min-width: 0;
-        width: 100%;
-      }
-      /* Submit button: keep it visible but compact */
-      button.btn-vibe-go {
-        min-width: 4.5rem;
-        max-width: 5.5rem;
-        font-size: 0.8rem;
-        padding: 0.5rem 0.4rem;
-      }
-      /* Primary CTA: allow it to fill the row rather than overflow */
-      button.btn-primary-cta {
         min-width: 0;
         width: 100%;
       }
@@ -199,18 +173,6 @@
       color: var(--muted);
       line-height: 1.4;
     }
-    button.btn-primary-cta {
-      min-width: 10rem;
-      height: 2.75rem;
-      flex-shrink: 0;
-      border-radius: 999px;
-      padding: 0 1.35rem;
-    }
-    button.btn-primary-cta.btn-gold {
-      background: linear-gradient(135deg, #d4a017, var(--brass)) !important;
-      color: #1a1200 !important;
-    }
-    label.currency-field,
     label.date-field {
       display: inline-flex;
       flex-direction: row;
@@ -229,33 +191,12 @@
       color: var(--muted);
       flex-shrink: 0;
     }
-    label.currency-field > span,
     label.date-field > span {
       font-size: 0.68rem;
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
       color: var(--muted);
-    }
-    label.currency-field select,
-    #ask-currency {
-      width: auto !important;
-      min-width: 4.75rem;
-      max-width: 6.5rem;
-      height: 2.5rem !important;
-      min-height: 2.5rem !important;
-      margin: 0;
-      padding: 0 1.7rem 0 0.35rem !important;
-      border: none !important;
-      border-radius: 999px !important;
-      background-color: transparent !important;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236b7a8c' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") !important;
-      background-repeat: no-repeat !important;
-      background-position: right 0.55rem center !important;
-      box-shadow: none !important;
-      font-weight: 700;
-      font-size: 0.92rem;
-      letter-spacing: 0.04em;
     }
     label.date-field input[type="date"] {
       width: auto !important;
@@ -270,12 +211,10 @@
       font-weight: 600;
       font-size: 0.9rem;
     }
-    label.currency-field:focus-within,
     label.date-field:focus-within {
       border-color: var(--sky-bright);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--sky-bright) 18%, transparent);
     }
-    .compose-card.is-detour label.currency-field:focus-within,
     .compose-card.is-detour label.date-field:focus-within {
       border-color: var(--brass);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 20%, transparent);
