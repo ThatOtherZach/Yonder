@@ -465,6 +465,9 @@
             <input id="BYOM_BASE_URL" name="BYOM_BASE_URL" type="text"
               placeholder="https://api.openai.com/v1"
               value="{{ view.byom_base_url or '' }}" spellcheck="false" />
+            {% if byom_url_warning %}
+            <span class="field-error" style="display:block;margin-top:0.3rem;color:var(--err,#c0392b);font-size:0.85rem">⚠ BYOM endpoint rejected: {{ byom_url_warning }} — update the URL and Save to fix AI calls.</span>
+            {% endif %}
           </label>
 
           {% for f in view.fields if f.key == 'BYOM_API_KEY' %}

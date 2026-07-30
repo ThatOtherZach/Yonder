@@ -3193,6 +3193,14 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
         settings.visited_country_list(),
         settings.avoid_country_list(),
     )
+    byom_url_warning: str | None = None
+    saved_byom_url = (getattr(settings, "byom_base_url", "") or "").strip()
+    if saved_byom_url:
+        from yonder.url_guard import BYOMUrlError, validate_byom_url
+        try:
+            validate_byom_url(saved_byom_url)
+        except BYOMUrlError as exc:
+            byom_url_warning = str(exc)
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -3202,6 +3210,7 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
             "flash": flash,
             "is_deployed": bool(_os.environ.get("REPLIT_DOMAINS")),
             "xp_profile": xp_profile,
+            "byom_url_warning": byom_url_warning,
             **_base_ctx(settings),
         },
     )
