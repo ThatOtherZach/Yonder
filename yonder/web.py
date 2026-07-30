@@ -2590,6 +2590,9 @@ async def api_travel_map(request: Request) -> JSONResponse:
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 
+    from yonder.xp import compute_xp as _compute_xp
+
+    xp_profile = _compute_xp(visited, avoid)
     return JSONResponse(
         {
             "ok": True,
@@ -2597,6 +2600,7 @@ async def api_travel_map(request: Request) -> JSONResponse:
             "visited": visited,
             "avoid_names": [country_label(c) for c in avoid],
             "visited_names": [country_label(c) for c in visited],
+            "xp": xp_profile,
         }
     )
 

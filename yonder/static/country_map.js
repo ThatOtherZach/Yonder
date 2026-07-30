@@ -579,6 +579,14 @@
       this.paintAll();
       this.syncUi();
       this.setSaveStatus("saved", "Saved");
+      // Broadcast XP profile so any page element (badge, rank card) can update live
+      if (j.xp) {
+        try {
+          document.dispatchEvent(
+            new CustomEvent("yonder:xpupdate", { bubbles: true, detail: j.xp })
+          );
+        } catch (e) { /* ignore */ }
+      }
       if (this.chromeStatus) {
         this.chromeStatus.className = "status-ok";
         this.chromeStatus.textContent = "SIGNAL OK";

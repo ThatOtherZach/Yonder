@@ -601,26 +601,28 @@
 
               {% if xp_profile %}
               {# ── Travel Comfort Rank card ── #}
-              <div class="xp-card">
+              <div class="xp-card" id="xp-card">
                 <div class="xp-card-body">
                   <div class="xp-rank-line">
-                    <span class="xp-emoji">{{ xp_profile.rank_emoji }}</span>
-                    <span class="xp-rank-name">{{ xp_profile.rank }}</span>
-                    <span class="xp-amount">{{ xp_profile.xp }} XP</span>
+                    <span class="xp-emoji" id="xp-emoji">{{ xp_profile.rank_emoji }}</span>
+                    <span class="xp-rank-name" id="xp-rank-name">{{ xp_profile.rank }}</span>
+                    <span class="xp-amount" id="xp-amount">{{ xp_profile.xp }} XP</span>
                   </div>
-                  <p class="xp-blurb">{{ xp_profile.rank_blurb }}</p>
-                  {% if xp_profile.next_rank %}
-                  <div class="xp-bar-wrap">
-                    <div class="xp-bar-fill" style="width:{{ xp_profile.progress_pct }}%"></div>
+                  <p class="xp-blurb" id="xp-blurb">{{ xp_profile.rank_blurb }}</p>
+                  <div id="xp-progress">
+                    {% if xp_profile.next_rank %}
+                    <div class="xp-bar-wrap">
+                      <div class="xp-bar-fill" id="xp-bar-fill" style="width:{{ xp_profile.progress_pct }}%"></div>
+                    </div>
+                    <p class="xp-bar-label" id="xp-bar-label">
+                      <strong>{{ xp_profile.xp_to_next }} XP</strong> to {{ xp_profile.next_rank_emoji }} {{ xp_profile.next_rank }}
+                    </p>
+                    {% else %}
+                    <p class="xp-bar-label" id="xp-bar-label">Maximum rank — you've been everywhere. ✦</p>
+                    {% endif %}
                   </div>
-                  <p class="xp-bar-label">
-                    <strong>{{ xp_profile.xp_to_next }} XP</strong> to {{ xp_profile.next_rank_emoji }} {{ xp_profile.next_rank }}
-                  </p>
-                  {% else %}
-                  <p class="xp-bar-label">Maximum rank — you've been everywhere. ✦</p>
-                  {% endif %}
 
-                  <div class="xp-ladder">
+                  <div class="xp-ladder" id="xp-ladder">
                     {% for rung in xp_profile.ladder %}
                     <div class="xp-ladder-row{% if rung.current %} is-current{% endif %}">
                       <span class="xp-ladder-dot"></span>
@@ -634,18 +636,18 @@
               {% endif %}
 
               <p class="map-status" style="margin:0">
-                Visited: <strong>{{ (visited_defaults or [])|length }}</strong>
-                · Avoid: <strong>{{ (avoid_defaults or [])|length }}</strong>/10
+                Visited: <strong id="xp-visited-count">{{ (visited_defaults or [])|length }}</strong>
+                · Avoid: <strong id="xp-avoid-count">{{ (avoid_defaults or [])|length }}</strong>/10
                 <span style="margin-left:0.5rem;font-size:0.75rem;opacity:0.7">(+10 XP / −10 XP)</span>
               </p>
-              <div class="chip-row" aria-label="Visited countries">
+              <div class="chip-row" id="xp-visited-chips" aria-label="Visited countries">
                 {% for code in visited_defaults or [] %}
                   <span class="chip visited">{{ code }}</span>
                 {% else %}
                   <span class="muted" style="font-size:0.8rem">No stamps yet</span>
                 {% endfor %}
               </div>
-              <div class="chip-row" aria-label="Avoid countries">
+              <div class="chip-row" id="xp-avoid-chips" aria-label="Avoid countries">
                 {% for code in avoid_defaults or [] %}
                   <span class="chip avoid">{{ code }}</span>
                 {% else %}
@@ -658,6 +660,98 @@
               </div>
             </div>
           </div>
+          <script>
+          (function () {
+            /* Live-update the XP rank card + country chip summary
+               when a yonder:xpupdate event arrives (fired by country_map.js
+               after every successful /api/travel-map save). */
+
+            function setText(id, val) {
+              var el = document.getElementById(id);
+              if (el) el.textContent = val;
+            }
+            function setHTML(id, val) {
+              var el = document.getElementById(id);
+              if (el) el.innerHTML = val;
+            }
+
+            function updateXpCard(xp) {
+              if (!xp) return;
+              setText("xp-emoji",     xp.rank_emoji || "");
+              setText("xp-rank-name", xp.rank       || "");
+              setText("xp-amount",    (xp.xp || 0) + " XP");
+              setText("xp-blurb",     xp.rank_blurb || "");
+              setText("xp-visited-count", String(xp.visited_count || 0));
+              setText("xp-avoid-count",   String(xp.avoid_count   || 0));
+
+              // Progress bar / label
+              var progEl = document.getElementById("xp-progress");
+              if (progEl) {
+                if (xp.next_rank) {
+                  progEl.innerHTML =
+                    '<div class="xp-bar-wrap">' +
+                      '<div class="xp-bar-fill" style="width:' + xp.progress_pct + '%"></div>' +
+                    '</div>' +
+                    '<p class="xp-bar-label" id="xp-bar-label">' +
+                      '<strong>' + xp.xp_to_next + ' XP</strong> to ' +
+                      xp.next_rank_emoji + ' ' + xp.next_rank +
+                    '</p>';
+                } else {
+                  progEl.innerHTML =
+                    '<p class="xp-bar-label" id="xp-bar-label">Maximum rank — you\'ve been everywhere. ✦</p>';
+                }
+              }
+
+              // Rank ladder
+              var ladderEl = document.getElementById("xp-ladder");
+              if (ladderEl && xp.ladder) {
+                ladderEl.innerHTML = xp.ladder.map(function (r) {
+                  return '<div class="xp-ladder-row' + (r.current ? ' is-current' : '') + '">' +
+                    '<span class="xp-ladder-dot"></span>' +
+                    '<span>' + r.emoji + ' ' + r.rank + '</span>' +
+                    '<span class="xp-ladder-xp">' + r.xp + ' XP</span>' +
+                  '</div>';
+                }).join('');
+              }
+            }
+
+            function updateChips(detail) {
+              var names = detail.country_names || {};
+              var visited = detail.visited || [];
+              var avoid   = detail.avoid   || [];
+
+              var vc = document.getElementById("xp-visited-chips");
+              if (vc) {
+                if (visited.length) {
+                  vc.innerHTML = visited.map(function (c) {
+                    return '<span class="chip visited">' + (names[c] || c) + '</span>';
+                  }).join('');
+                } else {
+                  vc.innerHTML = '<span class="muted" style="font-size:0.8rem">No stamps yet</span>';
+                }
+              }
+
+              var ac = document.getElementById("xp-avoid-chips");
+              if (ac) {
+                if (avoid.length) {
+                  ac.innerHTML = avoid.map(function (c) {
+                    return '<span class="chip avoid">' + (names[c] || c) + '</span>';
+                  }).join('');
+                } else {
+                  ac.innerHTML = '<span class="muted" style="font-size:0.8rem">No avoid countries</span>';
+                }
+              }
+            }
+
+            document.addEventListener("yonder:xpupdate", function (e) {
+              updateXpCard(e.detail);
+            });
+
+            document.addEventListener("yonder:mapchange", function (e) {
+              if (e.detail) updateChips(e.detail);
+            });
+          })();
+          </script>
         </div>
 
         <div class="actions">
