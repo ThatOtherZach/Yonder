@@ -1168,11 +1168,20 @@ async def explore_run(request: Request) -> HTMLResponse:
         place_book = None
         try:
             from yonder.countries import country_for_iata
-            from yonder.encyclopedia import get_cached, cache_key, get_place_brief
+            from yonder.encyclopedia import (
+                _payload_lang_mismatch,
+                cache_key,
+                get_cached,
+                get_place_brief,
+            )
+            from yonder.lang import detect_lang as _detect_lang
 
+            _brief_lang = _detect_lang(prompt)
             dest_cc = country_for_iata(query.destination)
-            key = cache_key(query.destination, dest_cc, None)
+            key = cache_key(query.destination, dest_cc, None, lang=_brief_lang)
             hit = get_cached(key) if key else None
+            if hit and _payload_lang_mismatch(hit, _brief_lang):
+                hit = None  # legacy entry in another language — go live instead
             if hit:
                 place_book = {
                     **hit,
@@ -2191,13 +2200,19 @@ def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
 
     # Gather cached field notes (never calls Grok — share page must be instant).
     from yonder.encyclopedia import get_any_cached_for_iata
+    from yonder.lang import detect_lang as _detect_share_lang
 
     p = share.payload or {}
+    # Field notes must match the language of the prompt that made the trip;
+    # shares without a stored prompt default to English.
+    _share_lang = _detect_share_lang(
+        str((p.get("trip_meta") or {}).get("prompt") or "")
+    )
     place_books: dict[str, dict] = {}
     if share.kind == "escape":
         dest = (p.get("query") or {}).get("destination") or ""
         if dest:
-            brief = get_any_cached_for_iata(dest)
+            brief = get_any_cached_for_iata(dest, lang=_share_lang)
             if brief:
                 place_books[dest.upper()] = brief
     elif share.kind == "detour":
@@ -2207,7 +2222,7 @@ def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
         ]]):
             code = iata.upper()
             if code not in place_books:
-                brief = get_any_cached_for_iata(code)
+                brief = get_any_cached_for_iata(code, lang=_share_lang)
                 if brief:
                     place_books[code] = brief
 
@@ -2894,11 +2909,15 @@ async def api_result_feedback(request: Request) -> JSONResponse:
                     settings = get_settings()
                     if not settings.grok_ready():
                         return
+                    from yonder.lang import detect_lang as _dl, language_directive as _ld
+
+                    _ans_lang = _dl(q_text)
                     system = (
                         "You are a travel expert. A traveler searched with a specific vibe but felt "
                         "the results didn't quite match. Suggest 1–2 destination ideas that DO match "
                         "the vibe and query well. Keep the response to 2–3 sentences, vivid and specific. "
                         "End with the best IATA airport code in parentheses, e.g. (LIS)."
+                        + _ld(_ans_lang)
                     )
                     user = f'Vibe: "{q_vibe}"\nQuery: "{q_text}"'
                     async with GrokClient(settings) as grok:
@@ -2906,7 +2925,7 @@ async def api_result_feedback(request: Request) -> JSONResponse:
                     import re
                     iata_match = re.search(r"\(([A-Z]{3})\)\s*[.,!?;:]*\s*$", text.strip())
                     iata = iata_match.group(1) if iata_match else None
-                    answer = {"suggestion": text.strip(), "dest_iata": iata}
+                    answer = {"suggestion": text.strip(), "dest_iata": iata, "lang": _ans_lang}
                     save_vibe_answer(question_id, answer)
                 except Exception:
                     pass
@@ -2922,15 +2941,28 @@ async def api_result_feedback(request: Request) -> JSONResponse:
 async def api_vibe_suggestions(
     vibe: str = Query(""),
     limit: int = Query(20, ge=1, le=100),
+    lang: str = Query("", max_length=8),
+    q: str = Query("", max_length=300),
 ) -> JSONResponse:
-    """Return AI-answered vibe questions for a given vibe."""
+    """Return AI-answered vibe questions for a given vibe, in one language.
+
+    q is the user's current prompt text: its language is detected server-side
+    (full detector — Spanish/French included, not just non-Latin scripts) and
+    wins over the lang hint. Defaults to English, so an English compose card
+    never shows community suggestions written in another language.
+    """
     import asyncio
     from yonder.feedback import get_suggestions_for_vibe
+    from yonder.lang import detect_lang as _dl_sugg
 
     v = (vibe or "").strip().lower() or "adventure"
+    if (q or "").strip():
+        lang_code = _dl_sugg(q)
+    else:
+        lang_code = (lang or "en").strip().lower()[:8] or "en"
     suggestions = await asyncio.get_running_loop().run_in_executor(
         None,
-        lambda: get_suggestions_for_vibe(v, limit=limit),
+        lambda: get_suggestions_for_vibe(v, limit=limit, lang=lang_code),
     )
     return JSONResponse({"ok": True, "vibe": v, "suggestions": suggestions})
 

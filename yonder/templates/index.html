@@ -1863,12 +1863,21 @@
         var vsInflight = {};
         var vsTimer = null;
 
+        // Community suggestions match the language the user is typing in —
+        // the server detects it from the prompt text (q), so an English
+        // prompt never surfaces a Chinese/Spanish/etc. suggestion.
+        function promptText() {
+          var el = document.getElementById("explore-text");
+          return ((el && el.value) || "").slice(0, 200);
+        }
+
         function fetchVibeSuggestions(vibe) {
-          var v = (vibe || "adventure").toLowerCase();
+          var q = promptText();
+          var v = (vibe || "adventure").toLowerCase() + "|" + q;
           if (vsCache[v]) return Promise.resolve(vsCache[v]);
           if (vsInflight[v]) return vsInflight[v];
           vsInflight[v] = fetch(
-            "/api/vibe-suggestions?vibe=" + encodeURIComponent(v) + "&limit=3",
+            "/api/vibe-suggestions?vibe=" + encodeURIComponent((vibe || "adventure").toLowerCase()) + "&limit=3&q=" + encodeURIComponent(q),
             { credentials: "same-origin", headers: { Accept: "application/json" } }
           )
             .then(function (r) { return r.json(); })

@@ -31,13 +31,25 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
-def cache_key(iata: str | None = None, country: str | None = None, city: str | None = None) -> str:
+def cache_key(
+    iata: str | None = None,
+    country: str | None = None,
+    city: str | None = None,
+    lang: str | None = None,
+) -> str:
+    """Cache key for a place brief. lang (e.g. 'zh') keeps briefs generated
+    for one prompt language from being served to another — English uses the
+    legacy suffix-free key so existing English briefs stay valid."""
     parts = [
         (iata or "").upper().strip(),
         (country or "").upper().strip(),
         (city or "").strip().lower(),
     ]
-    return "|".join(parts)
+    key = "|".join(parts)
+    code = (lang or "en").lower()
+    if code != "en":
+        key += f"|l:{code}"
+    return key
 
 
 def _strip_emdash(obj: Any) -> Any:
@@ -74,21 +86,31 @@ def get_cached(key: str) -> dict[str, Any] | None:
         return None
 
 
-def get_any_cached_for_iata(iata: str) -> dict[str, Any] | None:
+def get_any_cached_for_iata(iata: str, lang: str | None = None) -> dict[str, Any] | None:
     """Return the most-recent cached brief for *any* key starting with IATA|.
 
     Used on the static share page where the exact country/city suffix may not
     be known — returns None if nothing is cached (never calls Grok).
+    lang narrows to briefs written in that language (English matches the
+    legacy suffix-free keys).
     """
     prefix = (iata or "").upper().strip() + "|"
+    code = (lang or "en").lower()
+    if code == "en":
+        lang_clause = "AND cache_key NOT LIKE '%|l:%'"
+        params: tuple = (prefix + "%",)
+    else:
+        lang_clause = "AND cache_key LIKE ?"
+        params = (prefix + "%", f"%|l:{code}")
     with _connect() as conn:
         row = conn.execute(
-            """
+            f"""
             SELECT payload_json, fetched_at FROM place_briefs
             WHERE cache_key LIKE ? AND cache_key NOT LIKE '%|t:%'
+            {lang_clause}
             ORDER BY fetched_at DESC LIMIT 1
             """,
-            (prefix + "%",),
+            params,
         ).fetchone()
     if not row:
         return None
@@ -179,6 +201,22 @@ class PlaceBrief:
         }
 
 
+def _payload_lang_mismatch(payload: dict[str, Any], lang: str) -> bool:
+    """True when a cached brief's prose is clearly in a different language.
+
+    Guards legacy entries written before language partitioning (an English
+    request must never surface a Chinese brief cached under the old key).
+    """
+    from yonder.lang import detect_lang
+
+    prose = " ".join(
+        str(payload.get(k) or "") for k in ("culture", "tagline", "food")
+    ).strip()
+    if not prose:
+        return False
+    return detect_lang(prose) != (lang or "en")
+
+
 def _tone_key(user_prompt: str | None, trip_vibe: str | None) -> str:
     """Short fingerprint so cache can keep tone-specific notes without exploding keys."""
     import hashlib
@@ -222,8 +260,13 @@ async def get_place_brief(
     """Cache-first place brief. Returns None on miss without Grok or on hard failure.
 
     Structure is always the same; user_prompt + trip_vibe only tint the prose.
+    The prompt's language picks the reply language AND partitions the cache —
+    a Chinese request never sees a cached English brief, and vice versa.
     """
-    base = cache_key(iata, country, city)
+    from yonder.lang import detect_lang
+
+    lang = detect_lang(user_prompt)
+    base = cache_key(iata, country, city, lang=lang)
     if not base.strip("|"):
         return None
     tone = _tone_key(user_prompt, trip_vibe)
@@ -232,6 +275,9 @@ async def get_place_brief(
     hit = get_cached(key)
     if not hit and tone:
         hit = get_cached(base)
+    if hit and _payload_lang_mismatch(hit, lang):
+        # Stale pre-partition entry written in another language — refetch.
+        hit = None
     if hit:
         return PlaceBrief(
             title=str(hit.get("title") or city or iata or country or "Somewhere"),
@@ -262,6 +308,7 @@ async def get_place_brief(
                 role=role,
                 user_prompt=user_prompt,
                 trip_vibe=trip_vibe,
+                lang=lang,
             )
         if not payload:
             return None
@@ -309,22 +356,27 @@ async def briefs_for_stops(
     """
     from yonder.search_cancel import is_cancelled
 
+    from yonder.lang import detect_lang
+
     out: dict[str, dict[str, Any]] = {}
     live = 0
     tone = _tone_key(user_prompt, trip_vibe)
+    lang = detect_lang(user_prompt)
     for iata, country, city in stops:
         if cancel_id and is_cancelled(cancel_id):
             break
         code = (iata or "").upper()
         if not code or code in out:
             continue
-        base = cache_key(iata, country, city)
+        base = cache_key(iata, country, city, lang=lang)
         # Prefer tone-keyed cache, then generic
         hit = None
         if tone:
             hit = get_cached(f"{base}|t:{tone}")
         if not hit:
             hit = get_cached(base)
+        if hit and _payload_lang_mismatch(hit, lang):
+            hit = None
         if hit:
             out[code] = {
                 **hit,

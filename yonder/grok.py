@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from yonder.adventure import AdventureRequest, StopoverIdea
 from yonder.config import Settings
+from yonder.lang import detect_lang, language_directive
 from yonder.types import CabinClass, FlightOffer, SearchQuery
 from yonder.xp import compute_xp as _compute_xp
 
@@ -269,6 +270,7 @@ class GrokClient:
             '"intent_summary":"one line","assumptions":["..."]'
             "}\n"
             "Always single traveler economy — do not invent party size or cabin."
+            + language_directive(detect_lang(prompt))
         )
 
         def _blocked(dest_iata: str) -> str | None:
@@ -327,6 +329,7 @@ class GrokClient:
                 "}\n"
                 "Use IATA codes for major commercial airports. "
                 "destination country must NOT be in avoid_countries or visited_countries."
+                + language_directive(detect_lang(prompt))
             )
             text2 = await self._chat(retry_system, _user_msg(retry_extra), temperature=0.2)
             payload2 = _extract_json(text2)
@@ -371,8 +374,12 @@ class GrokClient:
         role: str = "destination",
         user_prompt: str | None = None,
         trip_vibe: str | None = None,
+        lang: str | None = None,
     ) -> dict[str, Any]:
         """Tiny culture card for Place Book. Keep tokens low.
+
+        lang: reply language for prose fields; detected from user_prompt when
+        omitted. Structured keys stay English/machine-readable either way.
 
         Structure is fixed (culture/food/vibe/…). Tone layers the user's query
         + trip vibe on top of the default field-note voice — do not invent new fields.
@@ -391,6 +398,7 @@ class GrokClient:
             '"culture":"1-2 sentences","food":"1 sentence",'
             '"caution":"optional 1 sentence or empty","tagline":"one cinematic sentence ≤15 words — vibe-matched prose ending with a specific evocative image"}\n'
             "facts are optional FAST FACT chips (max 3, each ≤6 words). Prefer culture/food/tagline."
+            + language_directive(lang or detect_lang(user_prompt))
         )
         user = json.dumps(
             {
@@ -500,6 +508,7 @@ class GrokClient:
             "- traveler_comfort rank guides candidate boldness: "
             "Chaos Pilot/Nomadic Soul → prefer off-beaten-path, emerging, or unconventional stops; "
             "Armchair Explorer/Day Tripper → prefer safe hubs, easy connections, well-touristed cities"
+            + language_directive(detect_lang(prompt))
         )
         # Codes only in the prompt (names bloat tokens / latency for large passport maps)
         _xp = _compute_xp(visited, avoid)

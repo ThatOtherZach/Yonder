@@ -207,8 +207,18 @@ def save_vibe_answer(question_id: str, answer: dict[str, Any]) -> bool:
         return False
 
 
-def get_suggestions_for_vibe(vibe: str, *, limit: int = 20) -> list[dict[str, Any]]:
-    """Return answered vibe questions for a given vibe, newest first."""
+def get_suggestions_for_vibe(
+    vibe: str, *, limit: int = 20, lang: str | None = None
+) -> list[dict[str, Any]]:
+    """Return answered vibe questions for a given vibe, newest first.
+
+    lang (default English) filters out suggestions written in another
+    language — legacy rows without a stored lang fall back to detecting the
+    question text's language.
+    """
+    from yonder.lang import detect_lang
+
+    want = (lang or "en").strip().lower() or "en"
     v = _norm_vibe(vibe)
     lim = max(1, min(100, int(limit or 20)))
     try:
@@ -223,17 +233,26 @@ def get_suggestions_for_vibe(vibe: str, *, limit: int = 20) -> list[dict[str, An
                 """,
                 (v, lim),
             ).fetchall()
-        return [
-            {
-                "id": r["id"],
-                "vibe": r["vibe"],
-                "query": r["query_norm"],
-                "answer": json.loads(r["answer_json"]) if r["answer_json"] else None,
-                "created_at": r["created_at"],
-                "answer_at": r["answer_at"],
-            }
-            for r in rows
-        ]
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            answer = json.loads(r["answer_json"]) if r["answer_json"] else None
+            row_lang = (
+                str((answer or {}).get("lang") or "").strip().lower()
+                or detect_lang(r["query_norm"])
+            )
+            if row_lang != want:
+                continue
+            out.append(
+                {
+                    "id": r["id"],
+                    "vibe": r["vibe"],
+                    "query": r["query_norm"],
+                    "answer": answer,
+                    "created_at": r["created_at"],
+                    "answer_at": r["answer_at"],
+                }
+            )
+        return out
     except Exception:
         return []
 

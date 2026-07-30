@@ -131,10 +131,19 @@ def find_recycled_result(
         for t in re.findall(r"[a-z0-9]{3,}", (prompt or "").lower())
         if t not in _STOP_WORDS
     }
+    # Reply language must match the current prompt's language: a saved trip's
+    # title/why lines are written in the language of the prompt that created
+    # it, so a Chinese-prompt trip must never be recycled into an English
+    # search (and vice versa).
+    from yonder.lang import detect_lang
+
+    want_lang = detect_lang(prompt)
 
     scored: list[tuple[float, SavedItinerary]] = []
     for s in list_saved(limit=200):
         if _is_mock_saved(s):
+            continue
+        if detect_lang(f"{s.trip_prompt or ''} {s.title or ''}") != want_lang:
             continue
         dep = _first_depart(s)
         if dep is not None and dep < today:
