@@ -777,6 +777,10 @@ async def explore_run(request: Request) -> HTMLResponse:
         "true",
         "yes",
     )
+    # Refresh is an explicit refine: the Depart field's origin is pinned and
+    # wins over any origin stated in the prompt. Initial searches keep
+    # prompt-first priority (origin field only serves as the default).
+    origin_pinned = is_refresh and len(origin_override) == 3 and origin_override.isalpha()
 
     def _soft_remaining() -> float:
         """Seconds left in soft aim; after aim, still generous so work can finish."""
@@ -962,6 +966,12 @@ async def explore_run(request: Request) -> HTMLResponse:
                     f"Origin corrected {trip.origin}→{home_iata} (home wins over chip text)"
                 )
                 trip = trip.model_copy(update={"origin": home_iata.upper()})
+            # Refresh: the Depart field origin is pinned — it beats prompt text
+            if origin_pinned and (trip.origin or "").upper() != origin_override:
+                notes.append(
+                    f"Origin pinned {trip.origin}→{origin_override} (Depart field refine)"
+                )
+                trip = trip.model_copy(update={"origin": origin_override})
             # Refresh: if Grok reused a seen destination, try seed pool once
             dest_u = (trip.destination or "").upper()
             if is_refresh and dest_u in exclude_iatas:
@@ -1133,7 +1143,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         req: AdventureRequest | None = None
 
         def _local_getaway_fallback(reason: str = "") -> tuple:
-            home = _guess_home_iata(prompt) or home_iata
+            home = origin_override if origin_pinned else (_guess_home_iata(prompt) or home_iata)
             local_req = AdventureRequest(
                 origin=home,
                 destination=home,
@@ -1246,6 +1256,15 @@ async def explore_run(request: Request) -> HTMLResponse:
                         "cabin": CabinClass.ECONOMY,
                     }
                 )
+                # Refresh: the Depart field origin is pinned — it beats prompt text
+                if origin_pinned and (req.origin or "").upper() != origin_override:
+                    upd: dict = {"origin": origin_override}
+                    if trip_kind == "getaway" or req.origin == req.destination:
+                        upd["destination"] = origin_override
+                    notes.append(
+                        f"Origin pinned {req.origin}→{origin_override} (Depart field refine)"
+                    )
+                    req = req.model_copy(update=upd)
                 if not ideas:
                     ideas = seed_ideas(
                         req, exclude_iatas=exclude_iatas, shuffle=is_refresh

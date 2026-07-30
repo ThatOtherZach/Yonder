@@ -1972,6 +1972,14 @@
             }
           }
           if (clickIdEl && !clickIdEl.value) clickIdEl.value = newClickId();
+          // Depart field is the single origin source: mirror its current value
+          // into the form on every submit path (never a stale hidden value).
+          var originField = document.getElementById("criteria-origin");
+          var hidOriginSync = document.getElementById("explore-origin");
+          if (hidOriginSync) {
+            var ov = originField ? String(originField.value || "").toUpperCase().trim() : "";
+            hidOriginSync.value = /^[A-Z]{3}$/.test(ov) ? ov : "";
+          }
           if (askMirror) askMirror.value = text;
           form.action = "/explore";
           btn.disabled = true;
@@ -1986,16 +1994,6 @@
         }
 
         var originEl2 = document.getElementById("criteria-origin");
-        var hidOrigin2 = document.getElementById("explore-origin");
-
-        // Track whether the user has manually typed an origin (vs server default)
-        var originUserModified = false;
-        if (originEl2) {
-          originEl2.addEventListener("input", function () { originUserModified = true; });
-        }
-
-        // GPS cache for the page session: null = not yet tried, false = denied/unavailable, "XYZ" = IATA
-        var gpsOriginCache = null;
 
         var gpsNoticeEl = document.getElementById("gps-origin-notice");
         var gpsNoticeTimer = null;
@@ -2014,37 +2012,12 @@
           gpsNoticeEl.classList.remove("is-visible");
         }
 
-        function applyGpsOriginIfAway(iata) {
-          if (!iata) return;
-          var home = (originEl2 && originEl2.value || "").trim().toUpperCase();
-          if (iata === home) return; // at home airport — no change needed
-          // Away from home: swap origin to current location
-          if (originEl2) originEl2.value = iata;
-          if (hidOrigin2) hidOrigin2.value = iata;
-          showGpsNotice(iata);
-        }
-
-        // Dismiss notice on any interaction with the origin field
-        if (originEl2) {
-          originEl2.addEventListener("focus", hideGpsNotice);
-          originEl2.addEventListener("input", hideGpsNotice);
-        }
-
-        function resolveOriginThenSubmit() {
-          // User explicitly typed an origin — always respect it
-          if (originUserModified) { doSubmit(); return; }
-          // No geolocation support — skip
-          if (!navigator.geolocation) { doSubmit(); return; }
-          // Already fetched this page session — reuse
-          if (gpsOriginCache !== null) {
-            applyGpsOriginIfAway(gpsOriginCache);
-            doSubmit();
-            return;
-          }
-
-          btn.disabled = true;
-          btn.textContent = "Locating…";
-
+        // GPS is fill-empty-only: it may pre-fill a BLANK Depart field on load
+        // (with the detected-location notice), but never replaces a filled one
+        // and never runs at submit time.
+        function gpsPrefillIfEmpty() {
+          if (!originEl2 || !navigator.geolocation) return;
+          if ((originEl2.value || "").trim()) return; // already filled — leave it
           navigator.geolocation.getCurrentPosition(
             function (pos) {
               fetch(
@@ -2053,30 +2026,28 @@
               )
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
-                  gpsOriginCache = (data && data.ok && data.iata) ? data.iata : false;
-                  applyGpsOriginIfAway(gpsOriginCache);
+                  if (!(data && data.ok && data.iata)) return;
+                  if ((originEl2.value || "").trim()) return; // user typed meanwhile
+                  originEl2.value = data.iata;
+                  showGpsNotice(data.iata);
                 })
-                .catch(function () { gpsOriginCache = false; })
-                .finally(function () {
-                  btn.disabled = false;
-                  btn.textContent = "Go";
-                  doSubmit();
-                });
+                .catch(function () {});
             },
-            function () {
-              // Denied or timed out — remember and proceed as-is
-              gpsOriginCache = false;
-              btn.disabled = false;
-              btn.textContent = "Go";
-              doSubmit();
-            },
+            function () {},
             { timeout: 6000, maximumAge: 300000 }
           );
         }
 
+        // Dismiss notice on any interaction with the origin field
+        if (originEl2) {
+          originEl2.addEventListener("focus", hideGpsNotice);
+          originEl2.addEventListener("input", hideGpsNotice);
+        }
+        gpsPrefillIfEmpty();
+
         form.addEventListener("submit", function (e) {
           e.preventDefault();
-          resolveOriginThenSubmit();
+          doSubmit();
         });
       }
 
