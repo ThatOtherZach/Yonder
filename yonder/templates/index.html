@@ -34,15 +34,17 @@
       border: 1.5px solid var(--line);
       border-radius: 10px;
       background: var(--paper);
-      font-size: 1.05rem;
+      color: var(--ink-soft);
       line-height: 1;
       cursor: pointer;
       vertical-align: -0.2rem;
-      transition: border-color 0.12s, background 0.12s, transform 0.12s;
+      transition: border-color 0.12s, background 0.12s, color 0.12s, transform 0.12s;
     }
+    .prompt-shuffle svg { display: block; flex-shrink: 0; }
     .prompt-shuffle:hover {
       border-color: var(--vibe-now, var(--sky-bright));
       background: var(--sky-mist);
+      color: var(--vibe-now, var(--sky-bright));
     }
     .prompt-shuffle:active,
     .prompt-shuffle.did-shuffle {
@@ -1115,7 +1117,14 @@
           title="Shuffle a saved prompt"
           aria-label="Shuffle a saved prompt"
           hidden
-        >🔀</button>Where to?</h2>
+        ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <!-- solid arc: lower-left → upper-right (outbound route) -->
+          <path d="M2 17 C6 17 9 7 22 7"/>
+          <polyline points="18.5,4 22,7 18.5,10"/>
+          <!-- dotted arc: upper-left → lower-right (mystery route) -->
+          <path d="M2 7 C6 7 9 17 22 17" stroke-dasharray="2.5 1.8"/>
+          <polyline points="18.5,14 22,17 18.5,20"/>
+        </svg></button>Where to?</h2>
 
 
       <form
