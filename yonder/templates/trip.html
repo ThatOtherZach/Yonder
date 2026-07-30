@@ -289,6 +289,7 @@
         <div class="place-book"{% if share_vibe %} style="--bp-accent: {{ share_vibe.color }}"{% endif %}>
           <span class="pb-tag">Field note</span>
           <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+          {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
           {% if pb.facts %}
           <div class="pb-fast-facts" aria-label="Fast facts">
             {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
@@ -329,6 +330,7 @@
         <div class="place-book" style="{% if it.theme_primary %}--bp-accent: {{ it.theme_primary }};{% endif %}{% if not loop.first %}margin-top:0.75rem{% endif %}">
           <span class="pb-tag">Field note · {{ iata }}</span>
           <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+          {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
           {% if pb.facts %}
           <div class="pb-fast-facts" aria-label="Fast facts">
             {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}

@@ -1375,6 +1375,7 @@
                   {% if escape_place_book %}
                   <span class="pb-tag">Field note</span>
                   <h3 style="font-size:1.15rem">{{ escape_place_book.title }}</h3>
+                  {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
                   {% if escape_place_book.facts %}
                   <div class="pb-fast-facts" aria-label="Fast facts">
                     {% for f in escape_place_book.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
@@ -1551,6 +1552,7 @@
                     {% if pb %}
                     <span class="pb-tag">Field note</span>
                     <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+                    {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
                     {% if pb.facts %}
                     <div class="pb-fast-facts" aria-label="Fast facts">
                       {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
@@ -2309,14 +2311,28 @@
       function postSaveAndShare(body, btn, shareUrl) {
         btn.disabled = true;
         btn.textContent = "Saving…";
-        fetch("/api/saved", {
+        // Always navigate exactly once — on success, error, or hang.
+        var navigated = false;
+        function go() {
+          if (navigated) return;
+          navigated = true;
+          window.location.href = shareUrl;
+        }
+        // Safety net: if the request hangs (never resolves), navigate anyway.
+        var failsafe = setTimeout(go, 6000);
+        var opts = {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
-        })
+        };
+        // Abort a stalled request when supported so it doesn't linger.
+        if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) {
+          try { opts.signal = AbortSignal.timeout(5000); } catch (e) {}
+        }
+        fetch("/api/saved", opts)
           .then(function (r) { return r.json(); })
-          .then(function () { window.location.href = shareUrl; })
-          .catch(function () { window.location.href = shareUrl; });
+          .then(function () { clearTimeout(failsafe); go(); })
+          .catch(function () { clearTimeout(failsafe); go(); });
       }
 
       function pageAttribution() {
@@ -2614,6 +2630,8 @@
             ">" +
             escapeHtml(brief.title || "Somewhere") +
             "</h3>";
+          if (brief.subtitle)
+            h += '<p class="pb-sub">' + escapeHtml(brief.subtitle) + "</p>";
           var facts = brief.facts || [];
           if (facts.length) {
             h += '<div class="pb-fast-facts" aria-label="Fast facts">';
