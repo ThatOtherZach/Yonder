@@ -196,17 +196,15 @@
           <div class="bp-legs">
             {% for leg in legs %}
             <div class="bp-leg">
-              <div>
-                <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
-                <div class="meta">
-                  {{ leg.depart_date | fmt_date }}
-                  {% if leg.offer and leg.offer.airlines %} · {{ leg.offer.airlines|join(', ') }}{% endif %}
-                </div>
-              </div>
+              <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
               <div class="fare">
                 {% if leg.offer %}
                   {{ leg.offer.display_price_base or leg.offer.display_price or ('~' ~ leg.offer.currency ~ ' ' ~ '%.0f'|format(leg.offer.price)) }}
                 {% else %}—{% endif %}
+              </div>
+              <div class="meta">
+                {{ leg.depart_date | fmt_date }}
+                {% if leg.offer and leg.offer.airlines %} · {{ leg.offer.airlines|join(', ') }}{% endif %}
               </div>
             </div>
             {% endfor %}
@@ -260,6 +258,7 @@
         <div class="place-book"{% if share_vibe %} style="--bp-accent: {{ share_vibe.color }}"{% endif %}>
           <span class="pb-tag">Field note</span>
           <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
           {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
           {% if pb.facts %}
           <div class="pb-fast-facts" aria-label="Fast facts">
@@ -269,7 +268,6 @@
           {% if pb.vibe %}
           <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
           {% endif %}
-          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
           {% if pb.culture or pb.food or pb.caution %}
           <button type="button" class="pb-toggle" aria-expanded="false">
             <span class="pb-toggle-label">Culture, food &amp; heads-up</span>
@@ -301,6 +299,7 @@
         <div class="place-book" style="{% if it.theme_primary %}--bp-accent: {{ it.theme_primary }};{% endif %}{% if not loop.first %}margin-top:0.75rem{% endif %}">
           <span class="pb-tag">Field note · {{ iata }}</span>
           <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
           {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
           {% if pb.facts %}
           <div class="pb-fast-facts" aria-label="Fast facts">
@@ -310,7 +309,6 @@
           {% if pb.vibe %}
           <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
           {% endif %}
-          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
           {% if pb.culture or pb.food or pb.caution %}
           <button type="button" class="pb-toggle" aria-expanded="false">
             <span class="pb-toggle-label">Culture, food &amp; heads-up</span>

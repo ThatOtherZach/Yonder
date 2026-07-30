@@ -778,7 +778,8 @@
     .bp-leg {
       display: grid;
       grid-template-columns: 1fr auto;
-      gap: 0.35rem 0.75rem;
+      grid-template-areas: "codes fare" "meta  fare";
+      gap: 0.12rem 0.75rem;
       padding: 0.5rem 0.65rem;
       border-radius: 10px;
       background: var(--paper);
@@ -786,16 +787,30 @@
       font-size: 0.86rem;
     }
     .bp-leg .codes {
+      grid-area: codes;
       font-family: ui-monospace, Consolas, monospace;
       font-weight: 700;
       color: var(--sky);
       font-size: 0.84rem;
     }
-    .bp-leg .meta { color: var(--muted); font-size: 0.82rem; }
+    .bp-leg .meta { grid-area: meta; color: var(--muted); font-size: 0.82rem; }
     .bp-leg .fare {
+      grid-area: fare;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
       align-self: center;
+    }
+    @media (max-width: 540px) {
+      .bp-leg {
+        grid-template-areas: "codes fare" "meta  meta";
+        gap: 0 0.6rem;
+      }
+      .bp-leg .fare { align-self: start; padding-top: 0.1rem; }
+      .bp-leg .meta {
+        padding-top: 0.3rem;
+        margin-top: 0.2rem;
+        border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+      }
     }
     /* ── Boarding-pass tear-off stub ─────────────────────────────── */
     .bp-stub {

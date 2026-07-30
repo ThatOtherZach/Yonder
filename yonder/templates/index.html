@@ -1337,26 +1337,24 @@
               {% endif %}
               <div class="bp-legs">
                 <div class="bp-leg">
-                  <div>
-                    <div class="codes">{{ place(escape_result.query.origin) }} → {{ place(escape_result.query.destination) }}</div>
-                    <div class="meta">
-                      {{ escape_result.query.depart_date | fmt_date }}
-                      {% if escape_result.query.return_date %} · return {{ escape_result.query.return_date | fmt_date }}{% endif %}
-                      · {{ o.airlines|join(', ') if o.airlines else '—' }}
-                      · {{ o.stops_out }} stop{{ 's' if o.stops_out != 1 else '' }}
-                      {% if o.duration_out_minutes is not none %}
-                        · {{ (o.duration_out_minutes // 60) }}h{{ '%02d'|format(o.duration_out_minutes % 60) }}m
-                      {% endif %}
-                      {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
-                        · <a href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
-                      {% endif %}
-                      {% if o.google_flights_url %}
-                        · <a href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Google ↗</a>
-                      {% endif %}
-                    </div>
-                  </div>
+                  <div class="codes">{{ place(escape_result.query.origin) }} → {{ place(escape_result.query.destination) }}</div>
                   <div class="fare">
                     {{ o.display_price_base or o.display_price or ('~' ~ o.currency ~ ' ' ~ '%.0f'|format(o.price)) }}
+                  </div>
+                  <div class="meta">
+                    {{ escape_result.query.depart_date | fmt_date }}
+                    {% if escape_result.query.return_date %} · return {{ escape_result.query.return_date | fmt_date }}{% endif %}
+                    · {{ o.airlines|join(', ') if o.airlines else '—' }}
+                    · {{ o.stops_out }} stop{{ 's' if o.stops_out != 1 else '' }}
+                    {% if o.duration_out_minutes is not none %}
+                      · {{ (o.duration_out_minutes // 60) }}h{{ '%02d'|format(o.duration_out_minutes % 60) }}m
+                    {% endif %}
+                    {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
+                      · <a href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
+                    {% endif %}
+                    {% if o.google_flights_url %}
+                      · <a href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Google ↗</a>
+                    {% endif %}
                   </div>
                 </div>
               </div>
@@ -1374,6 +1372,7 @@
                   {% if escape_place_book %}
                   <span class="pb-tag">Field note</span>
                   <h3 style="font-size:1.15rem">{{ escape_place_book.title }}</h3>
+                  {% if escape_place_book.era_note %}<p class="pb-closer">{{ escape_place_book.era_note }}</p>{% endif %}
                   {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
                   {% if escape_place_book.facts %}
                   <div class="pb-fast-facts" aria-label="Fast facts">
@@ -1383,7 +1382,6 @@
                   {% if escape_place_book.vibe %}
                   <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ escape_place_book.vibe | title }}</div>
                   {% endif %}
-                  {% if escape_place_book.era_note %}<p class="pb-closer">{{ escape_place_book.era_note }}</p>{% endif %}
                   {% else %}
                   <span class="pb-tag">Field note</span>
                   <p class="pb-loading-msg">Writing field note…</p>
@@ -1506,28 +1504,26 @@
               <div class="bp-legs">
                 {% for leg in it.legs %}
                 <div class="bp-leg">
-                  <div>
-                    <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
-                    <div class="meta">
-                      {{ leg.depart_date | fmt_date }}
-                      {% if leg.offer %}
-                        · {{ leg.offer.airlines|join(', ') or '—' }}
-                        · {{ leg.offer.stops_out }} stop{{ 's' if leg.offer.stops_out != 1 else '' }}
-                      {% elif leg.error %}
-                        · {{ leg.error[:64] }}
-                      {% endif %}
-                      {% if leg.offer and leg.offer.deep_link and 'kayak.com' not in leg.offer.deep_link %}
-                        · <a href="{{ leg.offer.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(leg.offer.airlines) }} ↗</a>
-                      {% endif %}
-                      {% if leg.google_flights_url %}
-                        · <a href="{{ leg.google_flights_url }}" target="_blank" rel="noopener">Google ↗</a>
-                      {% endif %}
-                    </div>
-                  </div>
+                  <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
                   <div class="fare">
                     {% if leg.offer %}
                       {{ leg.offer.display_price_base or leg.offer.display_price or ('~' ~ leg.offer.currency ~ ' ' ~ '%.0f'|format(leg.offer.price)) }}
                     {% else %}—{% endif %}
+                  </div>
+                  <div class="meta">
+                    {{ leg.depart_date | fmt_date }}
+                    {% if leg.offer %}
+                      · {{ leg.offer.airlines|join(', ') or '—' }}
+                      · {{ leg.offer.stops_out }} stop{{ 's' if leg.offer.stops_out != 1 else '' }}
+                    {% elif leg.error %}
+                      · {{ leg.error[:64] }}
+                    {% endif %}
+                    {% if leg.offer and leg.offer.deep_link and 'kayak.com' not in leg.offer.deep_link %}
+                      · <a href="{{ leg.offer.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(leg.offer.airlines) }} ↗</a>
+                    {% endif %}
+                    {% if leg.google_flights_url %}
+                      · <a href="{{ leg.google_flights_url }}" target="_blank" rel="noopener">Google ↗</a>
+                    {% endif %}
                   </div>
                 </div>
                 {% endfor %}
@@ -1553,6 +1549,7 @@
                     {% if pb %}
                     <span class="pb-tag">Field note</span>
                     <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+                    {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
                     {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
                     {% if pb.facts %}
                     <div class="pb-fast-facts" aria-label="Fast facts">
@@ -1562,7 +1559,6 @@
                     {% if pb.vibe %}
                     <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
                     {% endif %}
-                    {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
                     {% elif it.stop_iata %}
                     <span class="pb-tag">Field note</span>
                     <p class="pb-loading-msg">Writing field note…</p>
@@ -1632,6 +1628,7 @@
               </div>
             </div>
             <div class="bp-stub">
+              <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }} Day Stop{% else %}multi-leg{% endif %}</div>
               <div>
                 <div class="bp-stub-label">Approx fare</div>
                 <div class="bp-stub-price price-with-sign">
@@ -1650,7 +1647,6 @@
                   <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">👎</button>
                 </div>
               </div>
-              <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }} Day Stop{% else %}multi-leg{% endif %}</div>
               {% set share = share_detour(request, it, detour_trip_meta) %}
               {% if share and share.qr_src %}
               <div class="bp-stub-qr">
@@ -2627,6 +2623,8 @@
             ">" +
             escapeHtml(brief.title || "Somewhere") +
             "</h3>";
+          if (brief.era_note)
+            h += '<p class="pb-closer">' + escapeHtml(brief.era_note) + "</p>";
           if (brief.subtitle)
             h += '<p class="pb-sub">' + escapeHtml(brief.subtitle) + "</p>";
           var facts = brief.facts || [];
@@ -2643,8 +2641,6 @@
               escapeHtml(brief.vibe) +
               "</div>";
           }
-          if (brief.era_note)
-            h += '<p class="pb-closer">' + escapeHtml(brief.era_note) + "</p>";
         } else if (hasColData(col)) {
           h += '<span class="pb-tag">On the ground</span>';
           h += '<h3 style="font-size:1.15rem">Stop details</h3>';

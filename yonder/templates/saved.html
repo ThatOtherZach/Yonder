@@ -117,22 +117,20 @@
             <div class="bp-legs">
               {% for leg in it.legs %}
               <div class="bp-leg">
-                <div>
-                  <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
-                  <div class="meta">
-                    {{ leg.depart_date | fmt_date }}
-                    {% if leg.offer %}
-                      · {{ leg.offer.airlines|join(', ') or '—' }}
-                      · {{ leg.offer.stops_out }} stop{{ 's' if leg.offer.stops_out != 1 else '' }}
-                    {% elif leg.error %}
-                      · {{ leg.error[:64] }}
-                    {% endif %}
-                  </div>
-                </div>
+                <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
                 <div class="fare">
                   {% if leg.offer %}
                     {{ leg.offer.display_price_base or leg.offer.display_price or ('~' ~ leg.offer.currency ~ ' ' ~ '%.0f'|format(leg.offer.price)) }}
                   {% else %}—{% endif %}
+                </div>
+                <div class="meta">
+                  {{ leg.depart_date | fmt_date }}
+                  {% if leg.offer %}
+                    · {{ leg.offer.airlines|join(', ') or '—' }}
+                    · {{ leg.offer.stops_out }} stop{{ 's' if leg.offer.stops_out != 1 else '' }}
+                  {% elif leg.error %}
+                    · {{ leg.error[:64] }}
+                  {% endif %}
                 </div>
               </div>
               {% endfor %}
