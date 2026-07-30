@@ -534,6 +534,66 @@
       </form>
     </div>
 
+    <div class="card" id="ai-spend-card">
+      <h2>AI spend history</h2>
+      <p class="sub">Token usage logged to <code>data/ai_usage.db</code> on every Grok call.</p>
+      <div id="ai-spend-body">
+        <p class="muted" style="font-size:0.88rem">Loading…</p>
+      </div>
+    </div>
+    <script>
+      (function () {
+        function fmtTok(n) {
+          if (!n) return "0 tok";
+          return n >= 1000 ? "~" + (n / 1000).toFixed(1) + "k tok" : n + " tok";
+        }
+        function fmtCost(c) {
+          return "$" + (c || 0).toFixed(4);
+        }
+        function fmtCalls(n) {
+          if (!n) return "0 searches";
+          return n + " search" + (n === 1 ? "" : "es");
+        }
+        function renderRow(label, d) {
+          if (!d || !d.calls) return '<tr><td style="padding:0.4rem 0.5rem;color:var(--muted)">' + label + '</td><td colspan="3" class="muted" style="padding:0.4rem 0.5rem">no data yet</td></tr>';
+          return '<tr style="border-top:1px solid var(--border)">'
+            + '<td style="padding:0.45rem 0.5rem">' + label + '</td>'
+            + '<td style="padding:0.45rem 0.5rem">' + fmtTok(d.total_tokens) + '</td>'
+            + '<td style="padding:0.45rem 0.5rem">' + fmtCost(d.est_cost_usd) + '</td>'
+            + '<td style="padding:0.45rem 0.5rem;color:var(--muted)">' + fmtCalls(d.calls) + '</td>'
+            + '</tr>';
+        }
+        fetch("/api/usage/summary")
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            var body = document.getElementById("ai-spend-body");
+            if (!body) return;
+            var any = (j.all_time && j.all_time.calls);
+            if (!any) {
+              body.innerHTML = '<p class="muted" style="font-size:0.88rem">No AI usage recorded yet — run a Grok search first.</p>';
+              return;
+            }
+            body.innerHTML =
+              '<table style="width:100%;border-collapse:collapse;font-size:0.88rem">'
+              + '<thead><tr style="color:var(--muted);text-align:left">'
+              + '<th style="padding:0.4rem 0.5rem">Window</th>'
+              + '<th style="padding:0.4rem 0.5rem">Tokens</th>'
+              + '<th style="padding:0.4rem 0.5rem">Est. cost</th>'
+              + '<th style="padding:0.4rem 0.5rem">Calls</th>'
+              + '</tr></thead><tbody>'
+              + renderRow("Last 7 days", j.last_7d)
+              + renderRow("Last 30 days", j.last_30d)
+              + renderRow("All time", j.all_time)
+              + '</tbody></table>'
+              + '<p class="muted" style="font-size:0.78rem;margin-top:0.5rem">Costs are estimates based on published xAI pricing.</p>';
+          })
+          .catch(function () {
+            var body = document.getElementById("ai-spend-body");
+            if (body) body.innerHTML = '<p class="muted" style="font-size:0.88rem">Could not load usage data.</p>';
+          });
+      })();
+    </script>
+
     <div class="card">
       <h2>Quick start</h2>
       <p class="sub" style="margin-bottom:0.5rem">Fastest path to real prices:</p>

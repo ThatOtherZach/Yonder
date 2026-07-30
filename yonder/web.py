@@ -2574,6 +2574,18 @@ async def api_travel_map(request: Request) -> JSONResponse:
     )
 
 
+@app.get("/api/usage/summary")
+async def usage_summary() -> JSONResponse:
+    """Return AI token usage totals for last 7d, last 30d, and all-time."""
+    from yonder.ai_usage import summarise as _summarise
+
+    return JSONResponse({
+        "last_7d":  _summarise(7),
+        "last_30d": _summarise(30),
+        "all_time": _summarise(None),
+    })
+
+
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, saved: str | None = None, err: str | None = None) -> HTMLResponse:
     flash = None

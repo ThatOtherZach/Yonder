@@ -111,3 +111,54 @@ async def log_usage(route: str, usage: dict) -> None:
     """Fire-and-forget async wrapper — never blocks the response."""
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _log_sync, route, usage)
+
+
+def summarise(days: int | None = None) -> dict:
+    """Return aggregated usage totals for the given window (or all-time if days is None).
+
+    Returns a dict with keys:
+        total_tokens, prompt_tokens, completion_tokens, est_cost_usd, calls
+    Returns an empty dict (not an error) when the DB doesn't exist yet.
+    """
+    if not DB_PATH.exists():
+        return {}
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        if days is not None:
+            row = conn.execute(
+                """
+                SELECT
+                    COALESCE(SUM(total_tokens), 0),
+                    COALESCE(SUM(prompt_tokens), 0),
+                    COALESCE(SUM(completion_tokens), 0),
+                    COALESCE(SUM(est_cost_usd), 0.0),
+                    COALESCE(SUM(calls), 0)
+                FROM ai_usage
+                WHERE ts >= datetime('now', ?)
+                """,
+                (f"-{days} days",),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT
+                    COALESCE(SUM(total_tokens), 0),
+                    COALESCE(SUM(prompt_tokens), 0),
+                    COALESCE(SUM(completion_tokens), 0),
+                    COALESCE(SUM(est_cost_usd), 0.0),
+                    COALESCE(SUM(calls), 0)
+                FROM ai_usage
+                """,
+            ).fetchone()
+        conn.close()
+        total_tokens, prompt_tokens, completion_tokens, est_cost_usd, calls = row
+        return {
+            "total_tokens": total_tokens,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "est_cost_usd": round(float(est_cost_usd), 6),
+            "calls": calls,
+        }
+    except Exception as exc:  # noqa: BLE001
+        log.warning("ai_usage summarise failed: %s", exc)
+        return {}
