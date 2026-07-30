@@ -404,7 +404,7 @@
       <a class="btn secondary" href="{{ it.kayak_url }}" target="_blank" rel="noopener">Kayak (leg 1) ↗</a>
       {% endif %}
       {% if mode == 'saved' %}
-      <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form">
+      <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form" style="margin-left: auto;">
         <button type="button" class="danger js-remove-confirm">Remove</button>
       </form>
       {% endif %}
