@@ -440,13 +440,18 @@ class GrokClient:
             '"stay_days":3,"why":"...","vibe_tags":["city","cheap"]}]'
             "}\n"
             "trip_kind rules (IMPORTANT):\n"
-            "- getaway: user wants OUT OF a home base for a few days with NO named second city "
+            "- getaway: ONLY when the user names NO second city anywhere in the text — they just "
+            "want OUT OF a home base for a few days "
             "(e.g. 'get out of Vancouver', 'somewhere I haven't been', 'cheap escape', "
             "'not really anywhere specific', 'low hassle different'). "
             "Set origin AND destination to the SAME home IATA "
             "(round-trip home→X→home). candidates are DESTINATIONS (the X places), not mid-route stops.\n"
-            "- detour: user named two cities (A to B) and wants multi-day stopovers en route. "
-            "origin≠destination. candidates are mid-route stops.\n"
+            "- detour: user names TWO different cities in ANY phrasing — 'A to B', or a departure "
+            "city ('leave X', 'depart X', 'fly out of X') paired with an arrival city "
+            "('end in Y', 'be in Y', 'arrive in Y', 'land in Y', 'get to Y'). "
+            "A named arrival city ALWAYS forces detour: origin=departure city IATA, "
+            "destination=arrival city IATA, origin≠destination. candidates are mid-route stops.\n"
+            "- NEVER return origin==destination when two different cities are named.\n"
             "PASSPORT MAP (ground truth — always apply):\n"
             "- NEVER propose candidate countries in avoid_countries (ISO2)\n"
             "- For getaway / 'not somewhere I've been' / new places: NEVER propose visited_countries (ISO2)\n"
@@ -988,6 +993,30 @@ def _guess_home_iata(prompt: str) -> str | None:
     for city, iata in _HOME_CITY_IATA:
         if re.search(rf"\b{re.escape(city)}\b", p):
             return iata
+    return None
+
+
+def detect_route_iatas(prompt: str) -> tuple[str, str] | None:
+    """Map a clearly-named two-city route in the prompt to (origin, destination)
+    IATA codes using the cheap city hints. None when unresolvable or same city."""
+    from yonder.intent import extract_route_cities  # lazy: intent imports grok
+
+    route = extract_route_cities(prompt)
+    if not route:
+        return None
+
+    def _to_iata(token: str) -> str | None:
+        t = token.strip().lower()
+        for city, iata in _HOME_CITY_IATA:
+            if t == city or t.startswith(city + " ") or city.startswith(t + " "):
+                return iata
+        if len(t) == 3 and t.isalpha():
+            return t.upper()
+        return None
+
+    a, b = _to_iata(route[0]), _to_iata(route[1])
+    if a and b and a != b:
+        return a, b
     return None
 
 

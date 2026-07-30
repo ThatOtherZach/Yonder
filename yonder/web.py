@@ -33,7 +33,7 @@ from yonder.countries import (
 )
 from yonder.ai_usage import fmt_usage, log_usage as _log_ai_usage, merge_usage
 from yonder.engine import search_flights
-from yonder.grok import GrokClient
+from yonder.grok import GrokClient, detect_route_iatas
 from yonder.history import count_samples, recent_samples, route_stats
 from yonder.last_search import (
     hydrate_detour,
@@ -1215,7 +1215,16 @@ async def explore_run(request: Request) -> HTMLResponse:
                     errors.append("Detour invent finished after Skip — packaging what we can")
                 trip_kind = (req.trip_kind or "detour").lower()
                 if req.origin == req.destination:
-                    trip_kind = "getaway"
+                    # Prompt clearly names two different cities → correct the
+                    # parse instead of silently forcing a getaway
+                    route = detect_route_iatas(prompt)
+                    if route:
+                        req = req.model_copy(
+                            update={"origin": route[0], "destination": route[1]}
+                        )
+                        trip_kind = "detour"
+                    else:
+                        trip_kind = "getaway"
                 req = req.model_copy(
                     update={
                         "depart_date": date.fromisoformat(depart),
@@ -1685,7 +1694,16 @@ async def adventure_run(request: Request) -> HTMLResponse:
                     # Form dates / knobs win; O/D stay from Grok description
                     trip_kind = (req.trip_kind or "detour").lower()
                     if req.origin == req.destination:
-                        trip_kind = "getaway"
+                        # Prompt clearly names two different cities → correct
+                        # the parse instead of silently forcing a getaway
+                        route = detect_route_iatas(prompt)
+                        if route:
+                            req = req.model_copy(
+                                update={"origin": route[0], "destination": route[1]}
+                            )
+                            trip_kind = "detour"
+                        else:
+                            trip_kind = "getaway"
                     req = req.model_copy(
                         update={
                             "depart_date": date.fromisoformat(depart),
