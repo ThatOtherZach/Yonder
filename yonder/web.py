@@ -1146,9 +1146,16 @@ async def explore_run(request: Request) -> HTMLResponse:
 
         def _local_getaway_fallback(reason: str = "") -> tuple:
             home = origin_override if origin_pinned else (_guess_home_iata(prompt) or home_iata)
+            # Honor a clearly-named A→B route even without Grok: the traveler
+            # said where they want to end up, so plan origin → stop → dest,
+            # not a round trip back home.
+            _route = detect_route_iatas(prompt)
+            _dest = _route[1] if _route else home
+            if _route and not origin_pinned:
+                home = _route[0]
             local_req = AdventureRequest(
                 origin=home,
-                destination=home,
+                destination=_dest,
                 depart_date=date.fromisoformat(depart),
                 arrive_by=None,
                 adults=1,
@@ -1161,7 +1168,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 prompt=prompt,
                 avoid_countries=avoid,
                 visited_countries=visited,
-                trip_kind="getaway",
+                trip_kind="detour" if _route else "getaway",
                 include_direct=False,
             )
             local_ideas = seed_ideas(
@@ -1661,9 +1668,14 @@ async def adventure_run(request: Request) -> HTMLResponse:
                 _guess_home_iata(prompt)
                 or settings.resolve_home_iata()
             )
+            # Honor a clearly-named A→B route even without Grok
+            _route = detect_route_iatas(prompt)
+            _dest = _route[1] if _route else home
+            if _route:
+                home = _route[0]
             local_req = AdventureRequest(
                 origin=home,
-                destination=home,
+                destination=_dest,
                 depart_date=date.fromisoformat(depart),
                 arrive_by=None,
                 adults=1,
@@ -1676,7 +1688,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
                 prompt=prompt,
                 avoid_countries=avoid,
                 visited_countries=visited,
-                trip_kind="getaway",
+                trip_kind="detour" if _route else "getaway",
                 include_direct=False,
             )
             local_ideas = seed_ideas(local_req)
