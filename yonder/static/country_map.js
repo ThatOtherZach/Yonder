@@ -22,6 +22,36 @@
   var ISO_URL = "/static/iso_numeric_to_a2.json";
   var SAVE_URL = "/api/travel-map";
 
+  /**
+   * Two-click confirm for the Reset Map button.
+   * First click → "Are you sure? 😮"; second click → clearMap().
+   * Clicking anywhere else resets the button back to "Reset Map".
+   */
+  function _bindClearConfirm(btn, mapInstance) {
+    var originalLabel = btn.textContent;
+    var pending = false;
+
+    function resetBtn() {
+      pending = false;
+      btn.textContent = originalLabel;
+    }
+
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!pending) {
+        pending = true;
+        btn.textContent = "Are you sure? 😮";
+        // clicking anywhere else cancels
+        document.addEventListener("click", resetBtn, { once: true, capture: true });
+      } else {
+        document.removeEventListener("click", resetBtn, { capture: true });
+        resetBtn();
+        mapInstance.clearMap();
+      }
+    });
+  }
+
   function parseList(s) {
     if (Array.isArray(s)) {
       return s
@@ -168,11 +198,7 @@
     this.drawerToggle = meta.querySelector(".ymap-drawer-toggle");
     if (this.clearBtn) {
       var selfClear = this;
-      this.clearBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        selfClear.clearMap();
-      });
+      _bindClearConfirm(this.clearBtn, selfClear);
     }
 
     var drawer = el("div", "ymap-drawer");
@@ -263,10 +289,7 @@
     this.chromeStatus = null;
     if (this.clearBtn) {
       var selfFullClear = this;
-      this.clearBtn.addEventListener("click", function (e) {
-        e.preventDefault();
-        selfFullClear.clearMap();
-      });
+      _bindClearConfirm(this.clearBtn, selfFullClear);
     }
 
     var legend = el("div", "ymap-legend");
