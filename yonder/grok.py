@@ -1006,11 +1006,17 @@ def detect_route_iatas(prompt: str) -> tuple[str, str] | None:
         return None
 
     def _to_iata(token: str) -> str | None:
+        from yonder.airports import iata_for_city, is_known_iata
+
         t = token.strip().lower()
         for city, iata in _HOME_CITY_IATA:
             if t == city or t.startswith(city + " ") or city.startswith(t + " "):
                 return iata
-        if len(t) == 3 and t.isalpha():
+        # Broad offline dataset for cities beyond the hint list
+        resolved = iata_for_city(t)
+        if resolved:
+            return resolved
+        if len(t) == 3 and t.isalpha() and is_known_iata(t):
             return t.upper()
         return None
 
