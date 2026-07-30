@@ -564,7 +564,6 @@
       var vibe = currentVibe();
       var show = vibe.color;
       hueCursor.style.left = h * 100 + "%";
-      hueCursor.style.backgroundColor = show;
       nameOut.textContent = vibe.label;
       nameOut.style.color = "#ffffff";
       nameSwatch.textContent = vibe.emoji || "";
