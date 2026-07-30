@@ -53,6 +53,24 @@ def _connect() -> sqlite3.Connection:
         "CREATE INDEX IF NOT EXISTS idx_rf_created"
         " ON result_feedback(created_at DESC)"
     )
+    # One up and one down vote max per (session, vibe, dest) — enforced at the
+    # DB level so concurrent requests can't race past an application check.
+    # Migration: drop any historical duplicates first (keep the earliest vote).
+    conn.execute(
+        """
+        DELETE FROM result_feedback WHERE id NOT IN (
+            SELECT id FROM (
+                SELECT id, MIN(created_at)
+                FROM result_feedback
+                GROUP BY IFNULL(session_hash, ''), vibe, dest_iata, direction
+            )
+        )
+        """
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_rf_vote ON result_feedback"
+        "(IFNULL(session_hash, ''), vibe, dest_iata, direction)"
+    )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS vibe_questions (
@@ -95,7 +113,13 @@ def record_feedback(
     query: str | None = None,
     session_hash: str | None = None,
 ) -> str | None:
-    """Append one vote to result_feedback. Returns the row id (or None in MOCK mode)."""
+    """Append one vote to result_feedback. Returns the row id.
+
+    Returns "" (empty string) when this (session_hash, vibe, dest_iata,
+    direction) combo already voted — one up and one down vote max per session
+    per destination, so vote-stuffing can't skew the archive.
+    Returns None in MOCK mode, on error, or for an invalid direction.
+    """
     if _mock_mode():
         return None
     direction = (direction or "").strip().lower()
@@ -104,9 +128,11 @@ def record_feedback(
     row_id = uuid.uuid4().hex
     try:
         with _connect() as conn:
-            conn.execute(
+            # Dedup enforced by the ux_rf_vote unique index: INSERT OR IGNORE
+            # is atomic, so concurrent duplicate votes can't both land.
+            cur = conn.execute(
                 """
-                INSERT INTO result_feedback (id, session_hash, vibe, dest_iata, query, direction, created_at)
+                INSERT OR IGNORE INTO result_feedback (id, session_hash, vibe, dest_iata, query, direction, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -120,6 +146,8 @@ def record_feedback(
                 ),
             )
             conn.commit()
+            if cur.rowcount == 0:
+                return ""
     except Exception:
         return None
     return row_id

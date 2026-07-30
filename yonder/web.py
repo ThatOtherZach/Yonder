@@ -2396,10 +2396,25 @@ async def api_result_feedback(request: Request) -> JSONResponse:
     vibe = str(body.get("vibe") or "").strip().lower()[:40] or None
     dest = str(body.get("dest_iata") or "").strip().upper()[:3] or None
     query = str(body.get("query") or "")[:400]
-    sess = str(body.get("session_hash") or "")[:32] or None
 
-    # Write to history archive
-    await asyncio.get_running_loop().run_in_executor(
+    # Server-trusted session identity for vote dedup: prefer the yv_sess
+    # cookie (same session id the /saved page uses); fall back to a hash of
+    # client IP + user agent so anonymous traffic still gets a stable-ish
+    # per-client key. The client-supplied session_hash is only a last resort.
+    sess = (request.cookies.get("yv_sess") or "").strip()[:32]
+    need_cookie = not sess
+    if not sess:
+        ip = (request.client.host if request.client else "") or ""
+        ua = request.headers.get("user-agent", "")
+        if ip or ua:
+            sess = hashlib.sha256(f"{ip}|{ua}".encode()).hexdigest()[:32]
+    if not sess:
+        sess = str(body.get("session_hash") or "")[:32]
+    sess = sess or None
+
+    # Write to history archive; "" means this session already cast this vote —
+    # silently ignore repeats so vote-stuffing can't skew the signal store.
+    row_id = await asyncio.get_running_loop().run_in_executor(
         None,
         lambda: record_feedback(
             direction=direction,
@@ -2409,6 +2424,16 @@ async def api_result_feedback(request: Request) -> JSONResponse:
             session_hash=sess,
         ),
     )
+    def _resp(payload: dict) -> JSONResponse:
+        resp = JSONResponse(payload)
+        if need_cookie and sess:
+            # Pin the derived session id so this client's future votes dedup
+            # against the same key (matches the /saved yv_sess cookie).
+            resp.set_cookie("yv_sess", sess, httponly=True, samesite="lax")
+        return resp
+
+    if row_id == "":
+        return _resp({"ok": True, "direction": direction, "deduped": True})
 
     if direction == "up" and dest:
         # Reinforce the vibe+destination match in the signal store
@@ -2422,7 +2447,7 @@ async def api_result_feedback(request: Request) -> JSONResponse:
                 session_hash=sess,
             ),
         )
-        return JSONResponse({"ok": True, "direction": "up"})
+        return _resp({"ok": True, "direction": "up"})
 
     if direction == "down":
         # Record rejection signal in the vibe affinity store (strength=0 dilutes score)
@@ -2469,9 +2494,9 @@ async def api_result_feedback(request: Request) -> JSONResponse:
 
             asyncio.create_task(_generate_answer(qid, vibe or "", query))
 
-        return JSONResponse({"ok": True, "direction": "down", "question_id": qid or None})
+        return _resp({"ok": True, "direction": "down", "question_id": qid or None})
 
-    return JSONResponse({"ok": True})
+    return _resp({"ok": True})
 
 
 @app.get("/api/vibe-suggestions")
