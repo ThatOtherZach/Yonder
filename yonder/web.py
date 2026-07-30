@@ -150,6 +150,55 @@ def _dest_theme(destination: str) -> dict:
         t["flag_img"] = flag_img_url(t["country"], width=80) or ""
     return t
 
+def _mark_missing_fares_result(result, *, forced: bool):
+    """Flag demo offers as fare-missing when mock data was forced (no providers).
+
+    Only applies when the user did NOT ask for demo data — the route stays,
+    but the UI shows a per-leg "Check Fares" button instead of a fake price.
+    """
+    if not forced or result is None:
+        return result
+    try:
+        offers = [
+            o.model_copy(update={"fare_missing": True})
+            if (o.price_kind or "") == "mock"
+            else o
+            for o in (result.offers or [])
+        ]
+        return result.model_copy(update={"offers": offers})
+    except Exception:
+        return result
+
+
+def _mark_missing_fares_adventure(result, *, forced: bool):
+    """Same as _mark_missing_fares_result but for Detour itineraries' legs."""
+    if not forced or result is None:
+        return result
+    try:
+        its = []
+        for it in result.itineraries or []:
+            legs = []
+            changed = False
+            for leg in it.legs or []:
+                if leg.offer is not None and (leg.offer.price_kind or "") == "mock":
+                    legs.append(
+                        leg.model_copy(
+                            update={
+                                "offer": leg.offer.model_copy(
+                                    update={"fare_missing": True}
+                                )
+                            }
+                        )
+                    )
+                    changed = True
+                else:
+                    legs.append(leg)
+            its.append(it.model_copy(update={"legs": legs}) if changed else it)
+        return result.model_copy(update={"itineraries": its})
+    except Exception:
+        return result
+
+
 app = FastAPI(title="Yonder", description="Personal travel planner — flights, adventures, itineraries")
 _PKG = Path(__file__).parent
 
@@ -441,6 +490,9 @@ async def search_page(
         )
         include_mock = mock or not settings.configured_providers()
         result = await search_flights(query, settings=settings, include_mock=include_mock)
+        result = _mark_missing_fares_result(
+            result, forced=not mock and not settings.configured_providers()
+        )
 
         return templates.TemplateResponse(
             request,
@@ -503,10 +555,12 @@ async def ask_grok(request: Request) -> HTMLResponse:
         vibe = "adventure"
 
     # Test Data (mock) only when TESTING=true; always allow mock if no live keys
+    mock_requested = mock and settings.testing
     if not settings.testing:
         mock = False
     if not settings.configured_providers():
         mock = True
+    mock_forced = mock and not mock_requested
 
     empty_form = {
         "origin": "YVR",
@@ -597,6 +651,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
 
         # Soft aim only — no hard kill (Skip is on the unified /explore path)
         trip, query, result = await _escape_run()
+        result = _mark_missing_fares_result(result, forced=mock_forced)
 
         analysis = None
         # Place notes: cache only (no live Grok on the hot path)
@@ -732,10 +787,12 @@ async def explore_run(request: Request) -> HTMLResponse:
     else:
         force = None
     mock = str(form_data.get("mock") or "") in ("true", "on", "1")
+    mock_requested = mock and settings.testing
     if not settings.testing:
         mock = False
     if not settings.configured_providers():
         mock = True
+    mock_forced = mock and not mock_requested
 
     currency = (settings.default_currency or "USD").upper()
     if not currency.isalpha() or len(currency) != 3:
@@ -1044,6 +1101,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 timeout=fare_timeout,
                 max_providers=1,
             )
+            result = _mark_missing_fares_result(result, forced=mock_forced)
             _route_usage.append(grok.accumulated_usage)
         # When mixing, keep up to 3 cheapest; pure escape stays 1 from engine
         if decision.shape == "mix" and result.offers:
@@ -1357,6 +1415,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             cancel_id=search_id or None,
             exclude_iatas=exclude_iatas,
         )
+        result = _mark_missing_fares_adventure(result, forced=mock_forced)
         # Refresh found nothing new → restore first result set
         if is_refresh and not (result.itineraries or []):
             first_snap = load_first("detour")
@@ -2527,6 +2586,109 @@ async def api_price_refresh(request: Request) -> JSONResponse:
             "total_price": refreshed.total_price,
             "display_price": refreshed.display_price_base or refreshed.display_price,
             "currency": refreshed.currency,
+        }
+    )
+
+
+@app.post("/api/leg-fare")
+async def api_leg_fare(request: Request) -> JSONResponse:
+    """On-demand fare check for a single leg (Check Fares button).
+
+    Returns the cheapest real (non-mock) offer for origin→destination on the
+    given date, or a clear error when no live fare can be found.
+    """
+    settings = reload_settings()
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "invalid JSON"}, status_code=400)
+
+    origin = str(body.get("origin") or "").strip().upper()[:3]
+    destination = str(body.get("destination") or "").strip().upper()[:3]
+    depart = str(body.get("depart") or "").strip()[:10]
+    return_raw = str(body.get("return_date") or "").strip()[:10]
+    currency = str(body.get("currency") or settings.default_currency or "USD").strip().upper()[:3]
+    if not currency.isalpha() or len(currency) != 3:
+        currency = "USD"
+    try:
+        adults = max(1, min(9, int(body.get("adults") or 1)))
+    except (TypeError, ValueError):
+        adults = 1
+    cabin_raw = str(body.get("cabin") or "economy").strip().lower()
+    try:
+        cabin = CabinClass(cabin_raw)
+    except ValueError:
+        cabin = CabinClass.ECONOMY
+
+    if len(origin) != 3 or not origin.isalpha() or len(destination) != 3 or not destination.isalpha():
+        return JSONResponse({"ok": False, "error": "invalid route"}, status_code=400)
+    try:
+        depart_date = date.fromisoformat(depart)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": "invalid depart date"}, status_code=400)
+    return_date = None
+    if return_raw:
+        try:
+            return_date = date.fromisoformat(return_raw)
+        except ValueError:
+            return_date = None
+
+    if not settings.configured_providers():
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "No fare providers configured — add a provider key in Settings.",
+            },
+            status_code=503,
+        )
+
+    query = SearchQuery(
+        origin=origin,
+        destination=destination,
+        depart_date=depart_date,
+        return_date=return_date,
+        adults=adults,
+        cabin=cabin,
+        currency=currency,
+        max_results=5,
+        nonstop_only=False,
+    )
+    try:
+        result = await search_flights(
+            query,
+            settings=settings,
+            include_mock=False,
+            timeout=20.0,
+            max_providers=2,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)[:160]}, status_code=502)
+
+    offers = [
+        o
+        for o in (result.offers or [])
+        if (o.price_kind or "") != "mock" and o.price is not None
+    ]
+    if not offers:
+        return JSONResponse(
+            {"ok": False, "error": "No fares found for this leg right now — try again later."},
+            status_code=502,
+        )
+    best = min(offers, key=lambda o: o.price)
+    return JSONResponse(
+        {
+            "ok": True,
+            "price": best.price,
+            "currency": best.currency,
+            "display_price": best.display_price_base
+            or best.display_price
+            or f"~{best.currency} {best.price:.0f}",
+            "airlines": best.airlines,
+            "stops_out": best.stops_out,
+            "provider": best.provider,
+            "offer": best.model_dump(mode="json"),
         }
     )
 

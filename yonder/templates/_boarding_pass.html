@@ -15,6 +15,7 @@
                      esc_text='', ask='', share_vibe=none) %}
 {% set esc_theme = esc_theme or {} %}
 {% set fare = o.display_price_base or o.display_price or (('~' ~ (o.currency or '') ~ ' ' ~ '%.0f'|format(o.price)) if o.price is defined and o.price is not none else '—') %}
+{% set fare_missing = (o.fare_missing or false) or (o.price is not defined) or (o.price is none) %}
 <article
   class="boarding-pass is-adventure"
   data-dest-iata="{{ query.destination }}"
@@ -46,7 +47,20 @@
       <div class="bp-leg">
         <div class="codes">{{ place(query.origin) }} → {{ place(query.destination) }}</div>
         <div class="fare">
-          {{ fare }}
+          {% if fare_missing %}
+            {% if mode == 'share' %}—{% else %}
+            <span class="cf-slot"
+                  data-cf-origin="{{ query.origin }}"
+                  data-cf-dest="{{ query.destination }}"
+                  data-cf-depart="{{ query.depart_date }}"
+                  data-cf-return="{{ query.return_date or '' }}"
+                  data-cf-adults="{{ query.adults or 1 }}"
+                  data-cf-currency="{{ query.currency or '' }}">
+              <button type="button" class="btn-check-fares">Check Fares</button>
+              <span class="cf-error" hidden></span>
+            </span>
+            {% endif %}
+          {% else %}{{ fare }}{% endif %}
         </div>
         <div class="meta">
           {{ query.depart_date | fmt_date }}
@@ -127,7 +141,11 @@
     <div>
       <div class="bp-stub-label">Approx fare</div>
       <div class="bp-stub-price price-with-sign">
+        {% if fare_missing %}
+        <span class="price-amt cf-total" data-cf-base="0" style="font-size:1rem">—</span>
+        {% else %}
         <span class="price-amt">{{ fare }}</span>{% if o.price_glyph %}<span class="price-sign {{ o.price_tone or 'neutral' }} sign">{{ o.price_glyph }}</span>{% endif %}
+        {% endif %}
       </div>
       {% if mode == 'explore' %}
       <div class="bp-thumbs"
@@ -167,6 +185,14 @@
                      det_vibe='', det_text='', share=none, pb=none,
                      s=none, share_vibe=none, fallback_title='') %}
 {% set accent = ((s.theme_primary if s else none) or it.theme_primary) %}
+{% set cf = namespace(pending=false, base=0.0) %}
+{% for leg in (it.legs or []) %}
+  {% if (not leg.offer) or (leg.offer.fare_missing or false) %}
+    {% set cf.pending = true %}
+  {% elif leg.offer.price is defined and leg.offer.price is not none %}
+    {% set cf.base = cf.base + leg.offer.price %}
+  {% endif %}
+{% endfor %}
 <article class="boarding-pass is-adventure" data-stop-iata="{{ it.stop_iata or '' }}"{% if accent %} style="--bp-accent: {{ accent }}; border-color: color-mix(in srgb, {{ accent }} 35%, var(--line));"{% endif %}>
   <div class="bp-main">
     <div class="bp-top">
@@ -223,15 +249,28 @@
     <div class="bp-legs">
       {% for leg in it.legs %}
       <div class="bp-leg">
+        {% set leg_missing = (not leg.offer) or (leg.offer.fare_missing or false) %}
         <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
         <div class="fare">
-          {% if leg.offer %}
+          {% if leg_missing %}
+            {% if mode == 'share' %}—{% else %}
+            <span class="cf-slot"
+                  data-cf-origin="{{ leg.from_iata }}"
+                  data-cf-dest="{{ leg.to_iata }}"
+                  data-cf-depart="{{ leg.depart_date }}"
+                  data-cf-adults="{{ (s.adults if s and s.adults else none) or 1 }}"
+                  data-cf-currency="{{ it.currency or (s.currency if s else '') or '' }}">
+              <button type="button" class="btn-check-fares">Check Fares</button>
+              <span class="cf-error" hidden></span>
+            </span>
+            {% endif %}
+          {% elif leg.offer %}
             {{ leg.offer.display_price_base or leg.offer.display_price or (('~' ~ (leg.offer.currency or '') ~ ' ' ~ '%.0f'|format(leg.offer.price)) if leg.offer.price is defined and leg.offer.price is not none else '—') }}
           {% else %}—{% endif %}
         </div>
         <div class="meta">
           {{ leg.depart_date | fmt_date }}
-          {% if leg.offer %}
+          {% if leg.offer and not leg_missing %}
             · {{ leg.offer.airlines|join(', ') or '—' }}
             · {{ 'Direct' if leg.offer.stops_out == 0 else (leg.offer.stops_out|string + (' stop' if leg.offer.stops_out == 1 else ' stops')) }}
           {% elif leg.error %}
@@ -246,7 +285,8 @@
     </div>
     {% endif %}
 
-    {% set has_col = it.ground_display or it.ground_compare_line or it.ground_budget_line or it.all_in_display %}
+    {% set show_all_in = it.all_in_display and not cf.pending %}
+    {% set has_col = it.ground_display or it.ground_compare_line or it.ground_budget_line or show_all_in %}
     {% if mode == 'explore' %}
       {% if it.stop_iata or has_col %}
         {% set has_more = (pb and (pb.culture or pb.food or pb.caution)) or has_col %}
@@ -260,7 +300,7 @@
           data-col-compare="{{ it.ground_compare_line or '' }}"
           data-col-budget="{{ it.ground_budget_line or '' }}"
           data-col-budget-status="{{ it.ground_budget_status or '' }}"
-          data-col-allin="{{ it.all_in_display or '' }}"
+          data-col-allin="{{ (it.all_in_display if show_all_in else '') or '' }}"
         >
           <div class="pb-story-body{% if it.stop_iata and not pb %} is-loading{% endif %}">
             {% if pb %}
@@ -308,7 +348,7 @@
                 <p>{{ it.ground_budget_line }}</p>
               </div>
               {% endif %}
-              {% if it.all_in_display %}
+              {% if show_all_in %}
               <div class="pb-block pb-col pb-col-allin">
                 <h4>Trip Estimate</h4>
                 <p><strong>{{ it.all_in_display }}</strong></p>
@@ -331,7 +371,7 @@
       {% if it.ground_budget_line %}
       <p class="bp-note{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}" style="margin:0.2rem 0 0">{{ it.ground_budget_line }}</p>
       {% endif %}
-      {% if it.all_in_display %}
+      {% if show_all_in %}
       <p class="bp-note" style="margin:0.25rem 0 0;font-weight:650">{{ it.all_in_display }}</p>
       {% endif %}
     </div>
@@ -368,7 +408,9 @@
     <div>
       <div class="bp-stub-label">Approx fare</div>
       <div class="bp-stub-price price-with-sign">
-        {% if it.total_price is defined and it.total_price is not none %}
+        {% if cf.pending %}
+        <span class="price-amt cf-total" data-cf-base="{{ '%.2f'|format(cf.base) }}" data-cf-currency="{{ it.currency or '' }}" style="font-size:1rem">—</span>
+        {% elif it.total_price is defined and it.total_price is not none %}
         <span class="price-amt">{{ it.display_price_base or it.display_price or ('~' ~ ((it.currency or (s.currency if s else none)) or '') ~ ' ' ~ '%.0f'|format(it.total_price)) }}</span>{% if it.price_glyph %}<span class="price-sign {{ it.price_tone or 'neutral' }} sign">{{ it.price_glyph }}</span>{% endif %}
         {% elif s and s.total_price is not none %}
         <span class="price-amt">{{ s.display_price or ('~' ~ s.currency ~ ' ' ~ '%.0f'|format(s.total_price)) }}</span>

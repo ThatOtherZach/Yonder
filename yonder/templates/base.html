@@ -1167,6 +1167,34 @@
       .saved-count { display: none; }
     }
 
+    /* ── Check Fares (per-leg on-demand fare lookup) ── */
+    .cf-slot { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; }
+    button.btn-check-fares {
+      background: var(--paper);
+      border: 1.5px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink-soft);
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 650;
+      padding: 0.3rem 0.75rem;
+      cursor: pointer;
+      transition: border-color 0.12s, background 0.12s, color 0.12s;
+    }
+    button.btn-check-fares:hover {
+      color: var(--ink);
+      border-color: var(--bp-accent, var(--sky-bright));
+    }
+    button.btn-check-fares:disabled,
+    button.btn-check-fares.is-busy { opacity: 0.7; cursor: wait; }
+    .cf-error {
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: #b3261e;
+      line-height: 1.3;
+      max-width: 14rem;
+    }
+
     {% block extra_css %}{% endblock %}
   </style>
   <link rel="stylesheet" href="/static/country_map.css?v=17" />
@@ -1176,6 +1204,7 @@
   <script src="/static/progress.js" defer></script>
   <script>window.__VIBES__ = {{ vibes_json|safe }};</script>
   <script src="/static/vibe_slider.js?v={{ vibes_v }}" defer></script>
+  <script src="/static/check_fares.js?v=1" defer></script>
   {% block extra_head %}{% endblock %}
 </head>
 <body class="{% if vibe_theme and vibe_theme.color %}has-vibe-theme{% endif %}"{% if vibe_theme and vibe_theme.style %} style="{{ vibe_theme.style }}"{% endif %}>

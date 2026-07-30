@@ -57,6 +57,9 @@ class FlightOffer(BaseModel):
     bookable: bool = True
     # live = market-ish · sandbox = test API · converted = FX applied after fetch
     price_kind: str = "live"  # live | sandbox | cached | mock
+    # True when this is placeholder data because the real fare lookup failed or
+    # no provider was available — UI shows a "Check Fares" button instead.
+    fare_missing: bool = False
     notes: str | None = None
     # Set after history pass — schema: ~C$420▼ / ~C$420▲ (vs history)
     display_price: str | None = None  # e.g. ~C$420▼
