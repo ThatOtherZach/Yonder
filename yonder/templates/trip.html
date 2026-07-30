@@ -295,10 +295,8 @@
             {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
           </div>
           {% endif %}
-          {% if pb.vibe %}
-          <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
-          {% endif %}
-          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
+          {% set pb_tagline = pb.tagline or pb.era_note or pb.vibe %}
+          {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
           {% if pb.culture or pb.food or pb.caution %}
           <button type="button" class="pb-toggle" aria-expanded="false">
             <span class="pb-toggle-label">Culture, food &amp; heads-up</span>
@@ -336,10 +334,8 @@
             {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
           </div>
           {% endif %}
-          {% if pb.vibe %}
-          <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
-          {% endif %}
-          {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
+          {% set pb_tagline = pb.tagline or pb.era_note or pb.vibe %}
+          {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
           {% if pb.culture or pb.food or pb.caution %}
           <button type="button" class="pb-toggle" aria-expanded="false">
             <span class="pb-toggle-label">Culture, food &amp; heads-up</span>

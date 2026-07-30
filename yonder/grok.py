@@ -370,9 +370,9 @@ class GrokClient:
             "STRICT JSON only:\n"
             '{"title":"Name",'
             '"facts":["≤6 word punchy fact","…"],'
-            '"culture":"1-2 sentences","food":"1 sentence","vibe":"1 sentence",'
-            '"caution":"optional 1 sentence or empty","era_note":"one cinematic tagline ≤12 words — evocative, specific, vibe-matched"}\n'
-            "facts are optional FAST FACT chips (max 3, each ≤6 words). Prefer culture/food/vibe."
+            '"culture":"1-2 sentences","food":"1 sentence",'
+            '"caution":"optional 1 sentence or empty","tagline":"one cinematic sentence ≤15 words — vibe-matched prose ending with a specific evocative image"}\n'
+            "facts are optional FAST FACT chips (max 3, each ≤6 words). Prefer culture/food/tagline."
         )
         user = json.dumps(
             {
@@ -404,9 +404,8 @@ class GrokClient:
                 "facts": [],
                 "culture": text.strip()[:280] if text else "",
                 "food": "",
-                "vibe": "",
                 "caution": "",
-                "era_note": "Trust your gut; recheck the fare.",
+                "tagline": "Trust your gut; recheck the fare.",
             }
 
     def to_search_query(self, trip: ParsedTrip, max_results: int = 5) -> SearchQuery:

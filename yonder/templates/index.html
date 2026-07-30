@@ -1012,21 +1012,6 @@
       0%, 100% { opacity: 0.55; }
       50% { opacity: 1; }
     }
-    .pb-vibe-line {
-      margin: 0.55rem 0 0;
-      font-size: 0.95rem;
-      line-height: 1.5;
-      color: var(--ink);
-    }
-    .pb-vibe-line .pb-vibe-label {
-      display: block;
-      font-size: 0.68rem;
-      font-weight: 700;
-      letter-spacing: 0.07em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 0.2rem;
-    }
     .pb-toggle {
       display: inline-flex;
       align-items: center;
@@ -1381,10 +1366,8 @@
                     {% for f in escape_place_book.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
                   </div>
                   {% endif %}
-                  {% if escape_place_book.vibe %}
-                  <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ escape_place_book.vibe | title }}</div>
-                  {% endif %}
-                  {% if escape_place_book.era_note %}<p class="pb-closer">{{ escape_place_book.era_note }}</p>{% endif %}
+                  {% set pb_tagline = escape_place_book.tagline or escape_place_book.era_note or escape_place_book.vibe %}
+                  {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
                   {% else %}
                   <span class="pb-tag">Field note</span>
                   <p class="pb-loading-msg">Writing field note…</p>
@@ -1558,10 +1541,8 @@
                       {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
                     </div>
                     {% endif %}
-                    {% if pb.vibe %}
-                    <div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>{{ pb.vibe | title }}</div>
-                    {% endif %}
-                    {% if pb.era_note %}<p class="pb-closer">{{ pb.era_note }}</p>{% endif %}
+                    {% set pb_tagline = pb.tagline or pb.era_note or pb.vibe %}
+                    {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
                     {% elif it.stop_iata %}
                     <span class="pb-tag">Field note</span>
                     <p class="pb-loading-msg">Writing field note…</p>
@@ -2640,14 +2621,9 @@
             });
             h += "</div>";
           }
-          if (brief.vibe) {
-            h +=
-              '<div class="pb-vibe-line"><span class="pb-vibe-label">Vibe</span>' +
-              escapeHtml(brief.vibe) +
-              "</div>";
-          }
-          if (brief.era_note)
-            h += '<p class="pb-closer">' + escapeHtml(brief.era_note) + "</p>";
+          var pbTagline = brief.tagline || brief.era_note || brief.vibe;
+          if (pbTagline)
+            h += '<p class="pb-closer">' + escapeHtml(pbTagline) + "</p>";
         } else if (hasColData(col)) {
           h += '<span class="pb-tag">On the ground</span>';
           h += '<h3 style="font-size:1.15rem">Stop details</h3>';

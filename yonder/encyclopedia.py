@@ -117,6 +117,7 @@ class PlaceBrief:
     vibe: str = ""
     caution: str = ""
     era_note: str = ""
+    tagline: str = ""
     iata: str | None = None
     country: str | None = None
     from_cache: bool = False
@@ -131,6 +132,7 @@ class PlaceBrief:
             "vibe": self.vibe,
             "caution": self.caution,
             "era_note": self.era_note,
+            "tagline": self.tagline,
             "iata": self.iata,
             "country": self.country,
             "from_cache": self.from_cache,
@@ -200,6 +202,7 @@ async def get_place_brief(
             vibe=str(hit.get("vibe") or ""),
             caution=str(hit.get("caution") or ""),
             era_note=str(hit.get("era_note") or ""),
+            tagline=str(hit.get("tagline") or hit.get("era_note") or hit.get("vibe") or ""),
             iata=iata,
             country=country,
             from_cache=True,
@@ -235,6 +238,7 @@ async def get_place_brief(
             vibe=str(payload.get("vibe") or ""),
             caution=str(payload.get("caution") or ""),
             era_note=str(payload.get("era_note") or ""),
+            tagline=str(payload.get("tagline") or payload.get("era_note") or payload.get("vibe") or ""),
             iata=iata,
             country=country,
             from_cache=False,
