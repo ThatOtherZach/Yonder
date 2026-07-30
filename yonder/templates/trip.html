@@ -257,7 +257,7 @@
         {% set pb = place_books.get((q.destination or '').upper()) %}
         {% if pb %}
         {% include "_field_note_card.html" ignore missing %}
-        <div class="place-book">
+        <div class="place-book"{% if share_vibe %} style="--bp-accent: {{ share_vibe.color }}"{% endif %}>
           <span class="pb-tag">Field note</span>
           <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
           {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
@@ -298,7 +298,7 @@
           {% set pb = place_books.get(code) %}
           {% if pb and code not in shown.iatas %}
             {% set shown.iatas = shown.iatas + [code] %}
-        <div class="place-book"{% if not loop.first %} style="margin-top:0.75rem"{% endif %}>
+        <div class="place-book" style="{% if it.theme_primary %}--bp-accent: {{ it.theme_primary }};{% endif %}{% if not loop.first %}margin-top:0.75rem{% endif %}">
           <span class="pb-tag">Field note · {{ iata }}</span>
           <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
           {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
