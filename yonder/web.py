@@ -2377,7 +2377,7 @@ async def api_result_feedback(request: Request) -> JSONResponse:
     import asyncio
 
     from yonder.feedback import record_feedback, upsert_vibe_question, save_vibe_answer
-    from yonder.vibe_signals import upsert_signal, ENGAGED
+    from yonder.vibe_signals import upsert_signal, record_rejection, ENGAGED
 
     try:
         body = await request.json()
@@ -2425,6 +2425,17 @@ async def api_result_feedback(request: Request) -> JSONResponse:
         return JSONResponse({"ok": True, "direction": "up"})
 
     if direction == "down":
+        # Record rejection signal in the vibe affinity store (strength=0 dilutes score)
+        if dest:
+            await asyncio.get_running_loop().run_in_executor(
+                None,
+                lambda: record_rejection(
+                    dest_iata=dest,
+                    vibe=vibe,
+                    session_hash=sess,
+                ),
+            )
+
         # Upsert the vibe question; generate AI answer only for new entries
         qid, is_new = await asyncio.get_running_loop().run_in_executor(
             None,

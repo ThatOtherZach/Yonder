@@ -167,6 +167,50 @@ def record_search(
     return sid
 
 
+def record_rejection(
+    *,
+    dest_iata: str | None,
+    vibe: str | None,
+    session_hash: str | None = None,
+) -> str | None:
+    """Record an explicit thumbs-down rejection for a vibe+destination pair.
+
+    Stored with signal_strength=0 so it increments the search_count denominator
+    without contributing to the affinity numerator, naturally diluting the score.
+    No-op in MOCK mode.  Returns the new signal id (or None).
+    """
+    if _mock_mode():
+        return None
+    dest = _norm_iata(dest_iata)
+    if not dest:
+        return None
+    sid = uuid.uuid4().hex
+    try:
+        with _connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO search_signals (
+                    id, ts, session_hash, vibe, origin, dest_iata,
+                    search_type, result_count, signal_strength, prompt_hash
+                ) VALUES (?,?,?,?,NULL,?,?,?,?,NULL)
+                """,
+                (
+                    sid,
+                    time.time(),
+                    (session_hash or "")[:32] or None,
+                    _norm_vibe(vibe),
+                    dest,
+                    "thumb_down",
+                    0,
+                    0,  # strength=0: counts against affinity without boosting
+                ),
+            )
+            conn.commit()
+    except Exception:
+        return None
+    return sid
+
+
 def upsert_signal(
     *,
     signal_id: str | None = None,
@@ -272,7 +316,8 @@ def recompute_scores(*, force: bool = False) -> bool:
                 )
                 age_days = max(0.0, (now - float(r["ts"] or now)) / 86400.0)
                 recency = 0.5 ** (age_days / RECENCY_HALFLIFE_DAYS)
-                strength = int(r["signal_strength"] or 1)
+                raw_s = r["signal_strength"]
+                strength = int(raw_s) if raw_s is not None else 1
                 a["num"] += strength * recency
                 a["n"] += 1
                 if strength >= SAVED:
