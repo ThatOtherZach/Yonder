@@ -569,19 +569,35 @@
       this.chromeStatus.textContent = "WRITING…";
     }
     clearTimeout(this._saveTimer);
+    this._savePending = true;
     this._saveTimer = setTimeout(function () {
       self.save();
     }, 280);
   };
 
+  /**
+   * Fire any pending (debounced) save immediately. Used when the page is
+   * being hidden/unloaded or a form is submitting, so stamps made in the
+   * final moments before navigation are never lost. The underlying fetch
+   * uses keepalive so it survives page teardown.
+   */
+  YonderMap.prototype.flushSave = function () {
+    if (!this.autoSave || !this._savePending) return;
+    clearTimeout(this._saveTimer);
+    this._saveTimer = null;
+    this.save();
+  };
+
   YonderMap.prototype.save = async function () {
     var self = this;
+    this._savePending = false;
     // Stamp order preserved — first visited is Home on the server
     var body = {
       visited: this.orderedVisited(),
       avoid: this.orderedAvoid(),
     };
     try {
+      // keepalive lets the request complete even if the page navigates away
       var r = await fetch(SAVE_URL, {
         method: "POST",
         headers: {
@@ -589,6 +605,7 @@
           Accept: "application/json",
         },
         body: JSON.stringify(body),
+        keepalive: true,
       });
       if (!r.ok) throw new Error("HTTP " + r.status);
       var j = await r.json();
@@ -893,10 +910,30 @@
     });
   }
 
+  /** Flush pending debounced saves on every mounted map. */
+  function flushAll() {
+    var nodes = document.querySelectorAll("[data-yonder-map]");
+    nodes.forEach(function (node) {
+      if (node._yonderMap && typeof node._yonderMap.flushSave === "function") {
+        node._yonderMap.flushSave();
+      }
+    });
+  }
+
+  // Never lose stamps on navigation: flush pending saves when the page is
+  // hidden/unloaded or any form (e.g. the Explore search) submits. The save
+  // request uses keepalive so it completes during page teardown.
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") flushAll();
+  });
+  window.addEventListener("pagehide", flushAll);
+  document.addEventListener("submit", flushAll, true);
+
   global.YonderMap = {
     mount: mount,
     mountAll: mountAll,
     AVOID_MAX: AVOID_MAX,
+    flushAll: flushAll,
   };
 
   if (document.readyState === "loading") {
