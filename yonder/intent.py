@@ -127,6 +127,24 @@ def looks_like_a_to_b(prompt: str) -> bool:
     return extract_route_cities(prompt) is not None
 
 
+# Stricter than _ARRIVE_PHRASE: excludes broad "get to"/"be in" so plain
+# point-to-point asks ("how do I get to Rome from Vancouver") stay mix.
+_JOURNEY_ARRIVE_PHRASE = re.compile(
+    r"\b(?:end(?:\s+up)?\s+in|arrive\s+(?:in|at)|arriving\s+(?:in|at)|"
+    r"land(?:ing)?\s+in|finish(?:ing)?\s+in|wind\s+up\s+in|make\s+it\s+to)\s+"
+    r"([A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z.'-]+){0,2})",
+    re.I,
+)
+
+
+def looks_like_journey_phrasing(prompt: str) -> bool:
+    """True when the prompt uses strong arrival phrasing ("end up in",
+    "arrive in", "wind up in"…) with a real place — journey language, not a
+    plain A→B ticket ask. These travelers expect a routed trip with a stop."""
+    m = _JOURNEY_ARRIVE_PHRASE.search((prompt or "").strip())
+    return bool(m and _clean_city(m.group(1)))
+
+
 def looks_like_stopover_intent(prompt: str) -> bool:
     p = (prompt or "").lower()
     return any(m in p for m in _STOP_MARKERS)
@@ -168,6 +186,11 @@ def decide_shape(
 
     if looks_like_a_to_b(p) and looks_like_stopover_intent(p):
         return IntentDecision("mix", 0.8, "A→B with intentional stops")
+    if looks_like_a_to_b(p) and looks_like_journey_phrasing(p):
+        # "leave Vancouver, end up in Rome" — journey phrasing means they
+        # want the routed trip (origin → vibe stop → destination), not a
+        # plain round trip.
+        return IntentDecision("detour", 0.85, "A→B with journey/arrival phrasing")
     if looks_like_a_to_b(p):
         # Clear route: mix so user can see directs + optional stop packages
         return IntentDecision("mix", 0.72, "clear A→B → straight shots + stop options")
