@@ -122,16 +122,17 @@ class AIDemoProvider(FlightProvider):
 
         # Only attempt AI generation when a key is present
         if not (self._settings.xai_api_key if hasattr(self._settings, "xai_api_key") else False):
-            return await self._fallback.search(query)
+            return await self._offline_fallback(query)
 
+        # Internal timeout must exceed the HTTP client's read timeout (22 s) so
+        # the real HTTP error propagates instead of being swallowed by wait_for.
+        # asyncio.TimeoutError.__str__ returns "" in CPython, so catch it
+        # explicitly to log a useful message.
+        _TIMEOUT = 28.0
         try:
             async with GrokClient(self._settings, self._client) as grok:
-                # Use an internal timeout so a slow/cancelled Grok call always
-                # falls back to the seeded mock rather than leaking CancelledError
-                # (CancelledError is BaseException, not Exception, so the outer
-                # except block won't catch it without this guard).
                 offers = await asyncio.wait_for(
-                    grok.invent_demo_fares(query), timeout=6.0
+                    grok.invent_demo_fares(query), timeout=_TIMEOUT
                 )
             usage = grok.accumulated_usage
             if usage:
@@ -139,7 +140,26 @@ class AIDemoProvider(FlightProvider):
             if offers:
                 return offers
             # Empty list → fall back to seeded
+            log.warning("AIDemoProvider: Grok returned no offers, falling back to seeded mock")
+        except asyncio.TimeoutError:
+            log.warning(
+                "AIDemoProvider: Grok call timed out after %.0fs — "
+                "check XAI_API_KEY validity and model name in Settings, then falling back to seeded mock",
+                _TIMEOUT,
+            )
         except Exception as exc:  # noqa: BLE001
-            log.warning("AIDemoProvider Grok call failed, falling back to seeded mock: %s", exc)
+            log.warning(
+                "AIDemoProvider: Grok call failed (%s: %s) — falling back to seeded mock",
+                type(exc).__name__,
+                exc,
+            )
 
-        return await self._fallback.search(query)
+        return await self._offline_fallback(query)
+
+    async def _offline_fallback(self, query: SearchQuery) -> list[FlightOffer]:
+        """Seeded mock with a notice note so the UI can flag offline mode."""
+        offers = await self._fallback.search(query)
+        return [
+            o.model_copy(update={"notes": "AI planner unavailable — showing offline picks"})
+            for o in offers
+        ]

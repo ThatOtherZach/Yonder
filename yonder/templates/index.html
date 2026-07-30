@@ -1306,6 +1306,11 @@
           {% endif %}
         </div>
         {% endif %}
+        {% if escape_result.offers and escape_result.offers[0].notes == "AI planner unavailable — showing offline picks" %}
+        <p class="sub" style="color:var(--muted,#888);font-style:italic;margin-bottom:0.7rem">
+          ⚠ AI planner unavailable — showing offline picks
+        </p>
+        {% endif %}
         {% if escape_result.offers %}
         <div class="pass-stack">
           {% for o in escape_result.offers[:1] %}
