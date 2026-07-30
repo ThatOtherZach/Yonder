@@ -313,3 +313,60 @@ async def test_visited_country_candidate_kept_on_detour():
     assert "SIN" in iatas, (
         f"SIN (SG) is not in visited_countries and should also be kept; got candidates: {iatas}"
     )
+
+
+# ---------------------------------------------------------------------------
+# avoid_countries wins when a candidate appears in BOTH lists (detour)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_avoid_country_wins_over_visited_country_on_detour():
+    """avoid_countries always beats visited_countries — even on a detour.
+
+    A candidate whose country is in *both* avoid_countries and visited_countries
+    must be filtered out.  The visited-country rule does not apply to detour trips,
+    but avoid_countries applies unconditionally, so the candidate must still be
+    removed.
+
+    This guards against a future refactor that accidentally short-circuits the
+    avoid_countries check because the visited-country branch was reached first
+    (or vice-versa).
+    """
+    both_listed_candidate = {
+        "iata": "CDG",
+        "city": "Paris",
+        "country": "FR",   # <-- in BOTH avoid_countries AND visited_countries
+        "stay_days": 2,
+        "why": "Grok suggested it despite constraints",
+        "vibe_tags": ["city"],
+    }
+    safe_candidate = {
+        "iata": "AMS",
+        "city": "Amsterdam",
+        "country": "NL",   # <-- in neither list
+        "stay_days": 2,
+        "why": "allowed stop",
+        "vibe_tags": ["city"],
+    }
+    mock = _make_response(trip_kind="detour", candidates=[both_listed_candidate, safe_candidate])
+
+    iatas = await _run_translate(
+        mock_response=mock,
+        form={
+            "origin": "YVR",
+            "destination": "LHR",
+            "avoid_countries": ["FR"],
+            "visited_countries": ["FR"],   # same country in both lists
+            "max_candidates": 5,
+        },
+    )
+
+    assert "CDG" not in iatas, (
+        "CDG (FR) must be filtered out because FR is in avoid_countries, "
+        "even though the trip is a detour and FR is also in visited_countries; "
+        f"got candidates: {iatas}"
+    )
+    assert "AMS" in iatas, (
+        f"AMS (NL) is in neither list and should be kept; got candidates: {iatas}"
+    )
