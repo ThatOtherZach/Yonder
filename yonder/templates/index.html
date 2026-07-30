@@ -1375,7 +1375,6 @@
                   {% if escape_place_book %}
                   <span class="pb-tag">Field note</span>
                   <h3 style="font-size:1.15rem">{{ escape_place_book.title }}</h3>
-                  {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
                   {% if escape_place_book.facts %}
                   <div class="pb-fast-facts" aria-label="Fast facts">
                     {% for f in escape_place_book.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
@@ -1552,7 +1551,6 @@
                     {% if pb %}
                     <span class="pb-tag">Field note</span>
                     <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
-                    {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
                     {% if pb.facts %}
                     <div class="pb-fast-facts" aria-label="Fast facts">
                       {% for f in pb.facts %}<span class="pb-fact">{{ f }}</span>{% endfor %}
@@ -2616,8 +2614,6 @@
             ">" +
             escapeHtml(brief.title || "Somewhere") +
             "</h3>";
-          if (brief.subtitle)
-            h += '<p class="pb-sub">' + escapeHtml(brief.subtitle) + "</p>";
           var facts = brief.facts || [];
           if (facts.length) {
             h += '<div class="pb-fast-facts" aria-label="Fast facts">';
