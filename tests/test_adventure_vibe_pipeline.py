@@ -5,15 +5,19 @@ The daily-cost estimator is patched to return an empty dict quickly so the
 suite stays fast while still exercising the full pricing path.
 
 Vibes covered: beach, food, wild, nostalgic
+Also includes a structural sync-check: every vibe id in vibes.json must have
+a non-empty entry in VIBE_TAG_MAP (catches missing mappings early).
 """
 from __future__ import annotations
 
+import json
+import pathlib
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from yonder.adventure import AdventureRequest, plan_adventure, seed_ideas
+from yonder.adventure import VIBE_TAG_MAP, AdventureRequest, plan_adventure, seed_ideas
 
 
 # ---------------------------------------------------------------------------
@@ -226,4 +230,34 @@ async def test_result_ideas_preserve_vibe_rank_order():
     assert seed_positions == sorted(seed_positions), (
         f"result.ideas re-ordered the vibe-ranked seeds. "
         f"seed order: {seed_iatas}, result order: {result_idea_iatas}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Structural sync-check: vibes.json ↔ VIBE_TAG_MAP
+# ---------------------------------------------------------------------------
+
+_VIBES_JSON = pathlib.Path(__file__).parent.parent / "yonder" / "vibes.json"
+
+
+def test_all_vibes_have_tag_map_entry():
+    """Every vibe id in vibes.json must have a non-empty entry in VIBE_TAG_MAP.
+
+    This test acts as a CI gate: add a vibe to vibes.json without a
+    corresponding VIBE_TAG_MAP entry and this fails loudly instead of silently
+    returning generic adventure results.
+    """
+    vibes = json.loads(_VIBES_JSON.read_text())
+    vibe_ids = [v["id"] for v in vibes]
+
+    missing = [vid for vid in vibe_ids if vid not in VIBE_TAG_MAP]
+    empty = [vid for vid in vibe_ids if vid in VIBE_TAG_MAP and not VIBE_TAG_MAP[vid]]
+
+    assert not missing, (
+        f"Vibe(s) in vibes.json have no VIBE_TAG_MAP entry — add them to "
+        f"yonder/adventure.py VIBE_TAG_MAP: {missing}"
+    )
+    assert not empty, (
+        f"Vibe(s) in VIBE_TAG_MAP have an empty tag set — each entry needs "
+        f"at least one tag: {empty}"
     )
