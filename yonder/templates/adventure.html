@@ -522,7 +522,7 @@
                 {{ leg.depart_date | fmt_date }}
                 {% if leg.offer %}
                   · {{ leg.offer.airlines|join(', ') or '—' }}
-                  · {{ leg.offer.stops_out }} stop{{ 's' if leg.offer.stops_out != 1 else '' }}
+                  · {{ 'Direct' if leg.offer.stops_out == 0 else (leg.offer.stops_out|string + (' stop' if leg.offer.stops_out == 1 else ' stops')) }}
                   {% if leg.offer.provider %} · via {{ leg.offer.provider }}{% endif %}
                 {% elif leg.error %}
                   · {{ leg.error[:80] }}
@@ -550,7 +550,7 @@
                     style="padding:0.4rem 0.75rem;font-size:0.85rem"
                     data-it-idx="{{ loop.index0 }}"
                     {% if share %}data-share-url="{{ share.url }}"{% endif %}>
-              ★ Save &amp; Share
+              ★ Share
             </button>
             {% if it.google_flights_url %}
             <a class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">

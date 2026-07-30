@@ -127,7 +127,7 @@
                   {{ leg.depart_date | fmt_date }}
                   {% if leg.offer %}
                     · {{ leg.offer.airlines|join(', ') or '—' }}
-                    · {{ leg.offer.stops_out }} stop{{ 's' if leg.offer.stops_out != 1 else '' }}
+                    · {{ 'Direct' if leg.offer.stops_out == 0 else (leg.offer.stops_out|string + (' stop' if leg.offer.stops_out == 1 else ' stops')) }}
                   {% elif leg.error %}
                     · {{ leg.error[:64] }}
                   {% endif %}

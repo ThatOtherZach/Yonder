@@ -1348,7 +1348,7 @@
                     {{ escape_result.query.depart_date | fmt_date }}
                     {% if escape_result.query.return_date %} · return {{ escape_result.query.return_date | fmt_date }}{% endif %}
                     · {{ o.airlines|join(', ') if o.airlines else '—' }}
-                    · {{ o.stops_out }} stop{{ 's' if o.stops_out != 1 else '' }}
+                    · {{ 'Direct' if o.stops_out == 0 else (o.stops_out|string + (' stop' if o.stops_out == 1 else ' stops')) }}
                     {% if o.duration_out_minutes is not none %}
                       · {{ (o.duration_out_minutes // 60) }}h{{ '%02d'|format(o.duration_out_minutes % 60) }}m
                     {% endif %}
@@ -1444,12 +1444,12 @@
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
                   <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
                 </a>
-                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-offer-idx="{{ loop.index0 }}" data-ask="{{ (ask or esc_text or '')|e }}">★ Save &amp; Share</button>
+                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-offer-idx="{{ loop.index0 }}" data-ask="{{ (ask or esc_text or '')|e }}">★ Share</button>
               </div>
               {% elif share %}
               <div class="bp-stub-qr">
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
-                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-offer-idx="{{ loop.index0 }}" data-ask="{{ (ask or esc_text or '')|e }}">★ Save &amp; Share</button>
+                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-offer-idx="{{ loop.index0 }}" data-ask="{{ (ask or esc_text or '')|e }}">★ Share</button>
               </div>
               {% else %}
               <div class="bp-barcode" aria-hidden="true"></div>
@@ -1517,7 +1517,7 @@
                     {{ leg.depart_date | fmt_date }}
                     {% if leg.offer %}
                       · {{ leg.offer.airlines|join(', ') or '—' }}
-                      · {{ leg.offer.stops_out }} stop{{ 's' if leg.offer.stops_out != 1 else '' }}
+                      · {{ 'Direct' if leg.offer.stops_out == 0 else (leg.offer.stops_out|string + (' stop' if leg.offer.stops_out == 1 else ' stops')) }}
                     {% elif leg.error %}
                       · {{ leg.error[:64] }}
                     {% endif %}
@@ -1654,12 +1654,12 @@
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
                   <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
                 </a>
-                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-it-idx="{{ loop.index0 }}">★ Save &amp; Share</button>
+                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-it-idx="{{ loop.index0 }}">★ Share</button>
               </div>
               {% elif share %}
               <div class="bp-stub-qr">
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
-                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-it-idx="{{ loop.index0 }}">★ Save &amp; Share</button>
+                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-it-idx="{{ loop.index0 }}">★ Share</button>
               </div>
               {% else %}
               <div class="bp-barcode" aria-hidden="true"></div>
