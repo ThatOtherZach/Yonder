@@ -1385,8 +1385,8 @@
                      data-dest="{{ escape_result.query.destination }}"
                      data-query="{{ esc_text | e }}"
                      data-mock="{{ 'true' if o.price_kind == 'mock' else 'false' }}">
-                  <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">▲</button>
-                  <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">▼</button>
+                  <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">👍</button>
+                  <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">👎</button>
                 </div>
               </div>
 
@@ -1598,8 +1598,8 @@
                      data-dest="{{ it.stop_iata or '' }}"
                      data-query="{{ det_text | e }}"
                      data-mock="false">
-                  <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">▲</button>
-                  <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">▼</button>
+                  <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">👍</button>
+                  <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">👎</button>
                 </div>
               </div>
               <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }} Day Stop{% else %}multi-leg{% endif %}</div>
