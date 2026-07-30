@@ -27,23 +27,21 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 2rem;
-      height: 2rem;
-      margin-right: 0.45rem;
+      width: 1.5rem;
+      height: 1.5rem;
+      margin-right: 0.35rem;
       padding: 0;
-      border: 1.5px solid var(--line);
-      border-radius: 10px;
-      background: var(--paper);
+      border: none;
+      border-radius: 0;
+      background: none;
       color: var(--ink-soft);
       line-height: 1;
       cursor: pointer;
-      vertical-align: -0.2rem;
-      transition: border-color 0.12s, background 0.12s, color 0.12s, transform 0.12s;
+      vertical-align: -0.15rem;
+      transition: color 0.12s, transform 0.12s;
     }
     .prompt-shuffle svg { display: block; flex-shrink: 0; }
     .prompt-shuffle:hover {
-      border-color: var(--vibe-now, var(--sky-bright));
-      background: var(--sky-mist);
       color: var(--vibe-now, var(--sky-bright));
     }
     .prompt-shuffle:active,
