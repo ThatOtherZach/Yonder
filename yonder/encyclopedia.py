@@ -40,6 +40,17 @@ def cache_key(iata: str | None = None, country: str | None = None, city: str | N
     return "|".join(parts)
 
 
+def _strip_emdash(obj: Any) -> Any:
+    """Replace em dashes with ', ' in all string values (house style for field notes)."""
+    if isinstance(obj, str):
+        return obj.replace("\u2014", ", ")
+    if isinstance(obj, list):
+        return [_strip_emdash(v) for v in obj]
+    if isinstance(obj, dict):
+        return {k: _strip_emdash(v) for k, v in obj.items()}
+    return obj
+
+
 def get_cached(key: str) -> dict[str, Any] | None:
     with _connect() as conn:
         row = conn.execute(
@@ -52,7 +63,7 @@ def get_cached(key: str) -> dict[str, Any] | None:
         return None
     try:
         data = json.loads(row["payload_json"])
-        return data if isinstance(data, dict) else None
+        return _strip_emdash(data) if isinstance(data, dict) else None
     except json.JSONDecodeError:
         return None
 
@@ -79,7 +90,7 @@ def get_any_cached_for_iata(iata: str) -> dict[str, Any] | None:
         return None
     try:
         data = json.loads(row["payload_json"])
-        return data if isinstance(data, dict) else None
+        return _strip_emdash(data) if isinstance(data, dict) else None
     except json.JSONDecodeError:
         return None
 
