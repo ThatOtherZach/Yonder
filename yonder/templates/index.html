@@ -2024,6 +2024,50 @@
           .catch(function () { clearTimeout(failsafe); go(); });
       }
 
+      // Live fare check before Share/Save when the card has no fare yet.
+      // Shows a loading state on the price area, then completes save/share
+      // with the refreshed fare (or without one if the check fails).
+      function refreshPriceThenSave(btn, itinerary, meta, shareUrl) {
+        var card = btn.closest ? btn.closest(".boarding-pass") : null;
+        var priceEl = card ? card.querySelector(".bp-stub-price .price-amt") : null;
+        if (priceEl) {
+          priceEl.textContent = "…";
+          priceEl.style.opacity = "0.55";
+          priceEl.style.transition = "opacity 0.6s";
+        }
+        btn.disabled = true;
+        btn.textContent = "Checking fare…";
+        var done = false;
+        function finish(it2) {
+          if (done) return;
+          done = true;
+          var use = it2 || itinerary;
+          if (priceEl) {
+            priceEl.style.opacity = "1";
+            priceEl.textContent =
+              use.display_price_base || use.display_price || "—";
+          }
+          postSaveAndShare({ itinerary: use, trip_meta: meta }, btn, shareUrl);
+        }
+        var failsafe = setTimeout(function () { finish(null); }, 30000);
+        fetch("/api/price-refresh", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            itinerary: itinerary,
+            adults: meta.adults || 1,
+            currency: meta.currency || itinerary.currency || "",
+          }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            clearTimeout(failsafe);
+            finish(d && d.ok && d.itinerary ? d.itinerary : null);
+          })
+          .catch(function () { clearTimeout(failsafe); finish(null); });
+      }
+
       function pageAttribution() {
         var results = document.getElementById("adv-results");
         var tripMeta = {};
@@ -2068,6 +2112,10 @@
                 chip_source: tripMeta.chip_source || attr.chip_source,
                 search_id: tripMeta.search_id || attr.search_id,
               });
+              if (tripMeta.price_pending && (itinerary.total_price == null)) {
+                refreshPriceThenSave(b, itinerary, meta, shareUrl);
+                return;
+              }
               postSaveAndShare({ itinerary: itinerary, trip_meta: meta }, b, shareUrl);
             } else if (offerIdx !== null) {
               // Escape card

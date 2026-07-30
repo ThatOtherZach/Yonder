@@ -1444,13 +1444,114 @@ async def explore_run(request: Request) -> HTMLResponse:
         if decision.shape != "mix":
             active_mode = "detour"
 
+    # When not testing, prefer previously saved (non-mock) trips over AI
+    # generation. Recycled results render through the same card pipeline as
+    # fresh results — fare hidden until a live check on Share/Save. No match
+    # → seamless fallback to the normal AI path below.
+    _recycled = None
+    # Applies whenever TESTING is off — even when mock was forced by missing
+    # fare providers, since recycled cards defer pricing to Share/Save time.
+    if not settings.testing:
+        try:
+            from yonder.recycle import find_recycled_result
+
+            _recycled = find_recycled_result(
+                prompt=prompt,
+                vibe=vibe,
+                origin=home_iata,
+                depart=depart,
+                currency=currency,
+                limit=max_cand,
+                # Refresh must not repeat cards already shown this session
+                # (save_ban stays allowed — saved trips ARE the pool here)
+                exclude_iatas=(exclude_iatas - save_ban) if is_refresh else None,
+            )
+        except Exception:  # noqa: BLE001
+            _recycled = None
+
     try:
-        if decision.shape in ("escape", "mix"):
+        if _recycled is not None:
+            # Real saved data — never treated as mock, so tier-1 search
+            # signals below record exactly like a fresh search.
+            mock = False
+            result = _recycled
+            vt = vibe_theme(vibe)
+            try:
+                stamped = [
+                    it.model_copy(
+                        update={
+                            "theme_primary": vt["color"],
+                            "theme_accent": vt["deep"],
+                            "theme_label": vt["label"],
+                        }
+                    )
+                    for it in result.itineraries
+                ]
+                result = result.model_copy(update={"itineraries": stamped})
+            except Exception:
+                pass
+            trip_meta = {
+                "prompt": prompt,
+                "trip_prompt": prompt,
+                "vibe": vibe,
+                "vibe_color": vt["color"],
+                "origin": result.request.origin,
+                "destination": result.request.destination,
+                "visited": visited,
+                "avoid": avoid,
+                "intent": decision.shape,
+                # Recycled trips are real saved data — feedback signals must
+                # flow exactly as they would for fresh results.
+                "mock": False,
+                # Internal-only flag: the frontend fetches a live fare before
+                # Share/Save completes. Never rendered as visible copy.
+                "price_pending": True,
+                **attr_meta,
+            }
+            form = {
+                **det_form,
+                "prompt": prompt,
+                "origin": result.request.origin,
+                "destination": result.request.destination,
+                "depart": depart,
+                "vibe": vibe,
+                "vibe_color": vt["color"],
+                "mock": False,
+            }
+            place_books: dict = {}
+            try:
+                from yonder.encyclopedia import briefs_for_stops, stops_from_itineraries
+
+                stops = stops_from_itineraries(result.itineraries, limit=5)
+                place_books = await briefs_for_stops(
+                    settings, stops, max_n=0, cache_only=True
+                )
+            except Exception:
+                place_books = {}
+            detour_override = {
+                "form": form,
+                "result": result,
+                "trip_meta": trip_meta,
+                "place_books": place_books,
+                "attribution": attr_meta,
+            }
+            save_last(
+                "detour",
+                {
+                    "form": form,
+                    "result": result,
+                    "trip_meta": trip_meta,
+                    "place_books": place_books,
+                },
+                pin_first=not is_refresh,
+            )
+            active_mode = "detour"
+        if _recycled is None and decision.shape in ("escape", "mix"):
             try:
                 await _do_escape()
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"Escape: {exc}")
-        if decision.shape in ("detour", "mix"):
+        if _recycled is None and decision.shape in ("detour", "mix"):
             try:
                 await _do_detour()
             except Exception as exc:  # noqa: BLE001
@@ -1540,7 +1641,9 @@ async def explore_run(request: Request) -> HTMLResponse:
             )
 
         # Prefer showing the side that has data; mix defaults to escape panel first
-        if decision.shape == "mix":
+        if _recycled is not None:
+            active_mode = "detour"
+        elif decision.shape == "mix":
             active_mode = "escape" if has_esc else "detour"
         elif decision.shape == "detour":
             active_mode = "detour"
@@ -2339,6 +2442,64 @@ async def api_search_cancel(request: Request) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "missing search_id"}, status_code=400)
     ok = request_cancel(sid)
     return JSONResponse({"ok": ok, "search_id": sid})
+
+
+@app.post("/api/price-refresh")
+async def api_price_refresh(request: Request) -> JSONResponse:
+    """Live fare check for a result card before Share/Save completes.
+
+    Body: { itinerary: {...}, adults?, currency? }. Uses the normal
+    flight-search engine per leg and returns the repriced itinerary.
+    """
+    from yonder.recycle import strip_revealing_notes
+
+    settings = reload_settings()
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+    try:
+        it = AdventureItinerary.model_validate(body.get("itinerary") or {})
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(
+            {"ok": False, "error": f"Bad itinerary: {str(exc)[:120]}"}, status_code=400
+        )
+    try:
+        adults = max(1, min(9, int(body.get("adults") or 1)))
+    except (TypeError, ValueError):
+        adults = 1
+    currency = str(body.get("currency") or it.currency or settings.default_currency or "USD").upper()
+    if len(currency) != 3 or not currency.isalpha():
+        currency = (settings.default_currency or "USD").upper()
+    include_mock = not settings.configured_providers()
+    try:
+        refreshed, rmeta = await reprice_itinerary(
+            it,
+            adults=adults,
+            currency=currency,
+            cabin=CabinClass.ECONOMY,
+            settings=settings,
+            include_mock=include_mock,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": str(exc)[:160]}, status_code=502)
+    if refreshed.total_price is None:
+        return JSONResponse(
+            {"ok": False, "error": rmeta.get("message") or "No live fare found"},
+            status_code=502,
+        )
+    refreshed = strip_revealing_notes(refreshed)
+    return JSONResponse(
+        {
+            "ok": True,
+            "itinerary": refreshed.model_dump(mode="json"),
+            "total_price": refreshed.total_price,
+            "display_price": refreshed.display_price_base or refreshed.display_price,
+            "currency": refreshed.currency,
+        }
+    )
 
 
 @app.post("/api/signal-event")
