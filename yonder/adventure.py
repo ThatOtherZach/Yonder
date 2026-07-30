@@ -500,12 +500,12 @@ def _sort_by_comfort(
         "mountains": frozenset({"mountains", "alps", "rugged", "crisp", "north"}),
         "adventure": frozenset({"nature", "rugged", "feral", "untamed", "mountains", "raw"}),
         "trains":    frozenset({"trains"}),
-        "food":      frozenset({"food"}),
+        "food":      frozenset({"food", "bazaar"}),
         "street":    frozenset({"food", "gritty", "vivid", "cheap"}),
         "desert":    frozenset({"hazy", "sun", "ancient"}),
         "sun":       frozenset({"sun", "goldenhour", "warmnights", "seasalt"}),
         "luxury":    frozenset({"opulent", "luminous", "velvet"}),
-        "nostalgic": frozenset({"nostalgic", "ancient", "sleepy", "tender", "moody"}),
+        "nostalgic": frozenset({"nostalgic", "ancient", "sleepy", "tender", "moody", "velvet"}),
         "spa":       frozenset({"serene", "tender", "sleepy", "crisp", "nature"}),
         "cozy":      frozenset({"tender", "sleepy", "moody", "serene"}),
         "history":   frozenset({"ancient", "sacred", "nostalgic", "culture"}),
@@ -553,7 +553,7 @@ def _sort_by_comfort(
         if adv_overlap:
             s += round(_comfort * min(adv_overlap, 2))
         if app_overlap:
-            s += round((1.0 - _comfort) * min(app_overlap, 2))
+            s += round((1.0 - _comfort) * min(app_overlap, 1))
         return s
 
     # Sort by vibe-tag overlap + comfort fit so best-matched cities lead.
