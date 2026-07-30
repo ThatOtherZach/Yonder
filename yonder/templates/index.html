@@ -1566,7 +1566,7 @@
                       {% if has_col %}
                       {% if it.ground_display or it.ground_compare_line %}
                       <div class="pb-block pb-col">
-                        <h4>Ground spend</h4>
+                        <h4>Daily Spend</h4>
                         {% if it.ground_display %}<p>{{ it.ground_display }}</p>{% endif %}
                         {% if it.ground_compare_line %}<p class="muted" style="margin-top:0.25rem">{{ it.ground_compare_line }}</p>{% endif %}
                       </div>
@@ -1579,8 +1579,8 @@
                       {% endif %}
                       {% if it.all_in_display %}
                       <div class="pb-block pb-col pb-col-allin">
-                        <h4>Flights + Daily Spend</h4>
-                        <p>{{ it.all_in_display }}</p>
+                        <h4>Trip Estimate</h4>
+                        <p><strong>{{ it.all_in_display }}</strong></p>
                       </div>
                       {% endif %}
                       {% endif %}
@@ -2564,7 +2564,7 @@
         if (!hasColData(col)) return "";
         var h = "";
         if (col.ground || col.compare) {
-          h += '<div class="pb-block pb-col"><h4>Ground spend</h4>';
+          h += '<div class="pb-block pb-col"><h4>Daily Spend</h4>';
           if (col.ground) h += "<p>" + escapeHtml(col.ground) + "</p>";
           if (col.compare)
             h +=
@@ -2586,9 +2586,9 @@
         }
         if (col.allin) {
           h +=
-            '<div class="pb-block pb-col pb-col-allin"><h4>Flights + Daily Spend</h4><p>' +
+            '<div class="pb-block pb-col pb-col-allin"><h4>Trip Estimate</h4><p><strong>' +
             escapeHtml(col.allin) +
-            "</p></div>";
+            "</strong></p></div>";
         }
         return h;
       }
