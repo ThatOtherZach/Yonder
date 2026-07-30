@@ -388,7 +388,7 @@
     <div class="bp-actions">
       {% if mode == 'saved' %}
       <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form">
-        <button type="submit" class="btn secondary">Refresh fares</button>
+        <button type="submit" class="refresh-btn">Refresh fares</button>
       </form>
       {% endif %}
       {% if it.google_flights_url %}
@@ -405,7 +405,7 @@
       {% endif %}
       {% if mode == 'saved' %}
       <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form">
-        <button type="button" class="btn secondary js-remove-confirm">Remove</button>
+        <button type="button" class="danger js-remove-confirm">Remove</button>
       </form>
       {% endif %}
     </div>
