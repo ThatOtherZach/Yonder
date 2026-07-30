@@ -417,6 +417,50 @@
       letter-spacing: 0.05em;
       vertical-align: 1px;
     }
+    /* Suggestion items are tappable — full-width button inside each li */
+    .vibe-suggest-item {
+      padding: 0;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--vibe-now, var(--sky-bright));
+    }
+    .vibe-suggest-item .vs-btn {
+      display: block;
+      width: 100%;
+      padding: 0.55rem 0.7rem;
+      background: var(--paper);
+      border: none;
+      border-radius: inherit;
+      font-family: inherit;
+      font-size: 0.88rem;
+      line-height: 1.45;
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+    }
+    .vibe-suggest-item .vs-btn:hover,
+    .vibe-suggest-item .vs-btn:focus-visible {
+      background: var(--sky-mist, #e8f4fc);
+      outline: none;
+    }
+    .vibe-suggest-item .vs-btn:focus-visible {
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--sky-bright) 35%, transparent);
+    }
+    .vibe-suggest-item .vs-btn:active {
+      background: color-mix(in srgb, var(--sky-bright) 12%, var(--paper));
+    }
+    /* hint label shown on hover */
+    .vibe-suggest-item .vs-hint {
+      display: block;
+      margin-top: 0.2rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+      opacity: 0;
+      transition: opacity 0.12s;
+    }
+    .vibe-suggest-item .vs-btn:hover .vs-hint,
+    .vibe-suggest-item .vs-btn:focus-visible .vs-hint {
+      opacity: 1;
+    }
     .parsed-box {
       font-size: 0.9rem;
       color: var(--ink-soft);
@@ -2057,20 +2101,45 @@
               if (!s || !s.query || !text) return;
               var li = document.createElement("li");
               li.className = "vibe-suggest-item";
+
+              // Wrap everything in a button so the whole item is tappable/keyboard-accessible
+              var btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "vs-btn";
+              btn.setAttribute("aria-label", "Search: " + s.query);
+
               var q = document.createElement("span");
               q.className = "vs-query";
               q.textContent = s.query;
               var a = document.createElement("span");
               a.className = "vs-answer";
               a.textContent = String(text);
-              li.appendChild(q);
-              li.appendChild(a);
+              btn.appendChild(q);
+              btn.appendChild(a);
               if (ans.dest_iata && /^[A-Z]{3}$/.test(String(ans.dest_iata))) {
                 var tag = document.createElement("span");
                 tag.className = "vs-iata";
                 tag.textContent = ans.dest_iata;
                 a.appendChild(tag);
               }
+
+              // Hint shown on hover/focus
+              var hint = document.createElement("span");
+              hint.className = "vs-hint";
+              hint.textContent = "Tap to search →";
+              btn.appendChild(hint);
+
+              // Click: fill the prompt textarea and submit the search form
+              btn.addEventListener("click", function () {
+                if (!ta || !form) return;
+                ta.value = s.query;
+                if (clickIdEl) clickIdEl.value = newClickId();
+                setAttribution({ chip_id: "", chip_source: "community_suggestion", seed_iatas: [] });
+                if (typeof form.requestSubmit === "function") form.requestSubmit();
+                else form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+              });
+
+              li.appendChild(btn);
               vsList.appendChild(li);
               shown += 1;
             });
