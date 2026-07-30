@@ -43,6 +43,7 @@ class GrokClient:
         self.settings = settings
         self._client = client
         self._owns_client = client is None
+        self._usage_log: list[dict] = []
 
     def is_configured(self) -> bool:
         return bool(self.settings.xai_api_key)
@@ -66,6 +67,25 @@ class GrokClient:
             raise RuntimeError("Grok client not started")
         return self._client
 
+    @property
+    def accumulated_usage(self) -> dict:
+        """Aggregate token usage across all _chat() calls on this instance."""
+        if not self._usage_log:
+            return {}
+        from yonder.ai_usage import estimate_cost
+        prompt = sum(u["prompt_tokens"] for u in self._usage_log)
+        completion = sum(u["completion_tokens"] for u in self._usage_log)
+        total = sum(u["total_tokens"] for u in self._usage_log)
+        model = next((u["model"] for u in self._usage_log if u.get("model")), DEFAULT_MODEL)
+        return {
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "total_tokens": total,
+            "model": model,
+            "calls": len(self._usage_log),
+            "est_cost_usd": estimate_cost(prompt, completion, model),
+        }
+
     async def _chat(self, system: str, user: str, *, temperature: float = 0.2) -> str:
         if not self.is_configured():
             raise RuntimeError("XAI_API_KEY not set — add it in Settings")
@@ -88,6 +108,14 @@ class GrokClient:
         if resp.status_code >= 400:
             raise RuntimeError(f"xAI HTTP {resp.status_code}: {resp.text[:400]}")
         data = resp.json()
+        usage = data.get("usage") or {}
+        if usage:
+            self._usage_log.append({
+                "prompt_tokens": int(usage.get("prompt_tokens", 0)),
+                "completion_tokens": int(usage.get("completion_tokens", 0)),
+                "total_tokens": int(usage.get("total_tokens", 0)),
+                "model": model,
+            })
         try:
             return data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:

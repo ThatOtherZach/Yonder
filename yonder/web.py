@@ -31,6 +31,7 @@ from yonder.countries import (
     normalize_country_list,
     primary_iata_for_country,
 )
+from yonder.ai_usage import fmt_usage, log_usage as _log_ai_usage, merge_usage
 from yonder.engine import search_flights
 from yonder.grok import GrokClient
 from yonder.history import count_samples, recent_samples, route_stats
@@ -539,6 +540,8 @@ async def ask_grok(request: Request) -> HTMLResponse:
         aim, _skip = settings.search_timing()
         home_iata = settings.resolve_home_iata()
 
+        _esc_usage: list[dict] = [{}]
+
         async def _escape_run():
             async with GrokClient(settings) as grok:
                 trip = await grok.parse_natural_language(
@@ -572,6 +575,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
                     timeout=min(18.0, max(8.0, aim * 0.5)),
                     max_providers=1,
                 )
+                _esc_usage[0] = grok.accumulated_usage
             return trip, query, result
 
         # Soft aim only — no hard kill (Skip is on the unified /explore path)
@@ -627,23 +631,24 @@ async def ask_grok(request: Request) -> HTMLResponse:
                 "place_book": place_book,
             },
         )
-        return templates.TemplateResponse(
-            request,
-            "index.html",
-            _compose_page_ctx(
-                settings,
-                mode="escape",
-                escape_override={
-                    "ask": ask,
-                    "form": form,
-                    "result": result,
-                    "parsed": trip,
-                    "analysis": analysis,
-                    "dest_theme": dest_theme,
-                    "place_book": place_book,
-                },
-            ),
+        _esc_ctx = _compose_page_ctx(
+            settings,
+            mode="escape",
+            escape_override={
+                "ask": ask,
+                "form": form,
+                "result": result,
+                "parsed": trip,
+                "analysis": analysis,
+                "dest_theme": dest_theme,
+                "place_book": place_book,
+            },
         )
+        _esc_u = _esc_usage[0]
+        if _esc_u.get("total_tokens"):
+            _esc_ctx["ai_usage_display"] = fmt_usage(_esc_u)
+            asyncio.create_task(_log_ai_usage("escape", _esc_u))
+        return templates.TemplateResponse(request, "index.html", _esc_ctx)
     except Exception as exc:  # noqa: BLE001
         return templates.TemplateResponse(
             request,
@@ -873,6 +878,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     escape_override: dict = {"ask": prompt, "form": empty_esc, "result": None}
     detour_override: dict = {"form": det_form, "result": None}
     errors: list[str] = []
+    _route_usage: list[dict] = []  # accumulates grok.accumulated_usage from each block
     active_mode = "detour" if decision.shape == "detour" else "escape"
     restored_first = False
 
@@ -995,6 +1001,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 timeout=fare_timeout,
                 max_providers=1,
             )
+            _route_usage.append(grok.accumulated_usage)
         # When mixing, keep up to 3 cheapest; pure escape stays 1 from engine
         if decision.shape == "mix" and result.offers:
             # engine already returns 1; widen slightly by re-search not needed
@@ -1197,6 +1204,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                         ),
                         timeout=invent_timeout,
                     )
+                    _route_usage.append(grok.accumulated_usage)
                 if search_id and is_cancelled(search_id):
                     errors.append("Detour invent finished after Skip — packaging what we can")
                 trip_kind = (req.trip_kind or "detour").lower()
@@ -1516,6 +1524,11 @@ async def explore_run(request: Request) -> HTMLResponse:
         ctx["result_filter"] = "all"
         if err_msg and (has_esc or has_det):
             ctx["intent_note"] = err_msg
+        if _route_usage:
+            _usage = merge_usage(*_route_usage)
+            ctx["ai_usage_display"] = fmt_usage(_usage)
+            if _usage.get("total_tokens"):
+                asyncio.create_task(_log_ai_usage("explore", _usage))
         return templates.TemplateResponse(request, "index.html", ctx)
     except Exception as exc:  # noqa: BLE001
         return templates.TemplateResponse(
@@ -1597,6 +1610,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
         ideas: list = []
         req: AdventureRequest | None = None
         aim, _skip = settings.search_timing()
+        _adv_usage: list[dict] = []
 
         # ONE Grok call: cities from description + detour/getaway list.
         # On failure, fall back to passport map + local home-city guess (seed ideas).
@@ -1687,6 +1701,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
                     # Grok returned empty candidates — fill from passport-aware seeds
                     if not ideas:
                         ideas = seed_ideas(req)
+                    _adv_usage.append(grok.accumulated_usage)
                 except Exception as exc:  # noqa: BLE001
                     # Open getaways don't need a second city — map + home guess is enough
                     req, ideas = _local_getaway_fallback(str(exc)[:180])
@@ -1792,20 +1807,22 @@ async def adventure_run(request: Request) -> HTMLResponse:
                 "place_books": place_books,
             },
         )
-        return templates.TemplateResponse(
-            request,
-            "index.html",
-            _compose_page_ctx(
-                settings,
-                mode="detour",
-                detour_override={
-                    "form": form,
-                    "result": result,
-                    "trip_meta": trip_meta,
-                    "place_books": place_books,
-                },
-            ),
+        _adv_ctx = _compose_page_ctx(
+            settings,
+            mode="detour",
+            detour_override={
+                "form": form,
+                "result": result,
+                "trip_meta": trip_meta,
+                "place_books": place_books,
+            },
         )
+        if _adv_usage:
+            _adv_u = merge_usage(*_adv_usage)
+            _adv_ctx["ai_usage_display"] = fmt_usage(_adv_u)
+            if _adv_u.get("total_tokens"):
+                asyncio.create_task(_log_ai_usage("adventure", _adv_u))
+        return templates.TemplateResponse(request, "index.html", _adv_ctx)
     except Exception as exc:  # noqa: BLE001
         return templates.TemplateResponse(
             request,

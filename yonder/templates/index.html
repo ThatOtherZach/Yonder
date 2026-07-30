@@ -1150,6 +1150,9 @@
               <span class="pill bad">{{ r.provider }} · fail</span>
             {% endif %}
           {% endfor %}
+          {% if ai_usage_display %}
+            <span class="pill" style="opacity:0.7">{{ ai_usage_display }}</span>
+          {% endif %}
         </div>
         {% endif %}
         {% if escape_result.offers %}
@@ -1314,6 +1317,11 @@
           · {{ detour_result.itineraries|length }} of {{ detour_result.ideas|length }} cities · cheapest first
           · <a href="/saved">Saved</a>
         </p>
+        {% if ai_usage_display %}
+        <div class="pills" style="margin-top:0;margin-bottom:0.85rem">
+          <span class="pill" style="opacity:0.7">{{ ai_usage_display }}</span>
+        </div>
+        {% endif %}
         {% if detour_result.itineraries %}
         <div class="pass-stack">
           {% for it in detour_result.itineraries[:5] %}

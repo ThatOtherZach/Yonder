@@ -117,6 +117,15 @@
       font-style: italic;
       color: var(--sky);
     }
+    .brand .tld {
+      font-style: normal;
+      font-size: 0.72em;
+      font-weight: 400;
+      color: var(--muted);
+      letter-spacing: 0.01em;
+      vertical-align: baseline;
+      opacity: 0.7;
+    }
     .nav-links {
       margin-left: auto;
       display: flex;
@@ -1051,7 +1060,7 @@
 <body class="{% if vibe_theme and vibe_theme.color %}has-vibe-theme{% endif %}"{% if vibe_theme and vibe_theme.style %} style="{{ vibe_theme.style }}"{% endif %}>
   <nav class="topnav">
     <div class="topnav-inner">
-      <a class="brand" href="/">Yon<span>der</span></a>
+      <a class="brand" href="/">Yon<span>der</span><span class="tld">.city</span></a>
       <div class="nav-links">
         <a href="/" class="{% if nav in ('home', 'search', 'adventure') %}active{% endif %}">Explore</a>
         <a href="/saved" class="{% if nav == 'saved' %}active{% endif %}">

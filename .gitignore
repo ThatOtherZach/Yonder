@@ -21,3 +21,5 @@ out.json
 *.json.bak
 .DS_Store
 Thumbs.db
+data/ai_usage.db
+data/
