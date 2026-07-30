@@ -539,6 +539,7 @@ def ranking_from_saves(
     origin: str | None = None,
     visited: list[str] | None = None,
     avoid: list[str] | None = None,
+    demo: bool = False,
 ) -> dict[str, Any]:
     """★ Save metrics for ranking dataset-completion chips (not chip content).
 
@@ -620,7 +621,7 @@ def ranking_from_saves(
         try:
             from yonder.vibe_signals import scores_for_vibe
 
-            sig_scores = scores_for_vibe(vibe_l)
+            sig_scores = scores_for_vibe(vibe_l, demo=demo)
             for code, sc in sig_scores.items():
                 cc = country_for_iata(code) or ""
                 if cc and cc in avoid_set:
@@ -653,6 +654,7 @@ def ranking_from_saves(
         "origin": origin_u,
         "save_count": n_match,
         "signal_dest_count": signal_dest_count,
+        "signals_bypassed": bool(demo),
         "pattern_weights": pattern_w,
         "dest_seeds": seed_list,
     }

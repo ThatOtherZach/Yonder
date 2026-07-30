@@ -10,7 +10,10 @@ Tiered signals (per-installation, no accounts):
   score = SUM(signal_strength * recency_weight) / search_count
 
 Test-mode guard: when the MOCK environment variable is set, every write in
-this module is a no-op so demo fares never pollute the signal database.
+this module is a no-op so demo fares never pollute the signal database, and
+every read returns empty so learned rankings never bias demo results.
+Callers with a per-request demo flag (Test Data switch in dev) pass
+``demo=True`` to the read helpers for the same bypass.
 """
 
 from __future__ import annotations
@@ -302,8 +305,14 @@ def recompute_scores(*, force: bool = False) -> bool:
         return False
 
 
-def scores_for_vibe(vibe: str | None) -> dict[str, float]:
-    """dest_iata → aggregate signal score for one vibe (lazy-refreshes first)."""
+def scores_for_vibe(vibe: str | None, *, demo: bool = False) -> dict[str, float]:
+    """dest_iata → aggregate signal score for one vibe (lazy-refreshes first).
+
+    Returns {} when *demo* is True or MOCK mode is on — demo/testing sessions
+    must see rankings as if the store were empty.
+    """
+    if demo or _mock_mode():
+        return {}
     recompute_scores()
     try:
         with _connect() as conn:
@@ -321,10 +330,17 @@ def top_for_vibe(
     *,
     limit: int = 10,
     group_by_country: bool = False,
+    demo: bool = False,
 ) -> list[dict[str, Any]] | dict[str, list[dict[str, Any]]]:
-    """Top destinations for a vibe from dest_vibe_scores (lazy-refreshes first)."""
+    """Top destinations for a vibe from dest_vibe_scores (lazy-refreshes first).
+
+    Returns empty ([] or {}) when *demo* is True or MOCK mode is on — learned
+    rankings are bypassed entirely in demo/testing sessions.
+    """
     from yonder.countries import country_for_iata
 
+    if demo or _mock_mode():
+        return {} if group_by_country else []
     recompute_scores()
     lim = max(1, min(100, int(limit or 10)))
     try:

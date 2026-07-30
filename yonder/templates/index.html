@@ -1812,29 +1812,35 @@
 
         function fetchRanking(vibe) {
           var v = (vibe || "adventure").toLowerCase();
-          if (rankingCache[v]) return Promise.resolve(rankingCache[v]);
-          if (rankingInflight[v]) return rankingInflight[v];
+          // Demo switch on → learned signal scores are bypassed server-side;
+          // cache demo/live rankings separately so toggling stays correct.
+          var mockEl = document.getElementById("explore-mock");
+          var demoOn = !!(mockEl && mockEl.checked);
+          var key = v + (demoOn ? "|demo" : "");
+          if (rankingCache[key]) return Promise.resolve(rankingCache[key]);
+          if (rankingInflight[key]) return rankingInflight[key];
           var home = (window.FS_TRAVEL && FS_TRAVEL.home_iata) || "";
           var url =
             "/api/suggest?vibe=" +
             encodeURIComponent(v) +
-            (home ? "&origin=" + encodeURIComponent(home) : "");
-          rankingInflight[v] = fetch(url, {
+            (home ? "&origin=" + encodeURIComponent(home) : "") +
+            (demoOn ? "&mock=true" : "");
+          rankingInflight[key] = fetch(url, {
             credentials: "same-origin",
             headers: { Accept: "application/json" },
           })
             .then(function (r) { return r.json(); })
             .then(function (data) {
               var rank = (data && data.ok && data.ranking) ? data.ranking : {};
-              rankingCache[v] = rank;
-              delete rankingInflight[v];
+              rankingCache[key] = rank;
+              delete rankingInflight[key];
               return rank;
             })
             .catch(function () {
-              delete rankingInflight[v];
+              delete rankingInflight[key];
               return {};
             });
-          return rankingInflight[v];
+          return rankingInflight[key];
         }
 
         function renderChipButtons(chips) {

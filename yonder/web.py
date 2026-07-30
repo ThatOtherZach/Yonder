@@ -2351,15 +2351,28 @@ async def api_vibe_stats(
     vibe: str = Query(""),
     limit: int = Query(10, ge=1, le=100),
     group: str = Query(""),
+    mock: bool = Query(False),
 ) -> JSONResponse:
-    """Top destinations per vibe from accumulated usage signals."""
+    """Top destinations per vibe from accumulated usage signals.
+
+    In dev (TESTING=true) with the demo switch on (?mock=true), learned
+    scores are bypassed entirely — the response is empty and flagged.
+    """
     from yonder.vibe_signals import top_for_vibe
 
+    settings = get_settings()
+    demo = bool(mock) and bool(settings.testing)
     v = (vibe or "").strip().lower() or "adventure"
     by_country = (group or "").strip().lower() in ("country", "cc", "1", "true")
-    top = top_for_vibe(v, limit=limit, group_by_country=by_country)
+    top = top_for_vibe(v, limit=limit, group_by_country=by_country, demo=demo)
     return JSONResponse(
-        {"ok": True, "vibe": v, "grouped_by_country": by_country, "top": top}
+        {
+            "ok": True,
+            "vibe": v,
+            "grouped_by_country": by_country,
+            "top": top,
+            "signals_bypassed": demo,
+        }
     )
 
 
@@ -2475,6 +2488,7 @@ async def api_nearest_airport(lat: float, lon: float) -> JSONResponse:
 async def api_suggest(
     vibe: str = Query(""),
     origin: str | None = None,
+    mock: bool = Query(False),
 ) -> JSONResponse:
     """Dataset-completion chip ranking from ★ Saves (vibe + map context).
 
@@ -2485,11 +2499,15 @@ async def api_suggest(
 
     settings = reload_settings()
     home = (origin or "").strip().upper() or settings.resolve_home_iata()
+    # Dev demo switch: learned signal scores are bypassed so chip ranking
+    # behaves as if the signal store were empty (★ Saves still apply).
+    demo = bool(mock) and bool(settings.testing)
     rank = ranking_from_saves(
         vibe=(vibe or "").strip().lower() or None,
         origin=home,
         visited=settings.visited_country_list(),
         avoid=settings.avoid_country_list(),
+        demo=demo,
     )
     return JSONResponse(
         {
