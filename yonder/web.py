@@ -468,12 +468,12 @@ async def ask_grok(request: Request) -> HTMLResponse:
     settings = reload_settings()
 
     if request.method == "GET":
-        ask = str(request.query_params.get("ask") or "").strip()
+        ask = str(request.query_params.get("ask") or "").strip()[:280]
         mock = str(request.query_params.get("mock") or "") in ("true", "on", "1")
         vibe = str(request.query_params.get("vibe") or "").strip().lower()
     else:
         form_data = await request.form()
-        ask = str(form_data.get("ask") or "").strip()
+        ask = str(form_data.get("ask") or "").strip()[:280]
         mock = str(form_data.get("mock") or "") in ("true", "on", "1")
         vibe = str(form_data.get("vibe") or "").strip().lower()
 
