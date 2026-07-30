@@ -199,6 +199,27 @@ def search(
         console.print(f"Wrote {json_out}")
 
 
+@app.command("purge-field-notes")
+def purge_field_notes_cmd() -> None:
+    """Delete cached field notes that lack a tagline (old era_note/vibe format).
+
+    Stale entries are already skipped at read-time, but running this command
+    removes them from disk so the next request fetches fresh prose from Grok.
+    """
+    from yonder.encyclopedia import purge_legacy_field_notes
+
+    with console.status("Scanning field-note cache…"):
+        deleted = purge_legacy_field_notes()
+
+    if deleted:
+        console.print(
+            f"[green]Purged {deleted} legacy field note(s).[/] "
+            "They will be re-fetched with the new tagline format on next use."
+        )
+    else:
+        console.print("[dim]No legacy field notes found — cache is already up to date.[/]")
+
+
 @app.command("serve")
 def serve(
     host: str = typer.Option("127.0.0.1", "--host"),

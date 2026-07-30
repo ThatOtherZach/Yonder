@@ -63,7 +63,13 @@ def get_cached(key: str) -> dict[str, Any] | None:
         return None
     try:
         data = json.loads(row["payload_json"])
-        return _strip_emdash(data) if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            return None
+        # Treat entries without 'tagline' as stale — old format used era_note/vibe
+        # separately; the new prompt merges them into a single punchy tagline.
+        if "tagline" not in data:
+            return None
+        return _strip_emdash(data)
     except json.JSONDecodeError:
         return None
 
@@ -90,9 +96,43 @@ def get_any_cached_for_iata(iata: str) -> dict[str, Any] | None:
         return None
     try:
         data = json.loads(row["payload_json"])
-        return _strip_emdash(data) if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            return None
+        # Same stale-format guard as get_cached: old entries lack 'tagline'.
+        if "tagline" not in data:
+            return None
+        return _strip_emdash(data)
     except json.JSONDecodeError:
         return None
+
+
+def purge_legacy_field_notes() -> int:
+    """Delete cached field notes that lack a 'tagline' key (old era_note/vibe format).
+
+    Returns the number of rows deleted. Safe to run at any time — the next
+    request for each purged entry will re-fetch a fresh note from Grok.
+    """
+    deleted = 0
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT cache_key, payload_json FROM place_briefs"
+        ).fetchall()
+        to_delete: list[str] = []
+        for row in rows:
+            try:
+                data = json.loads(row["payload_json"])
+                if not isinstance(data, dict) or "tagline" not in data:
+                    to_delete.append(row["cache_key"])
+            except json.JSONDecodeError:
+                to_delete.append(row["cache_key"])
+        if to_delete:
+            conn.executemany(
+                "DELETE FROM place_briefs WHERE cache_key = ?",
+                [(k,) for k in to_delete],
+            )
+            conn.commit()
+            deleted = len(to_delete)
+    return deleted
 
 
 def put_cached(key: str, payload: dict[str, Any]) -> None:
