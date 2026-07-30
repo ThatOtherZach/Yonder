@@ -351,6 +351,72 @@
       outline-offset: 2px;
     }
 
+    /* ── community vibe suggestions ("Others also asked") ── */
+    .vibe-suggest-card {
+      margin-top: 0.9rem;
+      padding: 0.85rem 1rem 0.9rem;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--white);
+      box-shadow: var(--shadow-sm);
+    }
+    .vibe-suggest-card[hidden] { display: none !important; }
+    .vibe-suggest-card h3 {
+      margin: 0 0 0.55rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .vibe-suggest-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .vibe-suggest-item {
+      padding: 0.55rem 0.7rem;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--vibe-now, var(--sky-bright));
+      border-radius: 10px;
+      background: var(--paper);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+    .vibe-suggest-item .vs-query {
+      display: block;
+      font-weight: 650;
+      color: var(--ink);
+      margin-bottom: 0.15rem;
+    }
+    .vibe-suggest-item .vs-query::before {
+      content: "“";
+      color: var(--muted);
+    }
+    .vibe-suggest-item .vs-query::after {
+      content: "”";
+      color: var(--muted);
+    }
+    .vibe-suggest-item .vs-answer {
+      display: block;
+      color: var(--ink-soft);
+    }
+    .vibe-suggest-item .vs-iata {
+      display: inline-block;
+      margin-left: 0.35rem;
+      padding: 0.08rem 0.4rem;
+      border-radius: 5px;
+      background: var(--ink);
+      color: var(--white);
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      vertical-align: 1px;
+    }
     .parsed-box {
       font-size: 0.9rem;
       color: var(--ink-soft);
@@ -1035,6 +1101,12 @@
           <div id="ask-client-error"></div>
         </div>
       </form>
+    </div>
+
+    {# ——— Community vibe suggestions: answered "didn't fit" questions for this vibe ——— #}
+    <div class="vibe-suggest-card" id="vibe-suggest-card" hidden aria-live="polite">
+      <h3 id="vibe-suggest-title">Others also asked</h3>
+      <ul class="vibe-suggest-list" id="vibe-suggest-list"></ul>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
@@ -1941,6 +2013,78 @@
           clearTimeout(suggestTimer);
           suggestTimer = setTimeout(renderSuggestions, 40);
         }
+
+        // ── community vibe suggestions ("Others also asked") ──
+        var vsCard = document.getElementById("vibe-suggest-card");
+        var vsList = document.getElementById("vibe-suggest-list");
+        var vsCache = {}; // vibe → suggestions array
+        var vsInflight = {};
+        var vsTimer = null;
+
+        function fetchVibeSuggestions(vibe) {
+          var v = (vibe || "adventure").toLowerCase();
+          if (vsCache[v]) return Promise.resolve(vsCache[v]);
+          if (vsInflight[v]) return vsInflight[v];
+          vsInflight[v] = fetch(
+            "/api/vibe-suggestions?vibe=" + encodeURIComponent(v) + "&limit=3",
+            { credentials: "same-origin", headers: { Accept: "application/json" } }
+          )
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              var list = (data && data.ok && data.suggestions) ? data.suggestions : [];
+              vsCache[v] = list;
+              delete vsInflight[v];
+              return list;
+            })
+            .catch(function () {
+              delete vsInflight[v];
+              return [];
+            });
+          return vsInflight[v];
+        }
+
+        function renderVibeSuggestions() {
+          if (!vsCard || !vsList) return;
+          var vibe = currentVibeId();
+          fetchVibeSuggestions(vibe).then(function (list) {
+            if (currentVibeId() !== vibe) return;
+            vsList.innerHTML = "";
+            var shown = 0;
+            (list || []).forEach(function (s) {
+              if (shown >= 3) return;
+              var ans = s && s.answer;
+              var text = ans && (ans.suggestion || ans.text || "");
+              if (!s || !s.query || !text) return;
+              var li = document.createElement("li");
+              li.className = "vibe-suggest-item";
+              var q = document.createElement("span");
+              q.className = "vs-query";
+              q.textContent = s.query;
+              var a = document.createElement("span");
+              a.className = "vs-answer";
+              a.textContent = String(text);
+              li.appendChild(q);
+              li.appendChild(a);
+              if (ans.dest_iata && /^[A-Z]{3}$/.test(String(ans.dest_iata))) {
+                var tag = document.createElement("span");
+                tag.className = "vs-iata";
+                tag.textContent = ans.dest_iata;
+                a.appendChild(tag);
+              }
+              vsList.appendChild(li);
+              shown += 1;
+            });
+            vsCard.hidden = shown === 0;
+          });
+        }
+
+        function scheduleVibeSuggestions() {
+          clearTimeout(vsTimer);
+          vsTimer = setTimeout(renderVibeSuggestions, 60);
+        }
+
+        document.addEventListener("yonder:vibechange", scheduleVibeSuggestions);
+        setTimeout(renderVibeSuggestions, 120);
 
         document.addEventListener("yonder:vibechange", scheduleSuggestions);
         document.addEventListener("yonder:mapchange", scheduleSuggestions);
