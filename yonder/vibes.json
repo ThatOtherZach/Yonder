@@ -1246,5 +1246,122 @@
       "stop": "stopover with bizarre fauna and creatures no one warned you about",
       "escape": "somewhere full of strange animals, dense heat, and a healthy disregard for the normal"
     }
+  },
+  {
+    "id": "wildwest",
+    "label": "Wild West",
+    "color": "#ca8a04",
+    "emoji": "🐎",
+    "traits": {
+      "adj": "wild-west",
+      "chip": "Wild West",
+      "getaway": "frontier few days — dusty trails, honky-tonks, towns with one road in",
+      "stop": "wild-west stopover, red rock and roadhouse bars",
+      "escape": "frontier destination — wide sky, no crowds, a horse if you're lucky"
+    }
+  },
+  {
+    "id": "nomad",
+    "label": "Nomad",
+    "color": "#b45309",
+    "emoji": "🎒",
+    "traits": {
+      "adj": "nomadic",
+      "chip": "Nomad",
+      "getaway": "nomadic few days — no fixed plan, move when ready, wherever the bus goes",
+      "stop": "loose nomadic stopover, hostel or couch, gone by Tuesday",
+      "escape": "city you could vanish into for a month with just a bag"
+    }
+  },
+  {
+    "id": "meltdown",
+    "label": "Meltdown",
+    "color": "#be123c",
+    "emoji": "🫠",
+    "traits": {
+      "adj": "melting",
+      "chip": "Meltdown",
+      "getaway": "full meltdown few days — somewhere too hot, too loud, too much, exactly right",
+      "stop": "overstimulating city stopover where nothing makes sense",
+      "escape": "city that breaks you open in the best possible way"
+    }
+  },
+  {
+    "id": "vanish",
+    "label": "Vanish",
+    "color": "#1e1b4b",
+    "emoji": "🕳️",
+    "traits": {
+      "adj": "disappearing",
+      "chip": "Vanish",
+      "getaway": "disappear for a few days — no one knows where you are, that's the point",
+      "stop": "off-grid stopover, no itinerary, no check-ins",
+      "escape": "city you can dissolve into, completely anonymous"
+    }
+  },
+  {
+    "id": "dissociate",
+    "label": "Dissociate",
+    "color": "#64748b",
+    "emoji": "😶‍🌫️",
+    "traits": {
+      "adj": "dissociative",
+      "chip": "Dissociate",
+      "getaway": "fog-brain few days — slow, floaty, nothing urgent, somewhere soft",
+      "stop": "gentle blurry city stopover, all the edges rounded",
+      "escape": "city you move through like a dream, no demands"
+    }
+  },
+  {
+    "id": "spiral",
+    "label": "Spiral",
+    "color": "#0e7490",
+    "emoji": "🌀",
+    "traits": {
+      "adj": "spiraling",
+      "chip": "Spiral",
+      "getaway": "spiraling few days — one thing leads to another, no plan survives contact",
+      "stop": "city that pulls you deeper the longer you stay",
+      "escape": "destination that rewires you whether you meant it to or not"
+    }
+  },
+  {
+    "id": "delirium",
+    "label": "Delirium",
+    "color": "#a21caf",
+    "emoji": "😵‍💫",
+    "traits": {
+      "adj": "delirious",
+      "chip": "Delirium",
+      "getaway": "delirious few days — jet-lagged, too much coffee, cities blurring together, perfect",
+      "stop": "disorienting city stopover that makes you question everything pleasantly",
+      "escape": "city so dense and strange you lose track of the day"
+    }
+  },
+  {
+    "id": "burnout",
+    "label": "Burnout",
+    "color": "#7c2d12",
+    "emoji": "🔥",
+    "traits": {
+      "adj": "burned-out",
+      "chip": "Burnout",
+      "getaway": "burned-out few days — somewhere quiet enough to stop pretending you're fine",
+      "stop": "low-stimulation stopover, good food, no agenda",
+      "escape": "city that asks nothing of you and gives you space to breathe"
+    }
+  },
+  {
+    "id": "apocalypse",
+    "label": "Apocalypse",
+    "color": "#292524",
+    "emoji": "☄️",
+    "traits": {
+      "adj": "apocalyptic",
+      "chip": "Apocalypse",
+      "getaway": "end-times few days — ruins, abandoned places, a city that already burned",
+      "stop": "post-industrial apocalyptic city stopover, beautiful wreckage",
+      "escape": "city where civilisation peaked and you can feel it"
+    }
   }
 ]
