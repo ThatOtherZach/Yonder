@@ -1009,14 +1009,35 @@
           } catch(e) { /* silent */ }
         }
 
+        function bindClearConfirm(btn, onConfirm) {
+          var orig = btn.textContent;
+          var pending = false;
+          function cancelIfOutside(e) {
+            if (btn.contains(e.target)) return;
+            pending = false;
+            btn.textContent = orig;
+            document.removeEventListener("click", cancelIfOutside, true);
+          }
+          btn.addEventListener("click", function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!pending) {
+              pending = true;
+              btn.textContent = "Are you sure? 😮";
+              document.addEventListener("click", cancelIfOutside, true);
+            } else {
+              document.removeEventListener("click", cancelIfOutside, true);
+              pending = false;
+              btn.textContent = orig;
+              onConfirm();
+            }
+          });
+        }
+
         var cvb = document.getElementById("clear-visited-btn");
-        if (cvb) cvb.addEventListener("click", function() {
-          if (confirm("Clear all visited stamps? This cannot be undone.")) clearList("visited");
-        });
+        if (cvb) bindClearConfirm(cvb, function() { clearList("visited"); });
         var cab = document.getElementById("clear-avoid-btn");
-        if (cab) cab.addEventListener("click", function() {
-          if (confirm("Clear all avoid countries?")) clearList("avoid");
-        });
+        if (cab) bindClearConfirm(cab, function() { clearList("avoid"); });
       })();
 
       document.addEventListener("yonder:xpupdate", function (e) { updateXpCard(e.detail); });
