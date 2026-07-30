@@ -1414,7 +1414,6 @@
               <script type="application/json" id="escape-offer-json-{{ loop.index0 }}">{{ o.model_dump_json() | safe }}</script>
               <script type="application/json" id="escape-query-json">{{ escape_result.query.model_dump_json() | safe }}</script>
               <div class="bp-actions">
-                <button type="button" class="btn secondary btn-save-escape" data-offer-idx="{{ loop.index0 }}" data-ask="{{ (ask or esc_text or '')|e }}">★ Save</button>
                 {% if o.google_flights_url %}
                 <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
                 {% endif %}
@@ -1445,12 +1444,12 @@
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
                   <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
                 </a>
-                <a class="bp-stub-share" href="{{ share.url }}" target="_blank" rel="noopener">Share</a>
+                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-offer-idx="{{ loop.index0 }}" data-ask="{{ (ask or esc_text or '')|e }}">★ Save &amp; Share</button>
               </div>
               {% elif share %}
               <div class="bp-stub-qr">
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
-                <a class="bp-stub-share" href="{{ share.url }}" target="_blank" rel="noopener">Share</a>
+                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-offer-idx="{{ loop.index0 }}" data-ask="{{ (ask or esc_text or '')|e }}">★ Save &amp; Share</button>
               </div>
               {% else %}
               <div class="bp-barcode" aria-hidden="true"></div>
@@ -1616,7 +1615,6 @@
               {% endif %}
               <script type="application/json" id="it-json-{{ loop.index0 }}">{{ it.model_dump_json() | safe }}</script>
               <div class="bp-actions">
-                <button type="button" class="btn secondary btn-save-it" data-it-idx="{{ loop.index0 }}">★ Save</button>
                 {% if it.google_flights_url %}
                 <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
                 {% endif %}
@@ -1656,12 +1654,12 @@
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
                   <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
                 </a>
-                <a class="bp-stub-share" href="{{ share.url }}" target="_blank" rel="noopener">Share</a>
+                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-it-idx="{{ loop.index0 }}">★ Save &amp; Share</button>
               </div>
               {% elif share %}
               <div class="bp-stub-qr">
                 <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
-                <a class="bp-stub-share" href="{{ share.url }}" target="_blank" rel="noopener">Share</a>
+                <button type="button" class="bp-stub-share btn-save-and-share" data-share-url="{{ share.url }}" data-it-idx="{{ loop.index0 }}">★ Save &amp; Share</button>
               </div>
               {% else %}
               <div class="bp-barcode" aria-hidden="true"></div>
@@ -2310,7 +2308,7 @@
         });
       }
 
-      function postSave(body, btn) {
+      function postSaveAndShare(body, btn, shareUrl) {
         btn.disabled = true;
         btn.textContent = "Saving…";
         fetch("/api/saved", {
@@ -2319,19 +2317,8 @@
           body: JSON.stringify(body),
         })
           .then(function (r) { return r.json(); })
-          .then(function (data) {
-            if (data && data.ok) {
-              btn.textContent = "★ Saved";
-              btn.style.color = "var(--good)";
-            } else {
-              btn.disabled = false;
-              btn.textContent = "Save failed";
-            }
-          })
-          .catch(function () {
-            btn.disabled = false;
-            btn.textContent = "Save failed";
-          });
+          .then(function () { window.location.href = shareUrl; })
+          .catch(function () { window.location.href = shareUrl; });
       }
 
       function pageAttribution() {
@@ -2351,64 +2338,67 @@
         };
       }
 
-      function bootSave() {
+      function bootSaveAndShare() {
         var attr = pageAttribution();
         var tripMeta = attr.tripMeta || {};
         var vibeEl = document.getElementById("explore-vibe");
         var vibe = vibeEl ? vibeEl.value : "";
 
-        document.querySelectorAll(".btn-save-it").forEach(function (b) {
+        document.querySelectorAll(".btn-save-and-share").forEach(function (b) {
           b.addEventListener("click", function () {
-            var idx = b.getAttribute("data-it-idx");
-            var el = document.getElementById("it-json-" + idx);
-            if (!el) return;
-            var itinerary;
-            try { itinerary = JSON.parse(el.textContent); } catch (e) { return; }
-            var meta = Object.assign({}, tripMeta, {
-              prompt: tripMeta.prompt || (ta && ta.value) || "",
-              trip_prompt: tripMeta.trip_prompt || tripMeta.prompt || (ta && ta.value) || "",
-              vibe: tripMeta.vibe || vibe,
-              click_id: tripMeta.click_id || attr.click_id,
-              chip_id: tripMeta.chip_id || attr.chip_id,
-              chip_source: tripMeta.chip_source || attr.chip_source,
-              search_id: tripMeta.search_id || attr.search_id,
-            });
-            postSave({ itinerary: itinerary, trip_meta: meta }, b);
-          });
-        });
+            var shareUrl = b.getAttribute("data-share-url") || "";
+            var itIdx = b.getAttribute("data-it-idx");
+            var offerIdx = b.getAttribute("data-offer-idx");
 
-        document.querySelectorAll(".btn-save-escape").forEach(function (b) {
-          b.addEventListener("click", function () {
-            var idx = b.getAttribute("data-offer-idx") || "0";
-            var oEl = document.getElementById("escape-offer-json-" + idx);
-            var qEl = document.getElementById("escape-query-json");
-            if (!oEl || !qEl) return;
-            var offer, query;
-            try {
-              offer = JSON.parse(oEl.textContent);
-              query = JSON.parse(qEl.textContent);
-            } catch (e) { return; }
-            var ask = b.getAttribute("data-ask") || (ta && ta.value) || "";
-            var escPanel2 = document.getElementById("escape-results");
-            var escapeMock = !!(escPanel2 && escPanel2.getAttribute("data-mock") === "true");
-            postSave({
-              kind: "escape",
-              ask: ask,
-              query: query,
-              offer: offer,
-              trip_meta: {
-                prompt: ask,
-                trip_prompt: ask,
-                vibe: vibe,
-                origin: query.origin,
-                destination: query.destination,
-                click_id: attr.click_id,
-                chip_id: attr.chip_id,
-                chip_source: attr.chip_source,
-                search_id: attr.search_id,
-                mock: escapeMock,
-              },
-            }, b);
+            if (itIdx !== null) {
+              // Detour card
+              var el = document.getElementById("it-json-" + itIdx);
+              if (!el) { if (shareUrl) window.location.href = shareUrl; return; }
+              var itinerary;
+              try { itinerary = JSON.parse(el.textContent); } catch (e) { if (shareUrl) window.location.href = shareUrl; return; }
+              var meta = Object.assign({}, tripMeta, {
+                prompt: tripMeta.prompt || (ta && ta.value) || "",
+                trip_prompt: tripMeta.trip_prompt || tripMeta.prompt || (ta && ta.value) || "",
+                vibe: tripMeta.vibe || vibe,
+                click_id: tripMeta.click_id || attr.click_id,
+                chip_id: tripMeta.chip_id || attr.chip_id,
+                chip_source: tripMeta.chip_source || attr.chip_source,
+                search_id: tripMeta.search_id || attr.search_id,
+              });
+              postSaveAndShare({ itinerary: itinerary, trip_meta: meta }, b, shareUrl);
+            } else if (offerIdx !== null) {
+              // Escape card
+              var idx = offerIdx || "0";
+              var oEl = document.getElementById("escape-offer-json-" + idx);
+              var qEl = document.getElementById("escape-query-json");
+              if (!oEl || !qEl) { if (shareUrl) window.location.href = shareUrl; return; }
+              var offer, query;
+              try {
+                offer = JSON.parse(oEl.textContent);
+                query = JSON.parse(qEl.textContent);
+              } catch (e) { if (shareUrl) window.location.href = shareUrl; return; }
+              var ask = b.getAttribute("data-ask") || (ta && ta.value) || "";
+              var escPanel2 = document.getElementById("escape-results");
+              var escapeMock = !!(escPanel2 && escPanel2.getAttribute("data-mock") === "true");
+              postSaveAndShare({
+                kind: "escape",
+                ask: ask,
+                query: query,
+                offer: offer,
+                trip_meta: {
+                  prompt: ask,
+                  trip_prompt: ask,
+                  vibe: vibe,
+                  origin: query.origin,
+                  destination: query.destination,
+                  click_id: attr.click_id,
+                  chip_id: attr.chip_id,
+                  chip_source: attr.chip_source,
+                  search_id: attr.search_id,
+                  mock: escapeMock,
+                },
+              }, b, shareUrl);
+            }
           });
         });
       }
@@ -2814,7 +2804,7 @@
 
       function boot() {
         bootForm();
-        bootSave();
+        bootSaveAndShare();
         bootOutboundLinks();
         bootSignalEvents();
         bootThumbVotes();
