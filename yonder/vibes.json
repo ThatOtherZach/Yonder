@@ -1220,5 +1220,31 @@
       "stop": "folk-culture city stopover",
       "escape": "city steeped in folklore and living tradition"
     }
+  },
+  {
+    "id": "billiards",
+    "label": "Billiards",
+    "color": "#064e3b",
+    "emoji": "🎱",
+    "traits": {
+      "adj": "dive-bar",
+      "chip": "Billiards",
+      "getaway": "dive-bar few days — pool halls, sport pubs, locals who haven't left since Tuesday",
+      "stop": "city with real pool halls and no-nonsense bars stopover",
+      "escape": "billiards city — chalk dust, dim lights, and a proper local pub"
+    }
+  },
+  {
+    "id": "gecko",
+    "label": "Gecko",
+    "color": "#f97316",
+    "emoji": "🦎",
+    "traits": {
+      "adj": "unhinged",
+      "chip": "Gecko",
+      "getaway": "unhinged creature few days — weird wildlife, reptile markets, animals that shouldn't exist",
+      "stop": "stopover with bizarre fauna and creatures no one warned you about",
+      "escape": "somewhere full of strange animals, dense heat, and a healthy disregard for the normal"
+    }
   }
 ]
