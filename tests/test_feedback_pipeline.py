@@ -5,14 +5,20 @@ Covers three data paths:
   2. Thumbs-down → row in result_feedback(direction='down') + rejection signal
                    (strength=0) in vibe_signals.db + row in vibe_questions
   3. GET /api/vibe-suggestions → returns previously answered vibe questions
+  4. _generate_answer background task → answer_json written when Grok responds;
+     row left unanswered when Grok is not configured
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import sqlite3
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 
 import yonder.feedback as fb
 import yonder.vibe_signals as vs
@@ -256,3 +262,211 @@ class TestVibeSuggestions:
         # Newest answer first (answer_at DESC)
         assert body["suggestions"][0]["query"] == "query two"
         assert body["suggestions"][1]["query"] == "query one"
+
+
+# ---------------------------------------------------------------------------
+# 4. _generate_answer background task: answer_json written when Grok responds;
+#    row left unanswered when Grok is not configured
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateAnswer:
+    """Tests for the _generate_answer coroutine created inside api_result_feedback.
+
+    We trigger it indirectly via POST /api/result-feedback (direction=down), then
+    yield the event loop with asyncio.sleep so the background task completes before
+    we inspect the database.
+    """
+
+    def _make_ready_settings(self):
+        """Return a minimal Settings-like mock where grok_ready() is True."""
+        s = MagicMock()
+        s.grok_ready.return_value = True
+        # Satisfy GrokClient.is_configured()
+        s.xai_api_key = "fake-xai-key"
+        s.xai_model = "grok-test"
+        s.byom_base_url = ""
+        s.byom_api_key = ""
+        s.byom_model = ""
+        return s
+
+    async def test_answer_saved_when_grok_responds(self, isolated_dbs):
+        """GrokClient returns a known string → answer_json written to vibe_questions."""
+        known_text = "Head to Lisbon for culture, custard tarts, and fado (LIS)"
+        settings_mock = self._make_ready_settings()
+
+        with (
+            patch("yonder.web.get_settings", return_value=settings_mock),
+            patch(
+                "yonder.grok.GrokClient._chat",
+                new=AsyncMock(return_value=known_text),
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=web_module.app), base_url="http://test"
+            ) as ac:
+                resp = await ac.post(
+                    "/api/result-feedback",
+                    json={
+                        "direction": "down",
+                        "vibe": "culture",
+                        "query": "european city break",
+                        "dest_iata": "BCN",
+                    },
+                )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["ok"] is True
+            assert body.get("direction") == "down"
+
+            # Give the background task time to run to completion
+            await asyncio.sleep(0.2)
+
+        # Verify answer_json was persisted
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT answer_json FROM vibe_questions WHERE vibe = 'culture'"
+            ).fetchone()
+
+        assert row is not None, "vibe_questions row should exist"
+        assert row["answer_json"] is not None, "answer_json should have been written"
+        answer = json.loads(row["answer_json"])
+        assert answer["suggestion"] == known_text.strip()
+        assert answer["dest_iata"] == "LIS"  # extracted from trailing (LIS)
+
+    async def test_answer_shape_iata_extracted_correctly(self, isolated_dbs):
+        """IATA code in trailing parentheses is parsed into dest_iata."""
+        known_text = "The Azores are wild and underrated. Fly into (PDL)"
+        settings_mock = self._make_ready_settings()
+
+        with (
+            patch("yonder.web.get_settings", return_value=settings_mock),
+            patch(
+                "yonder.grok.GrokClient._chat",
+                new=AsyncMock(return_value=known_text),
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=web_module.app), base_url="http://test"
+            ) as ac:
+                await ac.post(
+                    "/api/result-feedback",
+                    json={
+                        "direction": "down",
+                        "vibe": "offbeat",
+                        "query": "quiet island escape",
+                        "dest_iata": "LIS",
+                    },
+                )
+            await asyncio.sleep(0.2)
+
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT answer_json FROM vibe_questions WHERE vibe = 'offbeat'"
+            ).fetchone()
+        assert row is not None
+        answer = json.loads(row["answer_json"])
+        assert answer["dest_iata"] == "PDL"
+
+    async def test_no_iata_in_response_stores_none_dest(self, isolated_dbs):
+        """If Grok's reply has no trailing (XXX) code, dest_iata is stored as None."""
+        known_text = "Consider exploring rural Portugal or the Spanish meseta."
+        settings_mock = self._make_ready_settings()
+
+        with (
+            patch("yonder.web.get_settings", return_value=settings_mock),
+            patch(
+                "yonder.grok.GrokClient._chat",
+                new=AsyncMock(return_value=known_text),
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=web_module.app), base_url="http://test"
+            ) as ac:
+                await ac.post(
+                    "/api/result-feedback",
+                    json={
+                        "direction": "down",
+                        "vibe": "wanderer",
+                        "query": "no fixed destination",
+                        "dest_iata": "MAD",
+                    },
+                )
+            await asyncio.sleep(0.2)
+
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT answer_json FROM vibe_questions WHERE vibe = 'wanderer'"
+            ).fetchone()
+        assert row is not None
+        answer = json.loads(row["answer_json"])
+        assert answer["dest_iata"] is None
+        assert known_text.strip() in answer["suggestion"]
+
+    async def test_row_left_unanswered_when_grok_not_ready(self, isolated_dbs):
+        """When grok_ready() returns False the row is created but answer_json stays NULL."""
+        settings_mock = MagicMock()
+        settings_mock.grok_ready.return_value = False
+
+        with patch("yonder.web.get_settings", return_value=settings_mock):
+            async with AsyncClient(
+                transport=ASGITransport(app=web_module.app), base_url="http://test"
+            ) as ac:
+                resp = await ac.post(
+                    "/api/result-feedback",
+                    json={
+                        "direction": "down",
+                        "vibe": "adventure",
+                        "query": "mountain trekking nepal",
+                        "dest_iata": "KTM",
+                    },
+                )
+            assert resp.status_code == 200
+            await asyncio.sleep(0.2)
+
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT answer_json FROM vibe_questions WHERE vibe = 'adventure'"
+            ).fetchone()
+
+        assert row is not None, "vibe_questions row should still be created"
+        assert row["answer_json"] is None, (
+            "answer_json must remain NULL when Grok is not ready"
+        )
+
+    async def test_second_thumbs_down_same_query_skips_generation(self, isolated_dbs):
+        """A duplicate thumbs-down on the same vibe+query does not trigger a second AI call."""
+        known_text = "Go to Marrakech for the chaos (RAK)."
+        settings_mock = self._make_ready_settings()
+        chat_mock = AsyncMock(return_value=known_text)
+
+        with (
+            patch("yonder.web.get_settings", return_value=settings_mock),
+            patch("yonder.grok.GrokClient._chat", new=chat_mock),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=web_module.app), base_url="http://test"
+            ) as ac:
+                payload = {
+                    "direction": "down",
+                    "vibe": "chaos",
+                    "query": "hectic bazaar city",
+                    "dest_iata": "CMN",
+                }
+                await ac.post("/api/result-feedback", json=payload)
+                await asyncio.sleep(0.2)
+                # Second vote from the same context (different session hash so
+                # record_feedback is not deduped, but upsert_vibe_question is idempotent)
+                payload2 = dict(payload, dest_iata="FEZ")
+                await ac.post("/api/result-feedback", json=payload2)
+                await asyncio.sleep(0.2)
+
+        # GrokClient._chat must have been called exactly once
+        assert chat_mock.call_count == 1
+
+        # Only one row in vibe_questions for this vibe+query
+        with fb._connect() as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) AS c FROM vibe_questions WHERE vibe = 'chaos'"
+            ).fetchone()["c"]
+        assert n == 1
