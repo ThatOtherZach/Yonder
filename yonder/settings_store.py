@@ -40,7 +40,7 @@ MANAGED_KEYS: list[tuple[str, str, str, bool]] = [
     (
         "TESTING",
         "Testing mode",
-        "true = show Test Data (mock fares) on Escape/Detour · false = live only",
+        "true = show Turbo (mock fares) on Escape/Detour · false = live only",
         False,
     ),
     # DETOUR_MIN_STOP_DAYS, DETOUR_MAX_STOP_DAYS moved to user_prefs.db.

@@ -1142,7 +1142,7 @@
           <label class="toggle-switch" title="Fake demo fares">
             <input type="checkbox" name="mock" value="true" id="explore-mock" {% if form is defined and form.mock %}checked{% endif %} />
             <span class="toggle-track"></span>
-            Demo
+            Turbo
           </label>
           {% endif %}
         </div>
@@ -1903,7 +1903,7 @@
             return;
           }
           if (!grokReady) {
-            showError("Add XAI_API_KEY in Settings (or enable Test Data).");
+            showError("Add XAI_API_KEY in Settings (or enable Turbo).");
             return;
           }
           if (!window.YonderProgress) {

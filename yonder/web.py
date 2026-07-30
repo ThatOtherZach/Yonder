@@ -925,7 +925,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             errors.append("Escape skipped — user hit Skip")
             return
         if not settings.grok_ready() and not mock:
-            errors.append("Escape skipped — add XAI_API_KEY, configure BYOM, or enable Test Data")
+            errors.append("Escape skipped — add XAI_API_KEY, configure BYOM, or enable Turbo")
             return
         remaining = _soft_remaining()
         if remaining <= 0 and search_id and is_cancelled(search_id):
@@ -1637,7 +1637,7 @@ async def explore_run(request: Request) -> HTMLResponse:
 
         if not has_esc and not has_det:
             raise ValueError(
-                "; ".join(errors) if errors else "Nothing priced — try again or Test Data."
+                "; ".join(errors) if errors else "Nothing priced — try again or Turbo."
             )
 
         # Prefer showing the side that has data; mix defaults to escape panel first
