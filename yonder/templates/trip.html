@@ -80,6 +80,11 @@
       word-break: break-all;
       white-space: normal;
     }
+    .btn-share-copy {
+      padding: 0.35rem 0.7rem;
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
     .trip-meta {
       color: var(--muted);
       font-size: 0.9rem;
@@ -96,9 +101,9 @@
         flex-wrap: wrap;
       }
       /* Copy link button: comfortable 44px tap target */
-      #copy-share-url {
-        min-height: 2.75rem !important;
-        padding: 0.5rem 0.9rem !important;
+      .btn-share-copy {
+        min-height: 2.75rem;
+        padding: 0.5rem 0.9rem;
         flex: 1 0 auto;
       }
       /* Boarding-pass action buttons: stretch to fill the row */
@@ -149,7 +154,7 @@
       </button>
       <div class="trip-share-bar-url">
         <code id="share-url-text">{{ share_url }}</code>
-        <button type="button" class="btn secondary" id="copy-share-url" style="padding:0.35rem 0.7rem;font-size:0.82rem;white-space:nowrap">Copy link</button>
+        <button type="button" class="btn secondary btn-share-copy" id="copy-share-url">Copy link</button>
       </div>
     </div>
 
