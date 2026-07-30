@@ -387,6 +387,32 @@
     .fare-table tbody tr:last-child td { border-bottom: none; }
     .fare-table tr:hover td { background: var(--sky-mist); }
     .fare-table .price { font-weight: 700; color: var(--good); white-space: nowrap; }
+    /* ── thumb votes ── */
+    .bp-thumbs {
+      display: flex;
+      gap: 0.3rem;
+      margin-top: 0.55rem;
+    }
+    .thumb-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      line-height: 1;
+      padding: 0;
+    }
+    .thumb-btn:hover { border-color: var(--sky); color: var(--sky); background: var(--sky-mist); }
+    .thumb-btn.voted-up   { background: color-mix(in srgb, var(--good) 15%, transparent); border-color: var(--good); color: var(--good); }
+    .thumb-btn.voted-down { background: color-mix(in srgb, #e05 14%, transparent); border-color: #e05; color: #e05; }
+    .thumb-btn:disabled   { opacity: 0.45; cursor: default; }
     .fare-table .provider {
       font-family: ui-monospace, Consolas, monospace;
       font-size: 0.78rem;
@@ -1238,6 +1264,14 @@
                 <div class="bp-stub-price price-with-sign">
                   <span class="price-amt">{{ o.display_price_base or o.display_price or ('~' ~ o.currency ~ ' ' ~ '%.0f'|format(o.price)) }}</span>{% if o.price_glyph %}<span class="price-sign {{ o.price_tone or 'neutral' }} sign">{{ o.price_glyph }}</span>{% endif %}
                 </div>
+                <div class="bp-thumbs"
+                     data-vibe="{{ esc_vibe | e }}"
+                     data-dest="{{ escape_result.query.destination }}"
+                     data-query="{{ esc_text | e }}"
+                     data-mock="{{ 'true' if o.price_kind == 'mock' else 'false' }}">
+                  <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">▲</button>
+                  <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">▼</button>
+                </div>
               </div>
 
               {% set share = share_escape(request, escape_result, o, esc_vibe) %}
@@ -1443,6 +1477,14 @@
                   {% else %}
                   <span class="price-amt" style="font-size:1rem">—</span>
                   {% endif %}
+                </div>
+                <div class="bp-thumbs"
+                     data-vibe="{{ det_vibe | e }}"
+                     data-dest="{{ it.stop_iata or '' }}"
+                     data-query="{{ det_text | e }}"
+                     data-mock="false">
+                  <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">▲</button>
+                  <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">▼</button>
                 </div>
               </div>
               <div class="bp-stub-meta">{% if it.stay_days %}{{ it.stay_days }} Day Stop{% else %}multi-leg{% endif %}</div>
@@ -2214,6 +2256,46 @@
         );
       }
 
+      function bootThumbVotes() {
+        document.addEventListener("click", function (e) {
+          if (!e.target || !e.target.closest) return;
+          var btn = e.target.closest(".thumb-btn");
+          if (!btn) return;
+          var container = btn.closest(".bp-thumbs");
+          if (!container) return;
+
+          var direction = btn.classList.contains("thumb-up") ? "up" : "down";
+          var vibe      = container.dataset.vibe  || "";
+          var dest      = container.dataset.dest  || "";
+          var query     = container.dataset.query || "";
+          var isMock    = container.dataset.mock  === "true";
+
+          // Visual feedback immediately
+          var upBtn   = container.querySelector(".thumb-up");
+          var downBtn = container.querySelector(".thumb-down");
+          upBtn.classList.remove("voted-up");
+          downBtn.classList.remove("voted-down");
+          btn.classList.add(direction === "up" ? "voted-up" : "voted-down");
+          upBtn.disabled   = true;
+          downBtn.disabled = true;
+
+          if (isMock) return; // don't write signals for demo fares
+
+          fetch("/api/result-feedback", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({
+              direction:    direction,
+              vibe:         vibe,
+              dest_iata:    dest,
+              query:        query,
+              mock:         isMock,
+            }),
+          }).catch(function () {});
+        }, true);
+      }
+
       function bootOutboundLinks() {
         var attr = pageAttribution();
         document.querySelectorAll('a[href^="http"]').forEach(function (a) {
@@ -2505,6 +2587,7 @@
         bootSave();
         bootOutboundLinks();
         bootSignalEvents();
+        bootThumbVotes();
         bootResultsFilter();
         bootCriteriaRefresh();
         bindFieldNoteToggles(document);

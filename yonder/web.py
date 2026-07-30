@@ -2346,6 +2346,119 @@ async def api_signal_event(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "signal_id": sid})
 
 
+@app.post("/api/result-feedback")
+async def api_result_feedback(request: Request) -> JSONResponse:
+    """Thumbs up / down on a result card.
+
+    Up  → positive signal in vibe_signals + history log in feedback.db
+    Down → negative signal + history log + enqueue AI answer for the vibe question
+    """
+    import asyncio
+
+    from yonder.feedback import record_feedback, upsert_vibe_question, save_vibe_answer
+    from yonder.vibe_signals import upsert_signal, ENGAGED
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "invalid JSON"}, status_code=400)
+
+    if body.get("mock"):
+        return JSONResponse({"ok": True, "skipped": "mock"})
+
+    direction = str(body.get("direction") or "").strip().lower()
+    if direction not in ("up", "down"):
+        return JSONResponse({"ok": False, "error": "direction must be up or down"}, status_code=400)
+
+    vibe = str(body.get("vibe") or "").strip().lower()[:40] or None
+    dest = str(body.get("dest_iata") or "").strip().upper()[:3] or None
+    query = str(body.get("query") or "")[:400]
+    sess = str(body.get("session_hash") or "")[:32] or None
+
+    # Write to history archive
+    await asyncio.get_running_loop().run_in_executor(
+        None,
+        lambda: record_feedback(
+            direction=direction,
+            vibe=vibe,
+            dest_iata=dest,
+            query=query,
+            session_hash=sess,
+        ),
+    )
+
+    if direction == "up" and dest:
+        # Reinforce the vibe+destination match in the signal store
+        await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: upsert_signal(
+                dest_iata=dest,
+                vibe=vibe,
+                signal_strength=ENGAGED,
+                search_type="thumb_up",
+                session_hash=sess,
+            ),
+        )
+        return JSONResponse({"ok": True, "direction": "up"})
+
+    if direction == "down":
+        # Upsert the vibe question; generate AI answer only for new entries
+        qid, is_new = await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: upsert_vibe_question(vibe=vibe, query=query),
+        )
+
+        if is_new and qid and query:
+            # Fire-and-forget: generate a suggestion answer in the background
+            async def _generate_answer(question_id: str, q_vibe: str, q_text: str) -> None:
+                try:
+                    from yonder.grok import GrokClient
+                    settings = get_settings()
+                    if not settings.grok_ready():
+                        return
+                    system = (
+                        "You are a travel expert. A traveler searched with a specific vibe but felt "
+                        "the results didn't quite match. Suggest 1–2 destination ideas that DO match "
+                        "the vibe and query well. Keep the response to 2–3 sentences, vivid and specific. "
+                        "End with the best IATA airport code in parentheses, e.g. (LIS)."
+                    )
+                    user = f'Vibe: "{q_vibe}"\nQuery: "{q_text}"'
+                    async with GrokClient(settings) as grok:
+                        text = await grok._chat(system, user, temperature=0.7)
+                    import re
+                    iata_match = re.search(r"\(([A-Z]{3})\)\s*$", text.strip())
+                    iata = iata_match.group(1) if iata_match else None
+                    answer = {"suggestion": text.strip(), "dest_iata": iata}
+                    save_vibe_answer(question_id, answer)
+                except Exception:
+                    pass
+
+            asyncio.create_task(_generate_answer(qid, vibe or "", query))
+
+        return JSONResponse({"ok": True, "direction": "down", "question_id": qid or None})
+
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/vibe-suggestions")
+async def api_vibe_suggestions(
+    vibe: str = Query(""),
+    limit: int = Query(20, ge=1, le=100),
+) -> JSONResponse:
+    """Return AI-answered vibe questions for a given vibe."""
+    import asyncio
+    from yonder.feedback import get_suggestions_for_vibe
+
+    v = (vibe or "").strip().lower() or "adventure"
+    suggestions = await asyncio.get_running_loop().run_in_executor(
+        None,
+        lambda: get_suggestions_for_vibe(v, limit=limit),
+    )
+    return JSONResponse({"ok": True, "vibe": v, "suggestions": suggestions})
+
+
 @app.get("/api/vibe-stats")
 async def api_vibe_stats(
     vibe: str = Query(""),
