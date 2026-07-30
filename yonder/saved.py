@@ -244,6 +244,49 @@ def _legs_origin_dest(it: dict[str, Any]) -> tuple[str | None, str | None]:
     )
 
 
+def _find_duplicate_id(
+    itinerary: dict[str, Any],
+    *,
+    origin: str | None,
+    dest: str | None,
+) -> str | None:
+    """Existing row id matching this itinerary's route signature, if any.
+
+    Uses the same key as import dedup: kind + origin + dest + first-leg
+    depart date + title. Prevents recycled results from piling up as
+    duplicate rows when re-saved.
+    """
+    legs = itinerary.get("legs") or []
+    depart = legs[0].get("depart_date") if legs and isinstance(legs[0], dict) else None
+    key = (
+        str(itinerary.get("kind") or "stopover"),
+        str(origin or "").upper(),
+        str(dest or "").upper(),
+        str(depart or ""),
+        str(itinerary.get("title") or "Saved trip"),
+    )
+    if not key[1] and not key[2]:
+        return None
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT id, kind, origin, destination, title, itinerary_json "
+            "FROM saved_itineraries"
+        ).fetchall()
+    for r in rows:
+        k = _route_key(
+            {
+                "kind": r["kind"],
+                "origin": r["origin"],
+                "destination": r["destination"],
+                "title": r["title"],
+                "itinerary_json": r["itinerary_json"],
+            }
+        )
+        if k == key:
+            return str(r["id"])
+    return None
+
+
 def save_itinerary(
     itinerary: dict[str, Any],
     *,
@@ -299,12 +342,18 @@ def save_itinerary(
             itinerary["model_source"] = model_source
 
     now = time.time()
-    sid = replace_id or str(uuid.uuid4())
+    # Re-saving an identical trip (e.g. a recycled result) updates the existing
+    # row instead of inserting a visible duplicate.
+    dedup_id = None
+    if not replace_id:
+        dedup_id = _find_duplicate_id(itinerary, origin=origin, dest=dest)
+    sid = replace_id or dedup_id or str(uuid.uuid4())
     priced_at = now if total is not None else None
 
     # Keep prior saved_at / priced_at when updating after refresh
-    existing = get(sid) if replace_id else None
-    saved_at = existing.saved_at if existing else now
+    existing = get(sid) if (replace_id or dedup_id) else None
+    # Explicit re-save of a duplicate bumps saved_at; refresh replaces keep it
+    saved_at = existing.saved_at if (existing and replace_id) else now
     refresh_status = str(meta.get("last_refresh_status") or "")
     if replace_id and total is not None:
         # Pure snapshot fallback = still "out of date" — don't reset freshness clock
