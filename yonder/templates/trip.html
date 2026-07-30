@@ -219,7 +219,7 @@
           <div class="bp-legs">
             {% for leg in legs %}
             <div class="bp-leg">
-              <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
+              <div class="codes">{{ leg.from_iata }} → {{ leg.to_iata }}</div>
               <div class="fare">
                 {% if leg.offer %}
                   {{ leg.offer.display_price_base or leg.offer.display_price or ('~' ~ leg.offer.currency ~ ' ' ~ '%.0f'|format(leg.offer.price)) }}
