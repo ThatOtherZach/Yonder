@@ -1197,14 +1197,6 @@
     {% if error %}
       <div class="error" id="server-error" data-clear-with-results>{{ error }}</div>
     {% endif %}
-    {% if intent_note is defined and intent_note %}
-      <p class="muted" style="margin:0.5rem 0 0.75rem;font-size:0.88rem" data-clear-with-results>{{ intent_note }}</p>
-    {% elif intent_shape is defined and intent_shape %}
-      <p class="muted" style="margin:0.5rem 0 0.75rem;font-size:0.88rem" data-clear-with-results>
-        Intent: <strong>{{ intent_shape }}</strong>{% if intent_rationale is defined and intent_rationale %} — {{ intent_rationale }}{% endif %}
-      </p>
-    {% endif %}
-
     {% set has_escape = escape_result is defined and escape_result %}
     {% set has_detour = detour_result is defined and detour_result %}
     {% set criteria_origin = none %}
@@ -1254,6 +1246,11 @@
             <span>Routing: {{ place(escape_parsed.origin) }} → {{ place(escape_parsed.destination) }} · {{ escape_parsed.depart_date | fmt_date }}{% if escape_parsed.return_date %} · return {{ escape_parsed.return_date | fmt_date }}{% endif %} · {{ escape_parsed.currency }}{% if esc_vibe %} · {{ esc_vibe }} vibes{% endif %}</span>
           {% else %}
             <span>Tweaks reprice · stop days apply to Detour</span>
+          {% endif %}
+          {% if intent_note is defined and intent_note %}
+            <span>{{ intent_note }}</span>
+          {% elif intent_shape is defined and intent_shape %}
+            <span>Intent: <strong>{{ intent_shape }}</strong>{% if intent_rationale is defined and intent_rationale %} — {{ intent_rationale }}{% endif %}</span>
           {% endif %}
           <span>Currency: <strong>{{ cur }}</strong> · daily budget &amp; stop days in <a href="/settings">Settings</a> · stopovers = two tickets</span>
         </span>
