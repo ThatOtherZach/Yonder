@@ -1065,8 +1065,21 @@
     }
 
     @media (max-width: 520px) {
-      .nav-links a { padding: 0.4rem 0.65rem; font-size: 0.82rem; }
+      .nav-links a {
+        padding: 0.4rem 0.65rem;
+        font-size: 0.82rem;
+        min-height: 2.75rem;
+        display: inline-flex;
+        align-items: center;
+      }
       .brand { font-size: 1.35rem; }
+      .topnav-inner { padding: 0.6rem var(--pad); gap: 0.6rem; }
+      .nav-links { padding: 0.15rem; }
+    }
+    /* Extra-narrow screens: wrap long nav text or shrink further */
+    @media (max-width: 360px) {
+      .nav-links a { padding: 0.4rem 0.5rem; font-size: 0.78rem; }
+      .brand .tld { display: none; }
     }
 
     {% block extra_css %}{% endblock %}

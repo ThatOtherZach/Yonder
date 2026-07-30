@@ -755,7 +755,12 @@
           [W * 1.35, H * 1.35],
         ])
         .filter(function (event) {
-          if (event.type === "wheel") return true;
+          if (event.type === "wheel") {
+            // Pinch-to-zoom on touch devices sends wheel events with ctrlKey=true.
+            // Plain scroll-wheel on desktop sends wheel with ctrlKey=false — block it
+            // so desktop zoom only happens through the on-map +/− buttons.
+            return event.ctrlKey;
+          }
           return event.button === 0 || event.touches;
         })
         .on("zoom", function (event) {

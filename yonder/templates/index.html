@@ -577,11 +577,12 @@
       display: flex;
       flex-direction: row;
       align-items: center;
+      flex-wrap: wrap;
       max-width: none;
       width: 100%;
       margin: 0;
       padding: 0.3rem 0.4rem;
-      gap: 0.15rem;
+      gap: 0.15rem 0.15rem;
       border-radius: 0;
       background: var(--paper-2, #f4f1ea);
       border-bottom: 1px solid var(--line);
@@ -618,6 +619,13 @@
       border-radius: 0;
       background: var(--white);
       box-shadow: none;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    @media (max-width: 480px) {
+      .results-criteria label {
+        padding: 0.45rem 0.6rem;
+      }
     }
     .results-criteria label {
       display: flex;

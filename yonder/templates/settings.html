@@ -790,40 +790,42 @@
           <div class="section-title">API budgets &amp; health</div>
           <p class="muted" style="margin:0 0 0.65rem;font-size:0.88rem">Live remaining where APIs expose it. Inactive/empty keys are skipped automatically.</p>
           <div id="budget-table">
-            <table style="width:100%;border-collapse:collapse;font-size:0.88rem">
+            <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px;border:1px solid var(--border)">
+            <table style="width:100%;border-collapse:collapse;font-size:0.88rem;min-width:34rem">
               <thead>
-                <tr style="color:var(--muted);text-align:left">
-                  <th style="padding:0.4rem">Provider</th>
-                  <th>Active</th>
-                  <th>Quota</th>
-                  <th>Session</th>
-                  <th>Notes</th>
+                <tr style="color:var(--muted);text-align:left;background:var(--paper)">
+                  <th style="padding:0.4rem 0.5rem">Provider</th>
+                  <th style="padding:0.4rem 0.5rem">Active</th>
+                  <th style="padding:0.4rem 0.5rem">Quota</th>
+                  <th style="padding:0.4rem 0.5rem">Session</th>
+                  <th style="padding:0.4rem 0.5rem">Notes</th>
                 </tr>
               </thead>
               <tbody>
                 {% for b in budgets %}
                 <tr style="border-top:1px solid var(--border)">
-                  <td style="padding:0.45rem 0.4rem;font-family:ui-monospace,Consolas,monospace">{{ b.name }}</td>
-                  <td>
+                  <td style="padding:0.45rem 0.5rem;font-family:ui-monospace,Consolas,monospace">{{ b.name }}</td>
+                  <td style="padding:0.45rem 0.5rem">
                     {% if b.usable %}<span class="pill ok">usable</span>
                     {% elif b.configured %}<span class="pill warn">{{ 'cooldown' if b.in_cooldown else 'down' }}</span>
                     {% else %}<span class="pill">no key</span>{% endif %}
                   </td>
-                  <td class="muted">
+                  <td class="muted" style="padding:0.45rem 0.5rem;white-space:nowrap">
                     {% if b.monthly_remaining is not none and b.monthly_limit is not none %}
                       {{ b.monthly_remaining }} / {{ b.monthly_limit }} left
                     {% elif b.rpm_remaining is not none %}
                       rpm {{ b.rpm_remaining }}{% if b.rpm_limit %}/{{ b.rpm_limit }}{% endif %}
                     {% else %}—{% endif %}
                   </td>
-                  <td class="muted">{{ b.calls_this_session }}</td>
-                  <td class="muted" style="max-width:220px">{{ b.last_error or b.notes or '' }}</td>
+                  <td class="muted" style="padding:0.45rem 0.5rem">{{ b.calls_this_session }}</td>
+                  <td class="muted" style="padding:0.45rem 0.5rem;max-width:220px">{{ b.last_error or b.notes or '' }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="5" class="muted" style="padding:0.5rem">No budget data yet — click Re-probe or run a search.</td></tr>
+                <tr><td colspan="5" class="muted" style="padding:0.5rem 0.5rem">No budget data yet — click Re-probe or run a search.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
 
@@ -1030,8 +1032,9 @@
             return;
           }
           body.innerHTML =
-            '<table style="width:100%;border-collapse:collapse;font-size:0.88rem">'
-            + '<thead><tr style="color:var(--muted);text-align:left">'
+            '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px;border:1px solid var(--border)">'
+            + '<table style="width:100%;border-collapse:collapse;font-size:0.88rem;min-width:22rem">'
+            + '<thead><tr style="color:var(--muted);text-align:left;background:var(--paper)">'
             + '<th style="padding:0.4rem 0.5rem">Window</th>'
             + '<th style="padding:0.4rem 0.5rem">Tokens</th>'
             + '<th style="padding:0.4rem 0.5rem">Est. cost</th>'
@@ -1040,7 +1043,7 @@
             + renderRow("Last 7 days", j.last_7d)
             + renderRow("Last 30 days", j.last_30d)
             + renderRow("All time", j.all_time)
-            + '</tbody></table>'
+            + '</tbody></table></div>'
             + '<p class="muted" style="font-size:0.78rem;margin-top:0.5rem">Costs are estimates based on published xAI pricing.</p>';
         })
         .catch(function () {
