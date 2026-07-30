@@ -1340,7 +1340,7 @@
               {% endif %}
               <div class="bp-legs">
                 <div class="bp-leg">
-                  <div class="codes">{{ escape_result.query.origin }} → {{ escape_result.query.destination }}</div>
+                  <div class="codes">{{ place(escape_result.query.origin) }} → {{ place(escape_result.query.destination) }}</div>
                   <div class="fare">
                     {{ o.display_price_base or o.display_price or ('~' ~ o.currency ~ ' ' ~ '%.0f'|format(o.price)) }}
                   </div>
@@ -1508,7 +1508,7 @@
               <div class="bp-legs">
                 {% for leg in it.legs %}
                 <div class="bp-leg">
-                  <div class="codes">{{ leg.from_iata }} → {{ leg.to_iata }}</div>
+                  <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
                   <div class="fare">
                     {% if leg.offer %}
                       {{ leg.offer.display_price_base or leg.offer.display_price or ('~' ~ leg.offer.currency ~ ' ' ~ '%.0f'|format(leg.offer.price)) }}
@@ -1621,10 +1621,10 @@
                 <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
                 {% endif %}
                 {% if it.legs and it.legs[0].google_flights_url %}
-                <a class="btn secondary" href="{{ it.legs[0].google_flights_url }}" target="_blank" rel="noopener">Leg 1 ↗</a>
+                <a class="btn secondary" href="{{ it.legs[0].google_flights_url }}" target="_blank" rel="noopener">{{ it.legs[0].from_iata }} → {{ it.legs[0].to_iata }} ↗</a>
                 {% endif %}
                 {% if it.legs|length > 1 and it.legs[1].google_flights_url %}
-                <a class="btn secondary" href="{{ it.legs[1].google_flights_url }}" target="_blank" rel="noopener">Leg 2 ↗</a>
+                <a class="btn secondary" href="{{ it.legs[1].google_flights_url }}" target="_blank" rel="noopener">{{ it.legs[1].from_iata }} → {{ it.legs[1].to_iata }} ↗</a>
                 {% endif %}
                 {% if it.kayak_url %}
                 <a class="btn secondary" href="{{ it.kayak_url }}" target="_blank" rel="noopener">Kayak (leg 1) ↗</a>

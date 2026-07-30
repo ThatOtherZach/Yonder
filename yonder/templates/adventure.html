@@ -517,7 +517,7 @@
           <div class="legs">
             {% for leg in it.legs %}
             <div class="leg">
-              <div class="route">{{ leg.from_iata }} → {{ leg.to_iata }}</div>
+              <div class="route">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
               <div class="muted">
                 {{ leg.depart_date | fmt_date }}
                 {% if leg.offer %}
@@ -557,12 +557,12 @@
             {% endif %}
             {% if it.legs and it.legs[0].google_flights_url %}
             <a class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" href="{{ it.legs[0].google_flights_url }}" target="_blank" rel="noopener">
-              Leg 1 on Google ↗
+              {{ it.legs[0].from_iata }} → {{ it.legs[0].to_iata }} ↗
             </a>
             {% endif %}
             {% if it.legs|length > 1 and it.legs[1].google_flights_url %}
             <a class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" href="{{ it.legs[1].google_flights_url }}" target="_blank" rel="noopener">
-              Leg 2 on Google ↗
+              {{ it.legs[1].from_iata }} → {{ it.legs[1].to_iata }} ↗
             </a>
             {% endif %}
             {% if it.kayak_url %}

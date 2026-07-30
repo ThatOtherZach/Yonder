@@ -219,7 +219,7 @@
           <div class="bp-legs">
             {% for leg in legs %}
             <div class="bp-leg">
-              <div class="codes">{{ leg.from_iata }} → {{ leg.to_iata }}</div>
+              <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
               <div class="fare">
                 {% if leg.offer %}
                   {{ leg.offer.display_price_base or leg.offer.display_price or ('~' ~ leg.offer.currency ~ ' ' ~ '%.0f'|format(leg.offer.price)) }}
@@ -249,10 +249,10 @@
             <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
             {% endif %}
             {% if legs and legs[0].google_flights_url %}
-            <a class="btn secondary" href="{{ legs[0].google_flights_url }}" target="_blank" rel="noopener">Leg 1 ↗</a>
+            <a class="btn secondary" href="{{ legs[0].google_flights_url }}" target="_blank" rel="noopener">{{ legs[0].from_iata }} → {{ legs[0].to_iata }} ↗</a>
             {% endif %}
             {% if legs|length > 1 and legs[1].google_flights_url %}
-            <a class="btn secondary" href="{{ legs[1].google_flights_url }}" target="_blank" rel="noopener">Leg 2 ↗</a>
+            <a class="btn secondary" href="{{ legs[1].google_flights_url }}" target="_blank" rel="noopener">{{ legs[1].from_iata }} → {{ legs[1].to_iata }} ↗</a>
             {% endif %}
           </div>
         </div>
