@@ -67,6 +67,12 @@ def _no_env_mock(monkeypatch):
     """
     monkeypatch.delenv("MOCK", raising=False)
     monkeypatch.delenv("XAI_API_KEY", raising=False)
+    # The key may also come from .env / user prefs (already merged into the
+    # cached Settings singleton), so blank it there too — otherwise the demo
+    # provider attempts a live Grok call that the engine's timeout cancels.
+    from yonder.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "xai_api_key", "")
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +236,84 @@ async def test_result_ideas_preserve_vibe_rank_order():
     assert seed_positions == sorted(seed_positions), (
         f"result.ideas re-ordered the vibe-ranked seeds. "
         f"seed order: {seed_iatas}, result order: {result_idea_iatas}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# wildwest / nomad — frontier & desert cities must beat generic cheap ones
+# ---------------------------------------------------------------------------
+
+
+def test_wildwest_top_seed_is_frontier_city():
+    """wildwest's top seed must be a rugged/feral/untamed city (CPT/KEF/YYC),
+    not a generic cheap city that only shares 'raw'/'gritty' tags."""
+    req = _make_req("wildwest")
+    seeds = seed_ideas(req)
+    assert seeds, "seed_ideas() returned an empty list for vibe='wildwest'"
+    assert seeds[0].iata in {"CPT", "KEF", "YYC"}, (
+        f"Expected a frontier city (CPT/KEF/YYC) as top wildwest seed, "
+        f"got {seeds[0].iata}. Full order: {[s.iata for s in seeds]}"
+    )
+
+
+def test_nomad_thematic_seeds_beat_cheap_only_cities():
+    """For vibe='nomad', SGN or CPT must rank above cities whose only nomad
+    signal is the 'cheap' tag (e.g. DPS, KUL) — the sort must not collapse
+    to generic cheapness."""
+    req = _make_req("nomad")
+    seeds = seed_ideas(req)
+    assert seeds, "seed_ideas() returned an empty list for vibe='nomad'"
+    order = [s.iata for s in seeds]
+
+    thematic_pos = min(
+        (order.index(i) for i in ("SGN", "CPT") if i in order),
+        default=None,
+    )
+    assert thematic_pos is not None, (
+        f"Neither SGN nor CPT made the nomad seed list: {order}"
+    )
+    for cheap_only in ("DPS", "KUL"):
+        if cheap_only in order:
+            assert thematic_pos < order.index(cheap_only), (
+                f"Thematic nomad city ranked below cheap-only city "
+                f"{cheap_only}: {order}"
+            )
+    # And the top seed itself must be a strongly-tagged nomad city, not a
+    # city carrying only the 'cheap' tag from the nomad set.
+    from yonder.adventure import VIBE_TAG_MAP as _map
+
+    top_tags = {t.lower() for t in seeds[0].vibe_tags}
+    assert len(top_tags & _map["nomad"]) >= 3, (
+        f"Top nomad seed {seeds[0].iata} matches too few nomad tags: "
+        f"{sorted(top_tags & _map['nomad'])}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_wildwest_top_seed_survives_pipeline():
+    """The top wildwest seed (a frontier city) must appear in the itineraries."""
+    req = _make_req("wildwest")
+    seed_iatas, stop_iatas = await _run_pipeline(req)
+    top_seed = seed_iatas[0]
+    assert top_seed in {"CPT", "KEF", "YYC"}, (
+        f"Top wildwest seed is not a frontier city: {seed_iatas}"
+    )
+    assert stop_iatas, "plan_adventure() produced no itineraries for vibe='wildwest'"
+    assert top_seed in stop_iatas, (
+        f"Top wildwest seed {top_seed!r} not found in itineraries {stop_iatas}. "
+        f"Seed order was: {seed_iatas}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_nomad_thematic_seed_survives_pipeline():
+    """SGN or CPT must survive into the final nomad itineraries."""
+    req = _make_req("nomad")
+    seed_iatas, stop_iatas = await _run_pipeline(req)
+    assert stop_iatas, "plan_adventure() produced no itineraries for vibe='nomad'"
+    assert any(i in stop_iatas for i in ("SGN", "CPT")), (
+        f"Neither SGN nor CPT survived the nomad pipeline. "
+        f"Seeds: {seed_iatas}, stops: {stop_iatas}"
     )
 
 
