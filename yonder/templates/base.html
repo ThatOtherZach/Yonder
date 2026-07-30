@@ -926,19 +926,20 @@
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: var(--ink);
       text-align: center;
       line-height: 1.25;
-      padding: 0.25rem 0.6rem;
+      padding: 0.28rem 0.7rem;
       border-radius: 999px;
-      border: 1px solid color-mix(in srgb, var(--ink) 25%, transparent);
+      border: none;
+      background: var(--stub-accent, var(--sky));
+      color: #fff;
       text-decoration: none;
-      transition: background 0.12s, border-color 0.12s;
+      opacity: 0.88;
+      transition: opacity 0.12s;
     }
     .bp-stub-share:hover {
-      background: color-mix(in srgb, var(--bp-accent, var(--sky)) 12%, transparent);
-      border-color: color-mix(in srgb, var(--bp-accent, var(--sky)) 50%, transparent);
-      color: var(--ink);
+      opacity: 1;
+      color: #fff;
     }
     @media (min-width: 576px) {
       a.bp-qr { width: 96px; height: 96px; padding: 7px; }
