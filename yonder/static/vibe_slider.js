@@ -465,10 +465,13 @@
     var start = VIBES[idx];
 
     host.classList.add("vibe-slider-host", "vibe-inline-host", "is-open", "is-required");
+    var globes = ["🌎", "🌍", "🌏"];
+    var globeEmoji = globes[Math.floor(Math.random() * 3)];
+
     host.innerHTML =
       '<div class="vibe-panel">' +
       '  <div class="vibe-hue" role="slider" aria-label="Trip vibe" tabindex="0" aria-valuemin="0" aria-valuemax="100">' +
-      '    <div class="vibe-hue-cursor"></div>' +
+      '    <div class="vibe-hue-cursor" aria-hidden="true">' + globeEmoji + "</div>" +
       "  </div>" +
       '  <div class="vibe-name-row">' +
       '    <span class="vibe-name-swatch" aria-hidden="true"></span>' +
