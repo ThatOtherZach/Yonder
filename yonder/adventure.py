@@ -571,18 +571,49 @@ VIBE_TAG_MAP: dict[str, frozenset[str]] = {
 }
 
 
+# Mild score decay applied to cities already present in the user's recent
+# trip history (★ Saved trips). Strong enough to demote a perennial top-seed
+# (e.g. BKK's 5-tag gecko match) below the next-best fresh city, but small
+# enough that an *unsaved* strong match still wins.
+RECENT_HISTORY_DECAY = 3
+
+
+def _recent_history_iatas() -> set[str]:
+    """IATA codes from the user's recent trip history (saved trips).
+
+    Best-effort — any storage error just returns an empty set so ranking
+    never breaks on a broken saves DB.
+    """
+    try:
+        from yonder.saved import saved_destination_iatas
+
+        return saved_destination_iatas(limit=200) or set()
+    except Exception:  # noqa: BLE001
+        return set()
+
+
 def _sort_by_comfort(
     ideas: list[StopoverIdea],
     req: AdventureRequest,
     *,
     shuffle: bool = False,
+    recent_iatas: set[str] | None = None,
 ) -> list[StopoverIdea]:
     """Reorder *ideas* by vibe-tag overlap + traveler comfort fit.
 
     Extracted so both seed ideas and Grok-sourced candidates get the same
     scoring pass.  Does **not** truncate; callers slice to max_candidates.
+
+    Cities appearing in the user's recent trip history (``recent_iatas``,
+    defaulting to saved-trip destinations) get a mild score decay so a
+    single tag-rich city (e.g. Bangkok for gecko/meltdown) does not top the
+    list on every single search.
     """
     import random
+
+    if recent_iatas is None:
+        recent_iatas = _recent_history_iatas()
+    _recent = {c.upper() for c in recent_iatas if c}
 
     vibe = (req.vibe or "").lower()
     prompt_l = (req.prompt or "").lower()
@@ -630,6 +661,10 @@ def _sort_by_comfort(
             s += round(_comfort * min(adv_overlap, 2))
         if app_overlap:
             s += round((1.0 - _comfort) * min(app_overlap, 1))
+        # Diversity nudge: decay cities already in recent trip history so
+        # results feel fresh instead of surfacing the same top seed each time.
+        if _recent and (idea.iata or "").upper() in _recent:
+            s -= RECENT_HISTORY_DECAY
         return s
 
     # Sort by vibe-tag overlap + comfort fit so best-matched cities lead.
