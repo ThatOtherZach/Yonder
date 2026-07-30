@@ -3228,6 +3228,17 @@ async def settings_save(request: Request) -> RedirectResponse:
             )
         updates["HOME_IATA"] = hi
 
+    if updates.get("BYOM_BASE_URL") and "BYOM_BASE_URL" not in clear_keys:
+        from yonder.url_guard import BYOMUrlError, validate_byom_url
+
+        try:
+            validate_byom_url(updates["BYOM_BASE_URL"].rstrip("/"))
+        except BYOMUrlError as exc:
+            return RedirectResponse(
+                url="/settings?err=" + quote(f"BYOM URL rejected: {exc}"),
+                status_code=303,
+            )
+
     def _col_num(key: str, default: str = "0", lo: float = 0.0, hi: float = 5000.0) -> None:
         if key not in updates:
             return
@@ -3466,6 +3477,13 @@ async def api_byom_test() -> JSONResponse:
 
     if not byom_base or not byom_key:
         return JSONResponse({"ok": False, "error": "No BYOM endpoint configured — save URL and API key first."})
+
+    from yonder.url_guard import BYOMUrlError, validate_byom_url
+
+    try:
+        validate_byom_url(byom_base)
+    except BYOMUrlError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)})
 
     model = byom_model or "gpt-4o-mini"
     try:

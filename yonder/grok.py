@@ -155,6 +155,12 @@ class GrokClient:
         byom_key = getattr(self.settings, "byom_api_key", "").strip()
         byom_model = getattr(self.settings, "byom_model", "").strip()
         if byom_base and byom_key:
+            from yonder.url_guard import BYOMUrlError, validate_byom_url
+
+            try:
+                validate_byom_url(byom_base)
+            except BYOMUrlError as exc:
+                raise RuntimeError(f"BYOM endpoint rejected: {exc}") from exc
             base_url = byom_base
             api_key = byom_key
             model = byom_model or DEFAULT_MODEL
