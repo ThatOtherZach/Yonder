@@ -989,11 +989,22 @@
       padding: 0.45rem 0.85rem;
       font-size: 0.84rem;
     }
+    /* bp-actions form: no margin; inline by default so buttons flow in a row */
+    .bp-actions form { margin: 0; display: inline; }
+
     /* Phones (below the grid's sm breakpoint): comfortable tap targets */
     @media (max-width: 575.98px) {
+      /* Stack boarding-pass action buttons to full-width rows */
+      .bp-actions {
+        flex-direction: column;
+      }
+      .bp-actions form {
+        display: block;
+      }
       .bp-actions .btn,
       .bp-actions button {
         min-height: 2.75rem;
+        width: 100%;
       }
       .nav-links a {
         display: inline-flex;
@@ -1013,7 +1024,6 @@
         padding: 0.45rem 0.85rem;
       }
     }
-    .bp-actions form { margin: 0; display: inline; }
     .bp-note {
       margin: 0.55rem 0 0;
       font-size: 0.88rem;
