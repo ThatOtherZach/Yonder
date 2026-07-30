@@ -177,6 +177,7 @@ def _fmt_date(value: object) -> str:
 
 templates.env.filters["fmt_date"] = _fmt_date
 templates.env.filters["vibe_emoji"] = lambda vibe_id: VIBE_EMOJI.get((vibe_id or "").strip().lower(), "")
+templates.env.filters["flag_emoji"] = lambda code: "".join(chr(ord(c) + 127397) for c in (code or "").upper()[:2]) if len(code or "") >= 2 else (code or "")
 templates.env.globals["place"] = format_place
 templates.env.globals["route"] = format_route
 templates.env.globals["airline_site_label"] = airline_site_label

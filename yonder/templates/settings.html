@@ -367,21 +367,23 @@
           </p>
           <div class="chip-row" id="xp-visited-chips" aria-label="Visited countries">
             {% for code in visited_defaults or [] %}
-              <span class="chip visited">{{ code }}</span>
+              <span class="chip visited">{{ code|flag_emoji }} {{ code }}</span>
             {% else %}
               <span class="muted" style="font-size:0.8rem">No stamps yet</span>
             {% endfor %}
           </div>
           <div class="chip-row" id="xp-avoid-chips" aria-label="Avoid countries">
             {% for code in avoid_defaults or [] %}
-              <span class="chip avoid">{{ code }}</span>
+              <span class="chip avoid">{{ code|flag_emoji }} {{ code }}</span>
             {% else %}
               <span class="muted" style="font-size:0.8rem">No avoid countries</span>
             {% endfor %}
           </div>
           <div class="map-links">
-            <a class="btn secondary" href="/?mode=escape" style="padding:0.4rem 0.75rem;font-size:0.85rem">Open Escape</a>
-            <a class="btn secondary" href="/?mode=detour" style="padding:0.4rem 0.75rem;font-size:0.85rem">Open Detour</a>
+            <a class="btn secondary" href="/?mode=escape" style="padding:0.4rem 0.75rem;font-size:0.85rem">Escape</a>
+            <a class="btn secondary" href="/?mode=detour" style="padding:0.4rem 0.75rem;font-size:0.85rem">Detour</a>
+            <button type="button" id="clear-visited-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" {% if not visited_defaults %}hidden{% endif %}>Clear visited</button>
+            <button type="button" id="clear-avoid-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" {% if not avoid_defaults %}hidden{% endif %}>Clear avoid</button>
           </div>
         </div>
 
@@ -932,8 +934,14 @@
         }
       }
 
+      function flagEmoji(code) {
+        if (!code || code.length < 2) return code || '';
+        return Array.from(code.toUpperCase().slice(0, 2))
+          .map(function(c) { return String.fromCodePoint(c.charCodeAt(0) + 127397); })
+          .join('');
+      }
+
       function updateChips(detail) {
-        var names = detail.country_names || {};
         var visited = detail.visited || [];
         var avoid   = detail.avoid   || [];
 
@@ -941,7 +949,7 @@
         if (vc) {
           if (visited.length) {
             vc.innerHTML = visited.map(function (c) {
-              return '<span class="chip visited">' + (names[c] || c) + '</span>';
+              return '<span class="chip visited">' + flagEmoji(c) + ' ' + c + '</span>';
             }).join('');
           } else {
             vc.innerHTML = '<span class="muted" style="font-size:0.8rem">No stamps yet</span>';
@@ -952,13 +960,54 @@
         if (ac) {
           if (avoid.length) {
             ac.innerHTML = avoid.map(function (c) {
-              return '<span class="chip avoid">' + (names[c] || c) + '</span>';
+              return '<span class="chip avoid">' + flagEmoji(c) + ' ' + c + '</span>';
             }).join('');
           } else {
             ac.innerHTML = '<span class="muted" style="font-size:0.8rem">No avoid countries</span>';
           }
         }
+
+        var cvb = document.getElementById("clear-visited-btn");
+        if (cvb) cvb.hidden = visited.length === 0;
+        var cab = document.getElementById("clear-avoid-btn");
+        if (cab) cab.hidden = avoid.length === 0;
       }
+
+      (function wireClearButtons() {
+        async function clearList(kind) {
+          var payload = {};
+          payload[kind] = [];
+          try {
+            await fetch("/api/travel-map", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            // Trigger a page refresh of the chips via a synthetic mapchange event
+            var current = {};
+            current.visited = kind === "visited" ? [] :
+              Array.from(document.querySelectorAll("#xp-visited-chips .chip")).map(function(el) {
+                return el.textContent.trim().split(" ").pop();
+              });
+            current.avoid = kind === "avoid" ? [] :
+              Array.from(document.querySelectorAll("#xp-avoid-chips .chip")).map(function(el) {
+                return el.textContent.trim().split(" ").pop();
+              });
+            updateChips(current);
+            // Reload to refresh XP card + counts
+            location.reload();
+          } catch(e) { /* silent */ }
+        }
+
+        var cvb = document.getElementById("clear-visited-btn");
+        if (cvb) cvb.addEventListener("click", function() {
+          if (confirm("Clear all visited stamps? This cannot be undone.")) clearList("visited");
+        });
+        var cab = document.getElementById("clear-avoid-btn");
+        if (cab) cab.addEventListener("click", function() {
+          if (confirm("Clear all avoid countries?")) clearList("avoid");
+        });
+      })();
 
       document.addEventListener("yonder:xpupdate", function (e) { updateXpCard(e.detail); });
       document.addEventListener("yonder:mapchange", function (e) { if (e.detail) updateChips(e.detail); });
