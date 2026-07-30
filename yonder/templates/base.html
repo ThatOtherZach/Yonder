@@ -967,14 +967,23 @@
       a.bp-qr { width: 96px; height: 96px; padding: 7px; }
       .bp-stub-qr { margin-top: 0.2rem; }
     }
-    /* Mobile stub is a row — keep price left, QR right, no squash */
+    /* Mobile stub: two-column grid — fare+thumbs left, share right */
     @media (max-width: 575.98px) {
       .bp-stub {
+        display: grid;
+        grid-template-columns: 1fr auto;
         align-items: center;
-        gap: 0.65rem;
+        gap: 0.75rem;
       }
-      .bp-stub > div:first-child { flex: 1 1 auto; min-width: 0; }
-      a.bp-qr { width: 80px; height: 80px; padding: 5px; }
+      a.bp-qr { display: none; }
+      .bp-stub-share {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+        padding: 0.65rem 1.1rem;
+        min-height: 2.8rem;
+      }
     }
     .bp-actions {
       display: flex;

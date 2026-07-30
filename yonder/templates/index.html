@@ -542,6 +542,9 @@
     .thumb-btn.voted-up   { background: color-mix(in srgb, var(--good) 18%, transparent); border-color: var(--good); color: var(--good); }
     .thumb-btn.voted-down { background: color-mix(in srgb, #e05 16%, transparent); border-color: #e05; color: #e05; }
     .thumb-btn:disabled   { opacity: 0.45; cursor: default; }
+    @media (max-width: 575.98px) {
+      .thumb-btn { width: 2.6rem; height: 2.6rem; font-size: 1.15rem; border-radius: 10px; }
+    }
     .fare-table .provider {
       font-family: ui-monospace, Consolas, monospace;
       font-size: 0.78rem;
@@ -1629,7 +1632,6 @@
               </div>
             </div>
             <div class="bp-stub">
-              <div class="bp-stub-meta">{% if not it.stay_days %}multi-leg{% endif %}</div>
               <div>
                 <div class="bp-stub-label">Approx fare</div>
                 <div class="bp-stub-price price-with-sign">
