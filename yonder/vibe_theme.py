@@ -41,6 +41,10 @@ VIBE_EMOJI: dict[str, str] = {
     "lush": "🌺", "feral": "🐾", "untamed": "🦅", "luminous": "💫",
     "opulent": "👑", "goldenhour": "🌇", "hazy": "🌤️", "nostalgic": "🕯️",
     "ancient": "🗿", "sacred": "⛩️", "raw": "🪵", "rugged": "🪨", "gritty": "🏗️",
+    # new vibes
+    "billiards": "🎱", "gecko": "🦎", "wildwest": "🐎", "nomad": "🎒",
+    "meltdown": "🫠", "vanish": "🕳️", "dissociate": "😶‍🌫️", "spiral": "🌀",
+    "delirium": "😵‍💫", "burnout": "🔥", "apocalypse": "☄️",
 }
 
 
