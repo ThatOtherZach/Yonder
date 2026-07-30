@@ -617,6 +617,20 @@
       border-top: 1px dashed var(--line);
     }
 
+    /* Field note merged into boarding pass body (no outer card chrome) */
+    .place-book.field-note-inset {
+      border: none;
+      background: transparent;
+      box-shadow: none !important;
+      border-radius: 0;
+      margin: 0 -1rem 0 -1rem;
+      padding: 0.85rem 1rem 0.35rem 1.25rem;
+      border-top: 1px dashed var(--line-strong);
+    }
+    .place-book.field-note-inset::before {
+      background: var(--bp-accent, var(--sky-bright));
+    }
+
     /* —— Boarding passes (shared: flights / adventures / saved) —— */
     .pass-stack {
       display: flex;

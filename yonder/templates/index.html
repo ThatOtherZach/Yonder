@@ -1314,9 +1314,8 @@
 
               {# Field note — same collapsible pattern as Detour #}
               <div
-                class="place-book field-note-slot{% if not escape_place_book %} is-loading{% endif %}"
+                class="place-book field-note-inset field-note-slot{% if not escape_place_book %} is-loading{% endif %}"
                 id="escape-field-note"
-                style="margin-top:0.75rem;box-shadow:none"
                 data-iata="{{ escape_result.query.destination }}"
                 data-country="{{ esc_theme.country or '' }}"
                 data-city=""
@@ -1490,8 +1489,7 @@
                 {% set pb = (detour_place_books or {}).get(it.stop_iata) if detour_place_books is defined and it.stop_iata else none %}
                 {% set has_more = (pb and (pb.culture or pb.food or pb.caution)) or has_col %}
                 <div
-                  class="place-book field-note-slot{% if it.stop_iata and not pb %} is-loading{% endif %}"
-                  style="margin-top:0.75rem;box-shadow:none"
+                  class="place-book field-note-inset field-note-slot{% if it.stop_iata and not pb %} is-loading{% endif %}"
                   data-iata="{{ it.stop_iata or '' }}"
                   data-country="{{ it.theme_country or '' }}"
                   data-city="{{ it.stop_city or '' }}"
