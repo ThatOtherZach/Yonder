@@ -1,9 +1,29 @@
 /* Per-leg "Check Fares" — fetches a real fare for one leg on demand.
  * Renders inside the shared boarding-pass card (Explore + Saved; shared
  * trip pages are read-only and never render the button).
- * No popups: busy state on the button, inline error on failure. */
+ * No popups: busy state on the button, inline error on failure.
+ *
+ * Promoted state ("Search ↗" + Google Flights URL) is persisted to
+ * sessionStorage so it survives card re-renders, sort/filter, and
+ * Saved-list refreshes within the same browser session. */
 (function () {
   "use strict";
+
+  var SS_PREFIX = "cf:";
+
+  function legKey(d) {
+    var k = (d.cfOrigin || "") + "-" + (d.cfDest || "") + "-" + (d.cfDepart || "").replace(/-/g, "");
+    if (d.cfReturn) k += "-" + (d.cfReturn || "").replace(/-/g, "");
+    return SS_PREFIX + k;
+  }
+
+  function storeUrl(d, url) {
+    try { sessionStorage.setItem(legKey(d), url); } catch (e) { /* quota / private mode */ }
+  }
+
+  function loadUrl(d) {
+    try { return sessionStorage.getItem(legKey(d)) || ""; } catch (e) { return ""; }
+  }
 
   function fmtApprox(cur, amt) {
     return "~" + (cur ? cur + " " : "") + Math.round(amt);
@@ -39,6 +59,36 @@
     }
     return "https://www.google.com/flights#flt=" + seg + ";e:1;sd:1;t:f";
   }
+
+  /** Promote a button to the "Search ↗" fallback state. */
+  function promoteButton(btn, url) {
+    btn.disabled = false;
+    btn.classList.remove("is-busy");
+    btn.textContent = "Search \u2197";
+    btn.dataset.cfSearchUrl = url;
+  }
+
+  /**
+   * Scan all .cf-slot elements and restore promoted state for any leg
+   * whose key is already recorded in sessionStorage.  Call on page load
+   * and after any code that injects new boarding-pass cards into the DOM.
+   */
+  function restorePromotedSlots(root) {
+    root = root || document;
+    root.querySelectorAll(".cf-slot").forEach(function (slot) {
+      var btn = slot.querySelector(".btn-check-fares");
+      if (!btn || btn.dataset.cfSearchUrl) return;   // already promoted
+      var url = loadUrl(slot.dataset);
+      if (url) promoteButton(btn, url);
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    restorePromotedSlots();
+  });
+
+  // Also expose for callers that inject cards dynamically
+  window.YonderCheckFares = { restorePromotedSlots: restorePromotedSlots };
 
   document.addEventListener("click", function (e) {
     var btn = e.target.closest(".btn-check-fares");
@@ -88,10 +138,10 @@
         updateTotals(card);
       })
       .catch(function () {
-        btn.disabled = false;
-        btn.classList.remove("is-busy");
-        btn.textContent = "Search \u2197";
-        btn.dataset.cfSearchUrl = buildSearchUrl(d);
+        var url = buildSearchUrl(d);
+        promoteButton(btn, url);
+        // Persist so re-renders within this session keep the promoted state
+        storeUrl(d, url);
       });
   });
 })();
