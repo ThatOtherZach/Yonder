@@ -138,7 +138,7 @@
     {# promo moved to loading overlay (progress.js) #}
     <div class="bp-actions">
       {% if o.google_flights_url %}
-      <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
+      <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Aviasales ↗</a>
       {% endif %}
       {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
       <a class="btn secondary" href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
@@ -405,7 +405,7 @@
       </form>
       {% endif %}
       {% if it.google_flights_url %}
-      <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
+      <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Aviasales ↗</a>
       {% endif %}
       {% if it.legs and it.legs[0].google_flights_url %}
       <a class="btn secondary" href="{{ it.legs[0].google_flights_url }}" target="_blank" rel="noopener">{{ it.legs[0].from_iata }} → {{ it.legs[0].to_iata }} ↗</a>

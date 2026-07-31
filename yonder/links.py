@@ -1,4 +1,4 @@
-"""Build booking deep links: Google Flights (+ Kayak backup that always works)."""
+"""Build booking deep links: Aviasales (affiliate) + Google Flights (fare API, kept)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,10 @@ from datetime import date
 from urllib.parse import quote_plus, urlencode
 
 from yonder.types import FlightOffer, SearchQuery
+
+# ── Aviasales affiliate tracking ────────────────────────────────────────────
+AVIASALES_MARKER = "756039.Zza75700ced74b488c8090948-756039"
+AVIASALES_SUB_ID = "YonderFlights"
 
 # IATA airline → public booking homepage (best-effort)
 _AIRLINE_HOME: dict[str, str] = {
@@ -166,6 +170,49 @@ _GL_BY_CURRENCY = {
     "AUD": "au",
     "MXN": "mx",
 }
+
+
+def _ddmm(d: date) -> str:
+    """Two-digit day + two-digit month: Aug 18 → '1808'."""
+    return f"{d.day:02d}{d.month:02d}"
+
+
+def aviasales_url(
+    origin: str,
+    destination: str,
+    depart: date,
+    *,
+    return_date: date | None = None,
+    adults: int = 1,
+) -> str:
+    """Aviasales affiliate search link with tracking marker.
+
+    One-way:    /search/{ORIG}{DDMM}{DEST}{PAX}?marker=...
+    Round-trip: /search/{ORIG}{DDMM}{DEST}{DDMM}{PAX}?marker=...
+    """
+    o = origin.upper().strip()
+    d = destination.upper().strip()
+    if not o or not d:
+        return aviasales_fallback_url(o or None, adults)
+    path = o + _ddmm(depart) + d
+    if return_date:
+        path += _ddmm(return_date)
+    path += str(adults)
+    qs = f"marker={AVIASALES_MARKER}&sub_id={AVIASALES_SUB_ID}"
+    return f"https://www.aviasales.com/search/{path}?{qs}"
+
+
+def aviasales_fallback_url(origin: str | None = None, adults: int = 1) -> str:
+    """Fallback Aviasales link when full search data is missing.
+
+    With origin:    /?marker=...&params={ORIG}{PAX}
+    Without origin: /?marker=...
+    """
+    qs = f"marker={AVIASALES_MARKER}&sub_id={AVIASALES_SUB_ID}"
+    if origin:
+        o = origin.upper().strip()
+        return f"https://www.aviasales.com/?{qs}&params={o}{adults}"
+    return f"https://www.aviasales.com/?{qs}"
 
 
 def google_flights_url(
@@ -404,13 +451,17 @@ def _is_http_url(value: str | None) -> bool:
 
 
 def attach_links_to_offer(offer: FlightOffer, query: SearchQuery) -> FlightOffer:
-    """Google Flights primary. deep_link = real airline site only (not Kayak)."""
-    gurl = google_flights_url(
+    """Aviasales affiliate link primary. deep_link = real airline site only (not Kayak).
+
+    Note: the dict key 'google_flights_url' is preserved (persisted in DB / types)
+    but its value is now an Aviasales affiliate URL, not a Google Flights URL.
+    """
+    # google_flights_url key intentionally carries an Aviasales URL — see links.py header
+    gurl = aviasales_url(
         query.origin,
         query.destination,
         query.depart_date,
         return_date=query.return_date,
-        currency=query.currency,
         adults=query.adults,
     )
     # Keep existing HTTP deep_link only if it isn't a kayak placeholder
@@ -438,10 +489,13 @@ def attach_links_from_leg(
     currency: str = "CAD",
     adults: int = 1,
 ) -> FlightOffer:
-    """Per-leg links: Google URL stored; deep_link = airline homepage only."""
-    gurl = google_flights_url(
-        origin, destination, depart, currency=currency, adults=adults
-    )
+    """Per-leg links: Aviasales affiliate URL stored; deep_link = airline homepage only.
+
+    Note: the dict key 'google_flights_url' is preserved (persisted in DB / types)
+    but its value is now an Aviasales affiliate URL.
+    """
+    # google_flights_url key intentionally carries an Aviasales URL — see links.py header
+    gurl = aviasales_url(origin, destination, depart, adults=adults)
     existing = offer.deep_link if _is_http_url(offer.deep_link) else None
     if existing and "kayak.com" in existing:
         existing = None
