@@ -467,6 +467,44 @@ def test_canadian_hub_prioritised_for_low_xp_ca_user():
     )
 
 
+@pytest.mark.asyncio
+async def test_low_xp_ord_domestic_stop_survives_pipeline():
+    """End-to-end smoke test: a low-XP user departing ORD must see at least one
+    US domestic city in the final plan_adventure() itineraries.
+
+    The domestic boost (+3 in _sort_by_comfort) prioritises same-country seeds
+    at the scoring stage.  This test confirms the boost actually carries through
+    the full pipeline — seeds → filter_ideas → _sort_by_comfort → pricing —
+    so domestic options reach the UI, not just the seed list.
+
+    Profile: 1 visited country (GB) → _comfort = 0.01 < 0.25 → boost active.
+    Vibe: 'city' — all major US domestic hubs carry the 'city' tag.
+    """
+    req = AdventureRequest(
+        origin="ORD",
+        destination="LHR",
+        depart_date=date(2025, 11, 1),
+        vibe="city",
+        max_candidates=5,
+        include_direct=False,
+        visited_countries=["GB"],  # 1 country → low-XP, domestic boost active
+    )
+    seeds = seed_ideas(req)
+    with patch(
+        "yonder.daily_costs.estimate_batch_for_stops",
+        new=AsyncMock(return_value={}),
+    ):
+        result = await plan_adventure(req, seeds, include_mock=True)
+
+    stop_iatas = {it.stop_iata for it in result.itineraries if it.stop_iata}
+    us_domestic_in_result = stop_iatas & _US_DOMESTIC
+    assert us_domestic_in_result, (
+        f"No US domestic hub found in plan_adventure() itineraries for low-XP "
+        f"ORD user (vibe='city'). Got stops: {sorted(stop_iatas)}. "
+        f"Check that _sort_by_comfort domestic boost carries through the pipeline."
+    )
+
+
 def test_domestic_boost_inactive_for_zero_visited_countries():
     """With visited_countries=[] the domestic boost must NOT fire.
 
