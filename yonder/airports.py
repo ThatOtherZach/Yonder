@@ -105,10 +105,44 @@ def city_country_for_iata(code: str) -> tuple[str, str] | None:
     return city, (rec.get("country") or "").strip().upper()
 
 
+# Common English abbreviations that happen to collide with IATA codes in the
+# airportsdata dataset.  We exclude these from the bare-uppercase fallback so
+# that Grok replies like "The ETA is unknown, no FAQ available" don't seed a
+# wrong flight-search destination.
+_COMMON_ABBR: frozenset[str] = frozenset(
+    {
+        # Time / scheduling
+        "ETA", "ETD", "ETE",
+        # Business / finance / economics
+        "CEO", "CFO", "COO", "CTO", "CPO", "CSO",
+        "GDP", "GNP", "CPI", "PPP",
+        "VAT", "GST", "TAX",
+        "MBA", "PHD",
+        # Technology / internet
+        "API", "SDK", "URL", "URI", "GPS", "LTE",
+        "ATM", "PIN",
+        # General English
+        "FAQ", "TBD", "TBA", "TBC", "ETA", "FYI", "BTW",
+        "USA", "UK",
+        "DNA", "RNA",
+        "NGO", "NPO",
+        "IOU",
+        "SOS",
+    }
+)
+
+
 def is_known_iata(code: str) -> bool:
-    """True when the 3-letter code exists in the airport dataset."""
+    """True when the 3-letter code exists in the airport dataset.
+
+    Codes in *_COMMON_ABBR* are rejected even if they happen to match an
+    airport code, to avoid false positives when Grok sprinkles common
+    English abbreviations (FAQ, GDP, API …) through its prose.
+    """
     c = (code or "").strip().upper()
     if len(c) != 3 or not c.isalpha():
+        return False
+    if c in _COMMON_ABBR:
         return False
     import airportsdata
 

@@ -578,6 +578,87 @@ class TestGenerateAnswer:
             "answer_json must remain NULL when Grok is not ready"
         )
 
+    async def test_common_abbreviations_only_yields_no_dest(self, isolated_dbs):
+        """A reply with only common abbreviations (FAQ, GDP, …) must not match an IATA."""
+        # FAQ and GDP are in the airportsdata IATA dataset but are not airports —
+        # the _COMMON_ABBR guard in is_known_iata must suppress them so dest_iata stays None.
+        known_text = "The GDP forecast looks good and FAQ is available. No ETA on results."
+        settings_mock = self._make_ready_settings()
+
+        with (
+            patch("yonder.web.get_settings", return_value=settings_mock),
+            patch(
+                "yonder.grok.GrokClient._chat",
+                new=AsyncMock(return_value=known_text),
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=web_module.app), base_url="http://test"
+            ) as ac:
+                await ac.post(
+                    "/api/result-feedback",
+                    json={
+                        "direction": "down",
+                        "vibe": "adventure",
+                        "query": "economic data trip",
+                        "dest_iata": "JFK",
+                    },
+                )
+            await asyncio.sleep(0.2)
+
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT answer_json FROM vibe_questions WHERE vibe = 'adventure'"
+            ).fetchone()
+        assert row is not None
+        answer = json.loads(row["answer_json"])
+        assert answer["dest_iata"] is None, (
+            f"Common abbreviations (FAQ, GDP) must not be treated as IATA codes, "
+            f"but got dest_iata={answer['dest_iata']!r}"
+        )
+
+    async def test_real_iata_selected_over_surrounding_abbreviations(self, isolated_dbs):
+        """A real IATA mid-sentence is chosen even when common abbreviations appear first."""
+        # GDP and FAQ appear before LIS in the text; the guard must skip them and
+        # return the first genuine airport code.
+        known_text = (
+            "Check the GDP figures and FAQ for context — "
+            "fly into LIS for custard tarts and fado."
+        )
+        settings_mock = self._make_ready_settings()
+
+        with (
+            patch("yonder.web.get_settings", return_value=settings_mock),
+            patch(
+                "yonder.grok.GrokClient._chat",
+                new=AsyncMock(return_value=known_text),
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=web_module.app), base_url="http://test"
+            ) as ac:
+                await ac.post(
+                    "/api/result-feedback",
+                    json={
+                        "direction": "down",
+                        "vibe": "culture",
+                        "query": "europe with history",
+                        "dest_iata": "MAD",
+                    },
+                )
+            await asyncio.sleep(0.2)
+
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT answer_json FROM vibe_questions WHERE vibe = 'culture'"
+            ).fetchone()
+        assert row is not None
+        answer = json.loads(row["answer_json"])
+        assert answer["dest_iata"] == "LIS", (
+            f"Real IATA 'LIS' must be preferred over abbreviations like GDP/FAQ, "
+            f"but got dest_iata={answer['dest_iata']!r}"
+        )
+
     async def test_second_thumbs_down_same_query_skips_generation(self, isolated_dbs):
         """A duplicate thumbs-down on the same vibe+query does not trigger a second AI call."""
         known_text = "Go to Marrakech for the chaos (RAK)."
