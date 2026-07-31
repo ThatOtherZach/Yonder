@@ -993,25 +993,10 @@ async def explore_run(request: Request) -> HTMLResponse:
 
     decision = decide_shape(prompt, force=force, vibe=vibe, demo=bool(mock))
     max_cand = mix_candidate_cap(decision.shape, max_cand_settings)
-    notes: list[str] = [
-        f"Intent: {decision.shape} ({decision.confidence:.0%}) — {decision.rationale}"
-    ]
+    notes: list[str] = []
     if save_ban:
-        notes.append(
-            "Excluding "
-            + str(len(save_ban))
-            + " ★ Saved city(ies): "
-            + ", ".join(sorted(save_ban)[:12])
-            + ("…" if len(save_ban) > 12 else "")
-        )
-    if is_refresh:
-        if exclude_iatas - save_ban:
-            notes.append(
-                "Refresh: also skipping already-shown "
-                + ", ".join(sorted(exclude_iatas - save_ban)[:10])
-            )
-        else:
-            notes.append("Refresh: rolling new candidates")
+        n = len(save_ban)
+        notes.append(f"Skipping {n} saved {'city' if n == 1 else 'cities'}")
 
     escape_override: dict = {"ask": prompt, "form": empty_esc, "result": None}
     detour_override: dict = {"form": det_form, "result": None}
@@ -1092,15 +1077,10 @@ async def explore_run(request: Request) -> HTMLResponse:
                 and len(home_iata) == 3
                 and (trip.origin or "").upper() != home_iata.upper()
             ):
-                notes.append(
-                    f"Origin corrected {trip.origin}→{home_iata} (home wins over chip text)"
-                )
+                pass  # origin silently corrected to home
                 trip = trip.model_copy(update={"origin": home_iata.upper()})
             # Refresh: the Depart field origin is pinned — it beats prompt text
             if origin_pinned and (trip.origin or "").upper() != origin_override:
-                notes.append(
-                    f"Origin pinned {trip.origin}→{origin_override} (Depart field refine)"
-                )
                 trip = trip.model_copy(update={"origin": origin_override})
             # Refresh: if Grok reused a seen destination, try seed pool once
             dest_u = (trip.destination or "").upper()
@@ -1133,7 +1113,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                                 + [f"Refresh rolled destination away from {dest_u}"],
                             }
                         )
-                        notes.append(f"Refresh: new Escape dest {pool[0].iata}")
+                        pass  # rolled to fresh escape destination
                 except Exception:
                     pass
             trip = trip.model_copy(
@@ -1255,7 +1235,7 @@ async def explore_run(request: Request) -> HTMLResponse:
 
                 restored = hydrate_escape(first_snap)
                 if restored.get("result") and restored["result"].offers:
-                    notes.append("No new Escape fare — back to first set")
+                    notes.append("Showing earlier results")
                     nonlocal restored_first
                     restored_first = True
                     escape_override = {
@@ -1354,7 +1334,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         if use_fast_seeds and chip_seeds:
             try:
                 req, ideas = _local_getaway_fallback("chip seeds")
-                notes.append("Fast path: invent from chip seeds")
+                pass  # fast path via chip seeds
             except Exception as exc:  # noqa: BLE001
                 req, ideas = None, []
                 errors.append(f"Chip seed fallback: {exc}")
@@ -1431,9 +1411,6 @@ async def explore_run(request: Request) -> HTMLResponse:
                     upd: dict = {"origin": origin_override}
                     if trip_kind == "getaway" or req.origin == req.destination:
                         upd["destination"] = origin_override
-                    notes.append(
-                        f"Origin pinned {req.origin}→{origin_override} (Depart field refine)"
-                    )
                     req = req.model_copy(update=upd)
                 if not ideas:
                     ideas = seed_ideas(
@@ -1504,7 +1481,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 if restored.get("result") and restored["result"].itineraries:
                     result = restored["result"]
                     place_books_restored = restored.get("place_books") or {}
-                    notes.append("No new cities left — back to first set")
+                    notes.append("Showing earlier results")
                     restored_first = True
                     detour_override = {
                         "form": restored.get("form") or det_form,
@@ -1577,10 +1554,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 user_prompt=prompt,
                 trip_vibe=vibe,
             )
-            if place_books and not skipped:
-                notes.append(f"Field notes for {len(place_books)} stop(s)")
-            elif skipped and place_books:
-                notes.append("Field notes from cache (Skip — more may load in UI)")
+            pass  # field notes loaded
         except Exception as pb_exc:  # noqa: BLE001
             place_books = {}
             errors.append(f"Field notes: {str(pb_exc)[:80]}")
