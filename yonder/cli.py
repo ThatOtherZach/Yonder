@@ -220,6 +220,81 @@ def purge_field_notes_cmd() -> None:
         console.print("[dim]No legacy field notes found — cache is already up to date.[/]")
 
 
+@app.command("check-activities")
+def check_activities_cmd(
+    full: bool = typer.Option(False, "--full", help="Check every URL (default: random sample)"),
+    sample: int = typer.Option(30, "--sample", "-n", min=1, help="Number of URLs to sample"),
+    threshold: float = typer.Option(5.0, "--threshold", "-t", help="Fail exit when dead% ≥ this value"),
+    seed: Optional[int] = typer.Option(None, "--seed", help="RNG seed for reproducible samples"),
+) -> None:
+    """Health-check activity-catalog links (GYG / Viator).
+
+    Samples partner URLs from activities.csv and reports 404/dead links.
+    Exits with code 1 when the percentage of broken links reaches --threshold.
+    """
+    from yonder.activity_health import CatalogLoadError, check_catalog, _DEFAULT_SAMPLE
+
+    n = None if full else sample
+    label = "all" if full else f"{n} random"
+    try:
+        with console.status(f"Probing {label} activity links…"):
+            report = check_catalog(sample=n, full=full, seed=seed)
+    except CatalogLoadError as exc:
+        console.print(f"[red bold]ERROR:[/] {exc}")
+        raise typer.Exit(code=2)
+
+    checked = len(report.results)
+    if checked == 0:
+        console.print("[red bold]ERROR:[/] No URLs were checked — catalog may be empty or filtered to zero rows.")
+        raise typer.Exit(code=2)
+
+    dead = report.dead
+    errors = report.errors
+
+    # Summary panel
+    summary_lines = [
+        f"Catalog total : [bold]{report.total}[/] URLs",
+        f"Checked       : [bold]{checked}[/]",
+        f"Dead (404/redirect) : [{'red' if dead else 'green'}]{len(dead)}[/]",
+        f"Network errors (inconclusive) : [yellow]{len(errors)}[/]",
+        f"Elapsed       : {report.elapsed_s:.1f}s",
+    ]
+    console.print()
+    console.print(
+        Panel("\n".join(summary_lines), title="Activity Link Health Check", expand=False)
+    )
+
+    if dead:
+        table = Table(title=f"Dead links ({len(dead)})", show_lines=True)
+        table.add_column("City", style="bold")
+        table.add_column("Title")
+        table.add_column("Provider")
+        table.add_column("Status", justify="center")
+        table.add_column("URL", overflow="fold", max_width=60)
+        for r in dead:
+            status_str = str(r.status) if r.status else "—"
+            table.add_row(r.city, r.title, r.provider, f"[red]{status_str}[/]", r.url)
+        console.print(table)
+
+    if errors:
+        etable = Table(title=f"Network errors / timeouts ({len(errors)})", show_lines=False)
+        etable.add_column("City", style="dim")
+        etable.add_column("Error")
+        etable.add_column("URL", overflow="fold", max_width=60)
+        for r in errors:
+            etable.add_row(r.city, r.error or "?", r.url)
+        console.print(etable)
+
+    if not dead and not errors:
+        console.print("[green]All sampled links look healthy.[/]")
+
+    if report.dead_pct >= threshold:
+        console.print(
+            f"\n[red bold]FAIL:[/] {report.dead_pct:.1f}% dead ≥ threshold {threshold:.1f}%"
+        )
+        raise typer.Exit(code=1)
+
+
 @app.command("serve")
 def serve(
     host: str = typer.Option("127.0.0.1", "--host"),
