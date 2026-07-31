@@ -84,6 +84,27 @@ def iata_for_city(name: str) -> str | None:
     return sorted(recs, key=_rank)[0].get("iata") or None
 
 
+@lru_cache(maxsize=512)
+def city_country_for_iata(code: str) -> tuple[str, str] | None:
+    """(city, ISO country) for an IATA code — None when unknown.
+
+    Lets multi-airport metros collapse onto one city name (LGW/LHR → London),
+    with the country available to guard against namesakes (London, Ontario).
+    """
+    c = (code or "").strip().upper()
+    if len(c) != 3 or not c.isalpha():
+        return None
+    import airportsdata
+
+    rec = airportsdata.load("IATA").get(c)
+    if not rec:
+        return None
+    city = (rec.get("city") or "").strip()
+    if not city:
+        return None
+    return city, (rec.get("country") or "").strip().upper()
+
+
 def is_known_iata(code: str) -> bool:
     """True when the 3-letter code exists in the airport dataset."""
     c = (code or "").strip().upper()

@@ -712,11 +712,20 @@ async def ask_grok(request: Request) -> HTMLResponse:
             )
             hit = get_cached(key) if key else None
             if hit:
+                from yonder.encyclopedia import _activity_links
+
                 place_book = {
                     **hit,
                     "iata": query.destination,
                     "country": country_for_iata(query.destination),
                     "from_cache": True,
+                    "activity_links": await _activity_links(
+                        settings,
+                        iata=query.destination,
+                        city=None,
+                        trip_vibe=vibe,
+                        user_prompt=ask,
+                    ),
                 }
         except Exception:
             place_book = None
@@ -1183,11 +1192,20 @@ async def explore_run(request: Request) -> HTMLResponse:
             if hit and _payload_lang_mismatch(hit, _brief_lang):
                 hit = None  # legacy entry in another language — go live instead
             if hit:
+                from yonder.encyclopedia import _activity_links
+
                 place_book = {
                     **hit,
                     "iata": query.destination,
                     "country": dest_cc,
                     "from_cache": True,
+                    "activity_links": await _activity_links(
+                        settings,
+                        iata=query.destination,
+                        city=None,
+                        trip_vibe=vibe,
+                        user_prompt=prompt,
+                    ),
                 }
             # Phase B: live field note if user didn't Skip
             elif not (search_id and is_cancelled(search_id)) and settings.grok_ready():

@@ -5,3 +5,4 @@
 - [Static JS cache versioning](static-cache-versioning.md) — templates use manual ?v=N cache busters; bump on every static-file edit or users see stale code.
 - [Mock flag forced by missing providers](mock-forcing-gate.md) — /explore forces mock=True when no fare providers configured; don't gate real-data features on `not mock`.
 - [Reply-language matching](reply-language-matching.md) — new model prose calls need `language_directive(detect_lang(prompt))` and lang-partitioned cache keys; fallback text stays English.
+- [Affiliate activity pills](activity-pills.md) — any place_book built straight from the brief cache must attach `activity_links` itself, or partner pills silently vanish on that page.

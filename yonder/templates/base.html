@@ -579,6 +579,23 @@
       background: var(--paper-2, #f4f1ea);
       color: var(--ink);
     }
+    /* Outbound partner-activity pills — same chip language, accent-tinted link */
+    a.pb-fact-link {
+      border-color: color-mix(in srgb, var(--bp-accent, var(--sky-bright)) 55%, var(--line));
+      background: color-mix(in srgb, var(--bp-accent, var(--sky-bright)) 10%, var(--paper-2, #f4f1ea));
+      color: var(--ink);
+      text-decoration: none;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    a.pb-fact-link:hover {
+      border-color: var(--bp-accent, var(--sky-bright));
+      background: color-mix(in srgb, var(--bp-accent, var(--sky-bright)) 18%, var(--paper-2, #f4f1ea));
+    }
+    a.pb-fact-link .pb-fact-ext {
+      color: var(--bp-accent, var(--sky-bright));
+      font-size: 0.85em;
+      margin-left: 0.1rem;
+    }
     .pb-loading-msg {
       margin: 0.35rem 0 0;
       font-size: 0.9rem;

@@ -183,9 +183,11 @@ class PlaceBrief:
     iata: str | None = None
     country: str | None = None
     from_cache: bool = False
+    activity_links: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "activity_links": self.activity_links or [],
             "title": self.title,
             "subtitle": self.subtitle,
             "facts": self.facts or [],
@@ -247,6 +249,25 @@ def _tone_key(user_prompt: str | None, trip_vibe: str | None) -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:10]
 
 
+async def _activity_links(
+    settings: Settings,
+    *,
+    iata: str | None,
+    city: str | None,
+    trip_vibe: str | None,
+    user_prompt: str | None,
+) -> list[dict[str, Any]]:
+    """Partner activity pills for a field note — [] for unmatched cities."""
+    try:
+        from yonder.activities import activity_links_for
+
+        return await activity_links_for(
+            settings, city=city, iata=iata, vibe=trip_vibe, user_prompt=user_prompt
+        )
+    except Exception:
+        return []
+
+
 async def get_place_brief(
     settings: Settings,
     *,
@@ -280,6 +301,9 @@ async def get_place_brief(
         hit = None
     if hit:
         return PlaceBrief(
+            activity_links=await _activity_links(
+                settings, iata=iata, city=city, trip_vibe=trip_vibe, user_prompt=user_prompt
+            ),
             title=str(hit.get("title") or city or iata or country or "Somewhere"),
             subtitle=str(hit.get("subtitle") or ""),
             facts=list(hit.get("facts") or [])[:4],
@@ -321,6 +345,9 @@ async def get_place_brief(
         if tone and not get_cached(base):
             put_cached(base, payload)
         return PlaceBrief(
+            activity_links=await _activity_links(
+                settings, iata=iata, city=city, trip_vibe=trip_vibe, user_prompt=user_prompt
+            ),
             title=str(payload.get("title") or city or iata or "Somewhere"),
             subtitle=str(payload.get("subtitle") or ""),
             facts=list(payload.get("facts") or [])[:4],
@@ -384,6 +411,13 @@ async def briefs_for_stops(
                 "country": country,
                 "city": city,
                 "from_cache": True,
+                "activity_links": await _activity_links(
+                    settings,
+                    iata=code,
+                    city=city,
+                    trip_vibe=trip_vibe,
+                    user_prompt=user_prompt,
+                ),
             }
             continue
         if cache_only or live >= max_n:

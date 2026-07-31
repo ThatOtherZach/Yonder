@@ -2450,10 +2450,21 @@
           if (brief.subtitle)
             h += '<p class="pb-sub">' + escapeHtml(brief.subtitle) + "</p>";
           var facts = brief.facts || [];
-          if (facts.length) {
+          var acts = brief.activity_links || [];
+          if (acts.length) facts = facts.slice(0, 2);
+          if (facts.length || acts.length) {
             h += '<div class="pb-fast-facts" aria-label="Fast facts">';
             facts.forEach(function (f) {
               if (f) h += '<span class="pb-fact">' + escapeHtml(String(f)) + "</span>";
+            });
+            acts.forEach(function (l) {
+              if (!l || !l.url || !/^https:\/\//i.test(String(l.url))) return;
+              h +=
+                '<a class="pb-fact pb-fact-link" href="' +
+                escapeHtml(String(l.url)) +
+                '" target="_blank" rel="noopener sponsored">' +
+                escapeHtml(((l.emoji ? l.emoji + " " : "") + (l.title || ""))) +
+                ' <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
             });
             h += "</div>";
           }
