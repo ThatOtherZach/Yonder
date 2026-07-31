@@ -99,6 +99,23 @@ SEED_STOPOVERS: list[dict[str, Any]] = [
     {"iata": "TPE", "city": "Taipei", "country": "TW", "why": "Night markets + very safe city", "vibe_tags": ["city", "food", "safe", "cheap", "whimsical", "electric"]},
     {"iata": "AKL", "city": "Auckland", "country": "NZ", "why": "Safe Pacific city break", "vibe_tags": ["city", "nature", "safe", "rugged", "feral", "untamed", "crisp", "seasalt"]},
     {"iata": "HEL", "city": "Helsinki", "country": "FI", "why": "Nordic safe city (higher COL)", "vibe_tags": ["city", "safe", "culture", "moody", "stormy", "crisp", "tender"]},
+    # Domestic US hubs — surface for low-XP travellers before long-haul international
+    {"iata": "ORD", "city": "Chicago", "country": "US", "why": "Midwest hub with deep food and culture scene", "vibe_tags": ["city", "food", "culture", "electric", "gritty"]},
+    {"iata": "SEA", "city": "Seattle", "country": "US", "why": "Pacific Northwest city with coffee, tech, and mountains nearby", "vibe_tags": ["city", "nature", "moody", "crisp", "mountains"]},
+    {"iata": "BOS", "city": "Boston", "country": "US", "why": "Historic East Coast city — walkable and safe", "vibe_tags": ["city", "culture", "safe", "ancient", "nostalgic"]},
+    {"iata": "DCA", "city": "Washington DC", "country": "US", "why": "Capital with free world-class museums and safe core", "vibe_tags": ["city", "culture", "safe", "ancient", "opulent"]},
+    {"iata": "ATL", "city": "Atlanta", "country": "US", "why": "Southern food and music hub, major domestic connector", "vibe_tags": ["city", "food", "culture", "electric", "warmnights"]},
+    {"iata": "DEN", "city": "Denver", "country": "US", "why": "Rocky Mountain gateway — outdoors and craft beer", "vibe_tags": ["city", "nature", "mountains", "rugged", "crisp"]},
+    {"iata": "DFW", "city": "Dallas", "country": "US", "why": "Texas hub with big BBQ culture and easy connections", "vibe_tags": ["city", "food", "culture", "warmnights", "goldenhour"]},
+    {"iata": "HNL", "city": "Honolulu", "country": "US", "why": "Pacific island paradise — beach and sun without a passport", "vibe_tags": ["beach", "relax", "warmnights", "seasalt", "lush", "goldenhour"]},
+    {"iata": "MSY", "city": "New Orleans", "country": "US", "why": "Jazz, food, and festival city — one of a kind US destination", "vibe_tags": ["city", "food", "culture", "electric", "warmnights", "vivid", "nostalgic"]},
+    {"iata": "BNA", "city": "Nashville", "country": "US", "why": "Music City — live shows, hot chicken, and easy domestic hop", "vibe_tags": ["city", "food", "culture", "electric", "warmnights"]},
+    {"iata": "SAN", "city": "San Diego", "country": "US", "why": "California beach city — sun, tacos, and laid-back vibes", "vibe_tags": ["beach", "city", "relax", "warmnights", "seasalt", "goldenhour"]},
+    {"iata": "AUS", "city": "Austin", "country": "US", "why": "Live music capital with great food and tech energy", "vibe_tags": ["city", "food", "culture", "electric", "warmnights"]},
+    # Domestic Canadian hubs — additional domestic options for CA-based travellers
+    {"iata": "YOW", "city": "Ottawa", "country": "CA", "why": "Capital city with museums and safe walkable core", "vibe_tags": ["city", "culture", "safe", "crisp", "tender"]},
+    {"iata": "YQB", "city": "Quebec City", "country": "CA", "why": "French-Canadian walled city — Europe feel without the flight", "vibe_tags": ["city", "culture", "food", "nostalgic", "ancient", "moody", "crisp"]},
+    {"iata": "YEG", "city": "Edmonton", "country": "CA", "why": "Alberta hub with festivals and northern-lights access", "vibe_tags": ["city", "culture", "nature", "crisp", "rugged"]},
 ]
 
 
@@ -661,6 +678,16 @@ def _sort_by_comfort(
             s += round(_comfort * min(adv_overlap, 2))
         if app_overlap:
             s += round((1.0 - _comfort) * min(app_overlap, 1))
+        # Domestic boost for low-XP travellers: when the user has at least one
+        # visited country but fewer than 25 (_comfort < 0.25), same-country
+        # seeds get +3 so they rise above long-haul international options.
+        # Zero-stamp users are excluded — they haven't been anywhere yet, so
+        # "go anywhere" is the right nudge for them, not "stay close to home".
+        if req.visited_countries and _comfort < 0.25:
+            origin_country = country_for_iata(req.origin or "")
+            idea_country = idea.country or ""
+            if origin_country and idea_country and origin_country.upper() == idea_country.upper():
+                s += 3
         # Diversity nudge: decay cities already in recent trip history so
         # results feel fresh instead of surfacing the same top seed each time.
         if _recent and (idea.iata or "").upper() in _recent:

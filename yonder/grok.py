@@ -507,7 +507,8 @@ class GrokClient:
             "- country = ISO2 for each candidate\n"
             "- traveler_comfort rank guides candidate boldness: "
             "Chaos Pilot/Nomadic Soul → prefer off-beaten-path, emerging, or unconventional stops; "
-            "Armchair Explorer/Day Tripper → prefer safe hubs, easy connections, well-touristed cities"
+            "Armchair Explorer/Day Tripper → prefer domestic or nearby short-haul destinations first, "
+            "safe hubs, easy connections, well-touristed cities; avoid suggesting 10+ hour flights; easy connections only"
             + language_directive(detect_lang(prompt))
         )
         # Codes only in the prompt (names bloat tokens / latency for large passport maps)
