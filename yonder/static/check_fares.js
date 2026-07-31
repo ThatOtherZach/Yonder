@@ -88,8 +88,12 @@
     return "https://www.aviasales.com/search/" + path + "?" + _aviasalesQs(cur);
   }
 
+  // Compile-time constant — matches AVIASALES_MARKER in yonder/links.py.
+  // window.AVIASALES_MARKER can override this at runtime (e.g. for testing).
+  var _MARKER = "756039.Zza75700ced74b488c8090948-756039";
+
   function _aviasalesQs(currency) {
-    var marker = (typeof window !== "undefined" && window.AVIASALES_MARKER) || "";
+    var marker = (typeof window !== "undefined" && window.AVIASALES_MARKER) || _MARKER;
     var qs = marker ? "marker=" + encodeURIComponent(marker) + "&" : "";
     qs += "sub_id=YonderFlights";
     if (currency) {
