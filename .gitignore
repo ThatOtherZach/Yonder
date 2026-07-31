@@ -11,6 +11,7 @@ saved_itineraries.db
 shared_trips.db
 place_book_cache.db
 attribution.db
+activity_titles.db
 *.egg-info/
 dist/
 build/
