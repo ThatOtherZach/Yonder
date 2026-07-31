@@ -316,29 +316,6 @@
               <p class="xp-bar-label" id="xp-bar-label">Maximum rank — you've been everywhere. ✦</p>
               {% endif %}
             </div>
-            <div class="xp-ladder" id="xp-ladder">
-              {% set ns = namespace(prev=None, next_rung=None) %}
-              {% for rung in xp_profile.ladder %}
-                {% if rung.current %}
-                  {% if not loop.first %}{% set ns.prev = xp_profile.ladder[loop.index0 - 1] %}{% endif %}
-                  {% if not loop.last %}{% set ns.next_rung = xp_profile.ladder[loop.index0 + 1] %}{% endif %}
-                {% endif %}
-              {% endfor %}
-              {% if ns.prev %}
-              <div class="xp-ladder-row">
-                <span class="xp-ladder-dot"></span>
-                <span>{{ ns.prev.emoji }} {{ ns.prev.rank }}</span>
-                <span class="xp-ladder-xp">{{ ns.prev.xp }} XP</span>
-              </div>
-              {% endif %}
-              {% if ns.next_rung %}
-              <div class="xp-ladder-row">
-                <span class="xp-ladder-dot"></span>
-                <span>{{ ns.next_rung.emoji }} {{ ns.next_rung.rank }}</span>
-                <span class="xp-ladder-xp">{{ ns.next_rung.xp }} XP</span>
-              </div>
-              {% endif %}
-            </div>
           </div>
         </div>
         {% endif %}
@@ -365,12 +342,12 @@
             {% endfor %}
           </div>
           <div class="map-links">
-            <a class="btn secondary" href="/?mode=escape" style="padding:0.4rem 0.75rem;font-size:0.85rem">Escape</a>
-            <a class="btn secondary" href="/?mode=detour" style="padding:0.4rem 0.75rem;font-size:0.85rem">Detour</a>
-            <button type="button" id="clear-visited-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" {% if not visited_defaults %}hidden{% endif %}>Clear visited</button>
+            <a class="btn secondary" href="/?mode=escape" style="padding:0.4rem 0.75rem;font-size:0.85rem">Launch Escape</a>
+            <a class="btn secondary" href="/?mode=detour" style="padding:0.4rem 0.75rem;font-size:0.85rem">Get a Detour</a>
+            <button type="button" id="clear-visited-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" {% if not visited_defaults %}hidden{% endif %}>Clear Visited</button>
             <button type="button" id="clear-avoid-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" {% if not avoid_defaults %}hidden{% endif %}>Clear avoid</button>
-            <button type="button" id="backup-export-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem">Export backup</button>
-            <button type="button" id="backup-import-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem">Import backup</button>
+            <button type="button" id="backup-export-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem">Export Backup</button>
+            <button type="button" id="backup-import-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem">Import Backup</button>
             <input type="file" id="backup-import-file" accept=".json,application/json" hidden />
           </div>
           <p class="map-status" id="backup-status" hidden></p>
@@ -934,20 +911,6 @@
           }
         }
 
-        var ladderEl = document.getElementById("xp-ladder");
-        if (ladderEl && xp.ladder) {
-          var currIdx = xp.ladder.findIndex(function(r) { return r.current; });
-          var rungs = [];
-          if (currIdx > 0) rungs.push(xp.ladder[currIdx - 1]);
-          if (currIdx >= 0 && currIdx < xp.ladder.length - 1) rungs.push(xp.ladder[currIdx + 1]);
-          ladderEl.innerHTML = rungs.map(function (r) {
-            return '<div class="xp-ladder-row">' +
-              '<span class="xp-ladder-dot"></span>' +
-              '<span>' + r.emoji + ' ' + r.rank + '</span>' +
-              '<span class="xp-ladder-xp">' + r.xp + ' XP</span>' +
-            '</div>';
-          }).join('');
-        }
       }
 
       function flagEmoji(code) {
@@ -1088,7 +1051,7 @@
             });
             var data = await res.json().catch(function(){ return {}; });
             pendingBackup = null;
-            impBtn.textContent = "Import backup";
+            impBtn.textContent = "Import Backup";
             if (!res.ok || !data.ok) {
               setStatus(data.error || "Import failed — is this a Yonder backup file?", true);
               return;
@@ -1102,7 +1065,7 @@
             setTimeout(function(){ location.reload(); }, 600);
           } catch (e) {
             pendingBackup = null;
-            impBtn.textContent = "Import backup";
+            impBtn.textContent = "Import Backup";
             setStatus("Import failed — try again.", true);
           }
         }
@@ -1121,7 +1084,7 @@
           document.addEventListener("click", function (e) {
             if (pendingBackup && !impBtn.contains(e.target)) {
               pendingBackup = null;
-              impBtn.textContent = "Import backup";
+              impBtn.textContent = "Import Backup";
               setStatus("Import cancelled.");
             }
           }, true);
