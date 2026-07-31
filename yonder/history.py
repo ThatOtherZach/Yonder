@@ -62,14 +62,14 @@ def record_offer(
     *,
     observed_at: datetime | None = None,
     model_source: str | None = None,
-) -> None:
-    """Append one fare observation.
+) -> bool:
+    """Append one fare observation.  Returns True when written, False when skipped.
 
     model_source: AI backend label ("Grok (Server)", "BYOM, …") when this row
     came from an AI-planned search; None for legacy/non-AI rows.
     """
     if offer.price_kind == "mock":
-        return  # don't pollute history with demo
+        return False  # don't pollute history with demo
     ts = (observed_at or datetime.now(timezone.utc)).isoformat()
     with _connect() as conn:
         conn.execute(
@@ -102,14 +102,15 @@ def record_offer(
             ),
         )
         conn.commit()
+    return True
 
 
 def record_offers(query: SearchQuery, offers: Iterable[FlightOffer]) -> int:
     n = 0
     for o in offers:
         try:
-            record_offer(query, o)
-            n += 1
+            if record_offer(query, o):
+                n += 1
         except Exception:
             continue
     return n
