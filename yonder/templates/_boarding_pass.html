@@ -110,7 +110,7 @@
       </div>
       {% if escape_place_book and (escape_place_book.culture or escape_place_book.food or escape_place_book.caution) %}
       <button type="button" class="pb-toggle" aria-expanded="false">
-        <span class="pb-toggle-label">More · culture, food &amp; budget</span>
+        <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
         <span class="pb-chevron" aria-hidden="true">▾</span>
       </button>
       <div class="pb-details" hidden>
@@ -122,7 +122,7 @@
       </div>
       {% elif not escape_place_book %}
       <button type="button" class="pb-toggle" aria-expanded="false" hidden>
-        <span class="pb-toggle-label">More · culture, food &amp; budget</span>
+        <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
         <span class="pb-chevron" aria-hidden="true">▾</span>
       </button>
       <div class="pb-details" hidden></div>
@@ -336,7 +336,7 @@
           </div>
           {% if has_more or (it.stop_iata and not pb) %}
           <button type="button" class="pb-toggle" aria-expanded="false"{% if it.stop_iata and not pb and not has_col %} hidden{% endif %}>
-            <span class="pb-toggle-label">More · culture, food &amp; budget</span>
+            <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
             <span class="pb-chevron" aria-hidden="true">▾</span>
           </button>
           <div class="pb-details" hidden>
