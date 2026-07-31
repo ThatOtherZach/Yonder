@@ -162,10 +162,12 @@
     {% if share.kind == 'escape' %}
       {% set q = p.query or {} %}
       {% set o = p.offer or {} %}
-      {{ bp.escape_card('share', o, q, 0, share_vibe=share_vibe) }}
+      {% set train_links = train_options(q.origin, q.destination) %}
+      {{ bp.escape_card('share', o, q, 0, share_vibe=share_vibe, train_links=train_links) }}
     {% elif share.kind == 'detour' %}
       {% set it = p.itinerary or {} %}
-      {{ bp.detour_card('share', it, 0, share_vibe=share_vibe, fallback_title=share.title) }}
+      {% set train_links = train_options(it.legs[0].from_iata, (it.legs|last).to_iata) if it.legs else [] %}
+      {{ bp.detour_card('share', it, 0, share_vibe=share_vibe, fallback_title=share.title, train_links=train_links) }}
     {% else %}
       <div class="card">
         <p class="muted">Unknown share type.</p>

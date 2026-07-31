@@ -1387,13 +1387,15 @@
         {% endif %}
         {% if escape_result.offers %}
         <div class="pass-stack">
+          {% set esc_train_links = train_options(escape_result.query.origin, escape_result.query.destination) %}
           {% for o in escape_result.offers[:1] %}
           {% set esc_theme = escape_dest_theme or {} %}
           {% set share = share_escape(request, escape_result, o, esc_vibe) %}
           {{ bp.escape_card('explore', o, escape_result.query, loop.index0,
                             esc_theme=esc_theme, esc_vibe=esc_vibe,
                             escape_parsed=escape_parsed, escape_place_book=escape_place_book,
-                            share=share, esc_text=esc_text, ask=ask) }}
+                            share=share, esc_text=esc_text, ask=ask,
+                            train_links=esc_train_links) }}
           {% endfor %}
         </div>
         {% else %}
@@ -1425,9 +1427,10 @@
           {% for it in detour_result.itineraries[:5] %}
           {% set pb = (detour_place_books or {}).get(it.stop_iata) if detour_place_books is defined and it.stop_iata else none %}
           {% set share = share_detour(request, it, detour_trip_meta) %}
+          {% set det_train_links = train_options(it.legs[0].from_iata, (it.legs|last).to_iata) if it.legs else [] %}
           {{ bp.detour_card('explore', it, loop.index0,
                             det_vibe=det_vibe, det_text=det_text,
-                            share=share, pb=pb) }}
+                            share=share, pb=pb, train_links=det_train_links) }}
           {% endfor %}
         </div>
         {% else %}

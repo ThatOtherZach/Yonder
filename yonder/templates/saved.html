@@ -81,7 +81,8 @@
         {% set s = card.saved %}
         {% set it = card.it %}
         {% if it %}
-        {{ bp.detour_card('saved', it, loop.index0, share=card.share, s=s) }}
+        {% set train_links = train_options(it.legs[0].from_iata, (it.legs|last).to_iata) if it.legs else [] %}
+        {{ bp.detour_card('saved', it, loop.index0, share=card.share, s=s, train_links=train_links) }}
         {% else %}
         <article class="boarding-pass is-adventure">
           <div class="bp-main">

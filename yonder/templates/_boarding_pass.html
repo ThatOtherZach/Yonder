@@ -12,7 +12,7 @@
 {% macro escape_card(mode, o, query, idx,
                      esc_theme=none, esc_vibe=none, escape_parsed=none,
                      escape_place_book=none, share=none,
-                     esc_text='', ask='', share_vibe=none) %}
+                     esc_text='', ask='', share_vibe=none, train_links=[]) %}
 {% set esc_theme = esc_theme or {} %}
 {% set fare = o.display_price_base or o.display_price or (('~' ~ (o.currency or '') ~ ' ' ~ '%.0f'|format(o.price)) if o.price is defined and o.price is not none else '—') %}
 {% set fare_missing = (o.fare_missing or false) or (o.price is not defined) or (o.price is none) %}
@@ -142,6 +142,9 @@
       {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
       <a class="btn secondary" href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
       {% endif %}
+      {% for tl in train_links %}
+      <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
+      {% endfor %}
     </div>
   </div>
   <div class="bp-stub">
@@ -190,7 +193,7 @@
 
 {% macro detour_card(mode, it, idx,
                      det_vibe='', det_text='', share=none, pb=none,
-                     s=none, share_vibe=none, fallback_title='') %}
+                     s=none, share_vibe=none, fallback_title='', train_links=[]) %}
 {% set accent = ((s.theme_primary if s else none) or it.theme_primary) %}
 {% set cf = namespace(pending=false, base=0.0) %}
 {% for leg in (it.legs or []) %}
@@ -411,6 +414,9 @@
       {% if mode == 'explore' and it.kayak_url %}
       <a class="btn secondary" href="{{ it.kayak_url }}" target="_blank" rel="noopener">Kayak (leg 1) ↗</a>
       {% endif %}
+      {% for tl in train_links %}
+      <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
+      {% endfor %}
       {% if mode == 'saved' %}
       <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form" style="margin-left: auto;">
         <button type="button" class="danger js-remove-confirm">Remove</button>
