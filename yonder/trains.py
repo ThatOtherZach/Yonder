@@ -407,6 +407,101 @@ def train_options(from_iata: str, to_iata: str) -> list[dict]:
     return _dedup_sort(cc_matches)
 
 
+# ---------------------------------------------------------------------------
+# Airport-to-city transit links
+# ---------------------------------------------------------------------------
+# Keyed by airport IATA. Each entry is a list (some airports have multiple
+# useful options). Fields: name (shown in pill), url, emoji.
+# Rail / metro / tram only — no pure-bus services.
+# ---------------------------------------------------------------------------
+AIRPORT_TRAINS: dict[str, list[dict]] = {
+    # ── Europe ──────────────────────────────────────────────────────────
+    "LHR": [{"name": "Heathrow Express (~15 min)", "url": "https://www.heathrowexpress.com", "emoji": "🚄"}],
+    "LGW": [{"name": "Gatwick Express (~30 min)", "url": "https://www.gatwickexpress.com", "emoji": "🚄"}],
+    "STN": [{"name": "Stansted Express (~47 min)", "url": "https://www.stanstedexpress.com", "emoji": "🚄"}],
+    "MAN": [{"name": "Metrolink → Manchester (~20 min)", "url": "https://tfgm.com/public-transport/metrolink", "emoji": "🚇"}],
+    "EDI": [{"name": "Tram → City Centre (~35 min)", "url": "https://edinburghtrams.com", "emoji": "🚃"}],
+    "GLA": [{"name": "Train → Glasgow Central (~15 min)", "url": "https://www.scotrail.co.uk", "emoji": "🚆"}],
+    "CDG": [{"name": "RER B → Paris Nord (~35 min)", "url": "https://www.transilien.com/en", "emoji": "🚇"}],
+    "ORY": [{"name": "OrlyVal + RER B → Paris (~35 min)", "url": "https://www.ratp.fr/en/titres-et-tarifs/orlyval-access", "emoji": "🚇"}],
+    "AMS": [{"name": "NS → Amsterdam Centraal (~20 min)", "url": "https://www.ns.nl/en", "emoji": "🚆"}],
+    "FRA": [{"name": "S-Bahn → Frankfurt Hbf (~11 min)", "url": "https://www.rmv.de/en/homepage/", "emoji": "🚇"}],
+    "MUC": [{"name": "S-Bahn S1/S8 → München Hbf (~40 min)", "url": "https://www.mvv-muenchen.de/en/", "emoji": "🚇"}],
+    "DUS": [{"name": "SkyTrain + S-Bahn → Düsseldorf Hbf (~12 min)", "url": "https://www.vrs.de/en/", "emoji": "🚇"}],
+    "ZRH": [{"name": "SBB → Zürich HB (~10 min)", "url": "https://www.sbb.ch/en", "emoji": "🚆"}],
+    "GVA": [{"name": "Léman Express → Geneva (~8 min)", "url": "https://www.lemanexpress.ch/en/", "emoji": "🚄"}],
+    "VIE": [{"name": "City Airport Train (~16 min)", "url": "https://www.cityairporttrain.com/en", "emoji": "🚄"}],
+    "BRU": [{"name": "Airport Express → Brussels Midi (~20 min)", "url": "https://www.belgiantrain.be/en", "emoji": "🚆"}],
+    "ARN": [{"name": "Arlanda Express (~18 min)", "url": "https://www.arlandaexpress.com", "emoji": "🚄"}],
+    "CPH": [{"name": "Metro M2 → Copenhagen C (~15 min)", "url": "https://intl.m.dk", "emoji": "🚇"}],
+    "HEL": [{"name": "Ring Rail → Helsinki C (~30 min)", "url": "https://www.hsl.fi/en", "emoji": "🚆"}],
+    "OSL": [{"name": "Flytoget → Oslo S (~20 min)", "url": "https://flytoget.no/en/", "emoji": "🚄"}],
+    "MXP": [{"name": "Malpensa Express → Milano (~40 min)", "url": "https://www.malpensaexpress.it/en/", "emoji": "🚄"}],
+    "FCO": [{"name": "Leonardo Express → Roma Termini (~32 min)", "url": "https://www.trenitalia.com/en/services/leonardo_express.html", "emoji": "🚄"}],
+    "BCN": [{"name": "Rodalies R2 Nord → Sants (~19 min)", "url": "https://www.rodalies.gencat.cat/en/", "emoji": "🚆"}],
+    "MAD": [{"name": "Metro L8 → Nuevos Ministerios (~12 min)", "url": "https://www.metromadrid.es/en", "emoji": "🚇"}],
+    "PMI": [{"name": "Metro L1 → Palma (~20 min)", "url": "https://www.tib.org/en/metro", "emoji": "🚇"}],
+    "LIS": [{"name": "Metro Red Line → Oriente (~45 min)", "url": "https://www.metrolisboa.pt/en/", "emoji": "🚇"}],
+    "OTP": [{"name": "Train → Gara de Nord (~15 min)", "url": "https://www.cfrcalatori.ro/en/", "emoji": "🚆"}],
+    "WAW": [{"name": "SKM → Warsaw Central (~23 min)", "url": "https://www.skm.warszawa.pl/en", "emoji": "🚆"}],
+    "IST": [{"name": "Metro M11 → Gayrettepe (~38 min)", "url": "https://www.istanbul-airport.com/en/passenger-rights-and-info/public-transport/metro", "emoji": "🚇"}],
+    # ── Asia-Pacific ─────────────────────────────────────────────────────
+    "NRT": [{"name": "Narita Express N'EX (~60 min)", "url": "https://www.jreast.co.jp/multi/en/nex/", "emoji": "🚄"}],
+    "HND": [
+        {"name": "Tokyo Monorail (~18 min)", "url": "https://www.tokyo-monorail.co.jp/english/", "emoji": "🚇"},
+        {"name": "Keikyu → Shinagawa (~11 min)", "url": "https://www.haneda-tokyo-access.com/en/", "emoji": "🚆"},
+    ],
+    "KIX": [{"name": "Haruka Express → Osaka (~75 min)", "url": "https://www.westjr.co.jp/global/en/travel/shopping/access/train/haruka/", "emoji": "🚄"}],
+    "CTS": [{"name": "Airport Rapid → Sapporo (~37 min)", "url": "https://www.new-chitose-airport.jp/en/access/train/", "emoji": "🚆"}],
+    "ICN": [{"name": "AREX → Seoul Station (~51 min)", "url": "https://www.arex.or.kr/en/main.do", "emoji": "🚄"}],
+    "GMP": [{"name": "Metro Line 5 → Gimpo (~10 min)", "url": "https://www.seoulmetro.co.kr/en/", "emoji": "🚇"}],
+    "PEK": [{"name": "Airport Express → Dongzhimen (~19 min)", "url": "https://www.bairport.com/en/", "emoji": "🚄"}],
+    "PKX": [{"name": "Daxing Express → Caoqiao (~45 min)", "url": "https://www.bairport.com/en/", "emoji": "🚄"}],
+    "PVG": [{"name": "Maglev → Longyang Rd (~8 min)", "url": "https://www.smtdc.com/en/", "emoji": "🚄"}],
+    "HKG": [{"name": "Airport Express → Hong Kong (~24 min)", "url": "https://www.mtr.com.hk/en/customer/services/airport_express_index.html", "emoji": "🚄"}],
+    "TPE": [{"name": "MRT → Taipei Main Station (~35 min)", "url": "https://www.metro.taipei/en/", "emoji": "🚇"}],
+    "SIN": [{"name": "MRT East-West → City Hall (~30 min)", "url": "https://www.smrt.com.sg", "emoji": "🚇"}],
+    "KUL": [{"name": "KLIA Ekspres → KL Sentral (~28 min)", "url": "https://www.kliaekspres.com", "emoji": "🚄"}],
+    "BKK": [{"name": "Airport Rail Link → Phaya Thai (~30 min)", "url": "https://www.srtet.co.th/en/", "emoji": "🚆"}],
+    "CGK": [{"name": "Railink → Manggarai (~50 min)", "url": "https://www.railink.co.id/en/", "emoji": "🚆"}],
+    "DXB": [{"name": "Dubai Metro Red Line (~40 min to Union)", "url": "https://www.rta.ae/wps/portal/rta/ae/public-transport/dubai-metro", "emoji": "🚇"}],
+    "DOH": [{"name": "Doha Metro Gold Line (~15 min)", "url": "https://www.qr.com.qa/en/travel/doha-metro", "emoji": "🚇"}],
+    "DEL": [{"name": "Delhi Metro Orange Line (~19 min)", "url": "https://www.delhimetrorail.com", "emoji": "🚇"}],
+    "BOM": [{"name": "Mumbai Metro Line 1 → Andheri (~10 min)", "url": "https://www.mmrcl.com/en", "emoji": "🚇"}],
+    "SYD": [{"name": "Airport Link → Central (~13 min)", "url": "https://www.airportlink.com.au", "emoji": "🚆"}],
+    "BNE": [{"name": "Airtrain → Brisbane (~20 min)", "url": "https://www.airtrain.com.au", "emoji": "🚆"}],
+    "PER": [{"name": "Transperth → Perth (~30 min)", "url": "https://www.transperth.wa.gov.au", "emoji": "🚆"}],
+    "AKL": [{"name": "Airport Express → Britomart (~50 min)", "url": "https://at.govt.nz/airports/", "emoji": "🚆"}],
+    # ── Americas ─────────────────────────────────────────────────────────
+    "JFK": [{"name": "AirTrain + Subway (~60 min to Manhattan)", "url": "https://www.jfkairport.com/to-from-airport/air-train", "emoji": "🚇"}],
+    "EWR": [{"name": "AirTrain + NJ Transit (~40 min to Penn Station)", "url": "https://www.newarkairport.com/to-from-airport/air-train", "emoji": "🚆"}],
+    "ORD": [{"name": "CTA Blue Line → Loop (~45 min)", "url": "https://www.transitchicago.com", "emoji": "🚇"}],
+    "MDW": [{"name": "CTA Orange Line → Loop (~30 min)", "url": "https://www.transitchicago.com", "emoji": "🚇"}],
+    "DEN": [{"name": "A Line → Union Station (~37 min)", "url": "https://www.rtd-denver.com/services/airport-train", "emoji": "🚆"}],
+    "ATL": [{"name": "MARTA → Five Points (~30 min)", "url": "https://www.itsmarta.com", "emoji": "🚇"}],
+    "SFO": [{"name": "BART → Embarcadero (~30 min)", "url": "https://www.bart.gov/stations/sfia", "emoji": "🚇"}],
+    "SEA": [{"name": "Link Light Rail → Downtown (~40 min)", "url": "https://www.soundtransit.org/ride-with-us/routes-schedules/link-light-rail", "emoji": "🚇"}],
+    "YYZ": [{"name": "UP Express → Union Station (~25 min)", "url": "https://www.upexpress.com", "emoji": "🚄"}],
+    "YVR": [{"name": "Canada Line SkyTrain → Waterfront (~25 min)", "url": "https://www.translink.ca", "emoji": "🚇"}],
+    "GRU": [{"name": "CPTM Line 13 → Luz (~35 min)", "url": "https://www.cptm.sp.gov.br/english/", "emoji": "🚆"}],
+    "SCL": [{"name": "Metro Line 3 → Baquedano (~45 min)", "url": "https://www.metro.cl/en", "emoji": "🚇"}],
+    "MEX": [{"name": "Metro Line B → Buenavista (~30 min)", "url": "https://www.metro.cdmx.gob.mx/en", "emoji": "🚇"}],
+    # ── Africa & Middle East ─────────────────────────────────────────────
+    "TLV": [{"name": "Train → Tel Aviv (~20 min)", "url": "https://www.rail.co.il/en/", "emoji": "🚆"}],
+    "JNB": [{"name": "Gautrain → Sandton (~15 min)", "url": "https://www.gautrain.co.za", "emoji": "🚆"}],
+}
+
+
+def airport_train_for(iata: str) -> list[dict]:
+    """Return airport-to-city transit links for the given airport IATA code.
+
+    Returns an empty list when no rail/metro/tram link is known.
+    Each dict has: name (str), url (str), emoji (str).
+    """
+    iata = (iata or "").strip().upper()
+    return AIRPORT_TRAINS.get(iata, [])
+
+
 def _dedup_sort(entries: list[dict]) -> list[dict]:
     """Deduplicate by operator name, then sort alphabetically."""
     seen: set[str] = set()

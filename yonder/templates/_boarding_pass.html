@@ -97,10 +97,12 @@
         </div>
         {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
         {% set esc_acts = escape_place_book.activity_links or [] %}
-        {% if escape_place_book.facts or esc_acts %}
+        {% set esc_airport_trains = airport_train_for(query.destination) if query.destination else [] %}
+        {% if escape_place_book.facts or esc_acts or esc_airport_trains %}
         <div class="pb-fast-facts" aria-label="Fast facts">
           {% for f in (escape_place_book.facts or [])[:2 if esc_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
           {% for l in esc_acts %}<a class="pb-fact pb-fact-link" href="{{ l.url }}" target="_blank" rel="noopener sponsored">{{ l.emoji }} {{ l.title }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+          {% for t in esc_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
         </div>
         {% endif %}
         {% else %}
@@ -320,10 +322,12 @@
             </div>
             {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
             {% set pb_acts = pb.activity_links or [] %}
-            {% if pb.facts or pb_acts %}
+            {% set pb_airport_trains = airport_train_for(it.stop_iata) if it.stop_iata else [] %}
+            {% if pb.facts or pb_acts or pb_airport_trains %}
             <div class="pb-fast-facts" aria-label="Fast facts">
               {% for f in (pb.facts or [])[:2 if pb_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
               {% for l in pb_acts %}<a class="pb-fact pb-fact-link" href="{{ l.url }}" target="_blank" rel="noopener sponsored">{{ l.emoji }} {{ l.title }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+              {% for t in pb_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
             </div>
             {% endif %}
             {% elif it.stop_iata %}

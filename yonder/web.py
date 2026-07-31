@@ -55,7 +55,7 @@ from yonder.settings_store import MANAGED_KEYS, settings_view, write_env
 from yonder.themes import theme_css_vars, theme_for_iata
 from yonder.types import CabinClass, SearchQuery
 from yonder.share import create_share, dump_obj, get_share, qr_png_data_uri, qr_svg_for_url
-from yonder.trains import train_options
+from yonder.trains import train_options, airport_train_for
 from yonder.vibe_theme import VIBE_EMOJI, resolve_vibe, vibe_theme
 
 _VIBES_PATH = Path(__file__).parent / "vibes.json"
@@ -240,6 +240,7 @@ templates.env.globals["route"] = format_route
 templates.env.globals["airline_site_label"] = airline_site_label
 templates.env.globals["airline_name"] = airline_display_name
 templates.env.globals["train_options"] = train_options
+templates.env.globals["airport_train_for"] = airport_train_for
 def _promo_offers() -> dict | None:
     """CODE_PROMO / LINK_PROMO from the environment (or .env) — None when unset."""
     import os
