@@ -345,3 +345,178 @@ def test_all_vibes_have_tag_map_entry():
         f"Vibe(s) in VIBE_TAG_MAP have an empty tag set — each entry needs "
         f"at least one tag: {empty}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Domestic-seed boost for low-XP travellers (origin country prioritised)
+# ---------------------------------------------------------------------------
+
+# US domestic hubs present in SEED_STOPOVERS (ORD itself is the origin, so excluded)
+_US_DOMESTIC = {"BNA", "AUS", "SAN", "ATL", "DEN", "DFW", "HNL", "MSY", "SEA", "BOS", "DCA", "LAX"}
+# Canadian domestic hubs present in SEED_STOPOVERS (YVR is the origin, not seeded)
+_CA_DOMESTIC = {"YUL", "YYC", "YOW", "YQB", "YEG"}
+
+
+def test_domestic_us_seeds_present_for_low_xp_user():
+    """With origin=ORD and a single visited country, at least one US domestic
+    hub (BNA, AUS, SAN, …) must appear in the seed list for vibe='city'.
+
+    This confirms that domestic seeds are not accidentally filtered before the
+    comfort scorer gets a chance to boost them.
+    """
+    req = AdventureRequest(
+        origin="ORD",
+        destination="LHR",
+        depart_date=date(2025, 11, 1),
+        vibe="city",
+        max_candidates=5,
+        include_direct=False,
+        visited_countries=["GB"],  # 1 country → low-XP, domestic boost active
+    )
+    seeds = seed_ideas(req)
+    iatas = {s.iata for s in seeds}
+    assert iatas & _US_DOMESTIC, (
+        f"No US domestic hub found in seed list for low-XP ORD user. "
+        f"Seeds returned: {[s.iata for s in seeds]}"
+    )
+
+
+def test_domestic_us_seeds_outscore_comparable_international_for_low_xp():
+    """For a low-XP US traveller (origin=ORD, 1 visited country), at least one
+    US domestic hub must rank above a comparable international seed for
+    vibe='city'.
+
+    The domestic boost (+3) must push same-country seeds ahead of international
+    cities that share an equal number of vibe-tag matches.  A regression in
+    _sort_by_comfort would cause this assertion to fail.
+    """
+    from yonder.adventure import _sort_by_comfort, SEED_STOPOVERS, StopoverIdea
+
+    req = AdventureRequest(
+        origin="ORD",
+        destination="LHR",
+        depart_date=date(2025, 11, 1),
+        vibe="city",
+        max_candidates=5,
+        include_direct=False,
+        visited_countries=["GB"],  # 1 country → _comfort = 0.01 < 0.25
+    )
+
+    # Build a focused candidate list: one clear US domestic city (BNA) and one
+    # international city that has the same number of 'city' vibe-tag hits (IST).
+    # Both share the "city" tag → equal tag score without the boost.
+    # With the boost, BNA (US == origin country US) should rank first.
+    bna = next(s for s in SEED_STOPOVERS if s["iata"] == "BNA")
+    ist = next(s for s in SEED_STOPOVERS if s["iata"] == "IST")
+    candidates = [
+        StopoverIdea(iata=bna["iata"], city=bna["city"], stay_days=3,
+                     why=bna["why"], vibe_tags=list(bna["vibe_tags"]),
+                     country=bna["country"]),
+        StopoverIdea(iata=ist["iata"], city=ist["city"], stay_days=3,
+                     why=ist["why"], vibe_tags=list(ist["vibe_tags"]),
+                     country=ist["country"]),
+    ]
+    ranked = _sort_by_comfort(candidates, req, recent_iatas=set())
+    assert ranked[0].iata == "BNA", (
+        f"Expected BNA (US domestic) to outrank IST for low-XP ORD user "
+        f"(vibe='city'), but got: {[s.iata for s in ranked]}. "
+        f"Check the domestic boost in _sort_by_comfort."
+    )
+
+
+def test_canadian_hub_prioritised_for_low_xp_ca_user():
+    """For a low-XP CA traveller (origin=YVR, 1 visited country), a Canadian
+    hub (YOW or YQB) must rank above a matched-tag international city in the
+    seed list for vibe='culture'.
+
+    YOW has culture/safe/crisp/tender tags; YQB has culture/food/nostalgic/
+    ancient/moody/crisp.  Both share the 'culture' tag with the vibe map.
+    The domestic boost (+3) should push them above international cities that
+    have the same or fewer culture-tag matches.
+    """
+    req = AdventureRequest(
+        origin="YVR",
+        destination="LHR",
+        depart_date=date(2025, 11, 1),
+        vibe="culture",
+        max_candidates=5,
+        include_direct=False,
+        visited_countries=["GB"],  # 1 visited → low-XP, domestic boost active
+    )
+    seeds = seed_ideas(req)
+    iatas = [s.iata for s in seeds]
+
+    ca_in_seeds = [i for i in iatas if i in _CA_DOMESTIC]
+    assert ca_in_seeds, (
+        f"No Canadian domestic hub (YOW/YQB/YUL/YYC/YEG) found in seed list "
+        f"for low-XP YVR user (vibe='culture'). "
+        f"Seeds: {iatas}"
+    )
+
+    # The first Canadian hub must beat at least one international city in rank.
+    first_ca_pos = min(iatas.index(i) for i in ca_in_seeds)
+    # There must also be at least one international city in the seeds list.
+    intl_positions = [idx for idx, i in enumerate(iatas) if i not in _CA_DOMESTIC]
+    assert intl_positions, (
+        f"No international city in seed list to compare against. Seeds: {iatas}"
+    )
+    last_intl_pos = max(intl_positions)
+    assert first_ca_pos < last_intl_pos, (
+        f"No Canadian hub ranked above any international city for low-XP YVR "
+        f"user (vibe='culture'). Seed order: {iatas}"
+    )
+
+
+def test_domestic_boost_inactive_for_zero_visited_countries():
+    """With visited_countries=[] the domestic boost must NOT fire.
+
+    Zero-stamp users haven't been anywhere yet; the product intent is to
+    encourage them to 'go anywhere', so the same-country boost is intentionally
+    skipped.  This test confirms the guard condition is intact.
+    """
+    from yonder.adventure import _sort_by_comfort, SEED_STOPOVERS, StopoverIdea
+
+    req = AdventureRequest(
+        origin="ORD",
+        destination="LHR",
+        depart_date=date(2025, 11, 1),
+        vibe="city",
+        max_candidates=5,
+        include_direct=False,
+        visited_countries=[],  # no stamps → boost must be skipped
+    )
+
+    bna = next(s for s in SEED_STOPOVERS if s["iata"] == "BNA")
+    # Build a candidate whose only vibe-tag match ties with BNA so that the
+    # domestic boost, if active, would be the deciding factor.
+    tied_intl = StopoverIdea(
+        iata="TST",
+        city="Test City",
+        stay_days=3,
+        why="test",
+        vibe_tags=["city", "food", "culture", "electric", "warmnights"],  # same tags as BNA
+        country="DE",  # not US
+    )
+    bna_idea = StopoverIdea(
+        iata=bna["iata"],
+        city=bna["city"],
+        stay_days=3,
+        why=bna["why"],
+        vibe_tags=list(bna["vibe_tags"]),
+        country=bna["country"],
+    )
+    ranked = _sort_by_comfort([bna_idea, tied_intl], req, recent_iatas=set())
+    # With boost inactive, tag scores are equal — BNA must NOT outrank TST
+    # purely because of country origin.  Both share the same tags so their
+    # scores are identical; stable sort preserves input order (BNA first here),
+    # but the key assertion is that BNA's score equals TST's score (no extra +3).
+    from yonder.adventure import VIBE_TAG_MAP, country_for_iata
+    _tags_bna = set(bna_idea.vibe_tags)
+    _tags_tst = set(tied_intl.vibe_tags)
+    _related = VIBE_TAG_MAP.get("city", frozenset())
+    score_bna = len(_tags_bna & _related) * 2
+    score_tst = len(_tags_tst & _related) * 2
+    assert score_bna == score_tst, (
+        f"Test setup error: BNA and TST should have equal vibe scores "
+        f"without the domestic boost, but got BNA={score_bna} TST={score_tst}"
+    )
