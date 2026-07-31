@@ -1,0 +1,74 @@
+name: Activity Link Health Check
+
+on:
+  schedule:
+    # Runs every Monday at 07:00 UTC
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+    inputs:
+      sample:
+        description: "Number of URLs to sample (0 = full scan)"
+        required: false
+        default: "60"
+      threshold:
+        description: "Fail when dead% is at or above this value"
+        required: false
+        default: "10"
+
+jobs:
+  check-activities:
+    name: Check activity catalog links
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]" 2>/dev/null || pip install -r requirements.txt && pip install -e .
+
+      - name: Run activity health check
+        id: health
+        # tee writes to stdout (captured by GitHub) AND to a log file for the
+        # step summary and artifact upload. The exit code from the yonder command
+        # propagates thanks to pipefail.
+        shell: bash
+        run: |
+          set -o pipefail
+          SAMPLE="${{ github.event.inputs.sample || '60' }}"
+          THRESHOLD="${{ github.event.inputs.threshold || '10' }}"
+
+          if [ "$SAMPLE" = "0" ]; then
+            EXTRA_FLAG="--full"
+          else
+            EXTRA_FLAG="--sample $SAMPLE"
+          fi
+
+          mkdir -p reports
+          yonder check-activities $EXTRA_FLAG --threshold "$THRESHOLD" \
+            2>&1 | tee reports/activity-health.log
+
+      - name: Write step summary
+        if: always()
+        run: |
+          LOG=reports/activity-health.log
+          echo "## Activity Link Health Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat "$LOG" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no output captured)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload health report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: activity-health-report
+          path: reports/activity-health.log
+          retention-days: 30
