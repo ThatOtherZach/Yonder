@@ -298,7 +298,7 @@
         var parts = [];
         if (promo.code) {
           parts.push(
-            'Saley mobile data: <button type="button" class="fs-promo-copy-btn" data-code="' +
+            '<a href="https://tp.media/r?marker=756039.YonderSIMCards&amp;trs=557178&amp;p=8979&amp;u=https%3A%2F%2Fsaily.com&amp;campaign_id=629" target="_blank" rel="noopener sponsored">Saily</a> mobile data: <button type="button" class="fs-promo-copy-btn" data-code="' +
               promo.code.replace(/"/g, "&quot;") +
               '" aria-label="Copy code ' +
               promo.code.replace(/"/g, "&quot;") +
