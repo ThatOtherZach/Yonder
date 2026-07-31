@@ -12,9 +12,11 @@ import pytest
 from yonder.activity_health import (
     CatalogLoadError,
     HealthReport,
+    RetireResult,
     UrlResult,
     _load_all_rows,
     check_catalog,
+    retire_dead_rows,
 )
 
 
@@ -191,3 +193,173 @@ def test_check_catalog_loads_real_csv_without_error():
     report = check_catalog(sample=3, seed=0)
     assert report.total > 0
     assert len(report.results) == 3
+
+
+# ---------------------------------------------------------------------------
+# retire_dead_rows — dry-run and write behaviour
+# ---------------------------------------------------------------------------
+
+_CSV_HEADER = "CITY,IATA,URL,GROKVIBE,ACTIVITYEMOJI,SHORTTITLE\n"
+
+
+def _csv_with_rows(tmp_path, rows: list[str]) -> "Path":
+    """Write a minimal CSV and return its path."""
+    csv_file = tmp_path / "activities.csv"
+    csv_file.write_text(_CSV_HEADER + "".join(rows), encoding="utf-8")
+    return csv_file
+
+
+def _make_dead_report(*urls: str) -> HealthReport:
+    """Build a HealthReport whose dead list contains the given URLs."""
+    results = [
+        UrlResult(
+            url=url,
+            city="Test",
+            title="Test Tour",
+            provider="getyourguide",
+            status=404,
+            final_url=url,
+            elapsed_ms=50.0,
+        )
+        for url in urls
+    ]
+    return HealthReport(total=len(results), results=results)
+
+
+def test_retire_dry_run_does_not_modify_file(tmp_path):
+    """Dry run (write=False) must not touch the CSV."""
+    url = "https://www.getyourguide.com/paris-l16/dead-t1/"
+    csv_file = _csv_with_rows(
+        tmp_path,
+        [f"Paris,CDG,{url},history,🏛,Dead Tour\n"],
+    )
+    original_text = csv_file.read_text(encoding="utf-8")
+    report = _make_dead_report(url)
+
+    result = retire_dead_rows(report, write=False, csv_path=csv_file)
+
+    assert csv_file.read_text(encoding="utf-8") == original_text, "file was modified in dry run"
+    assert len(result.removed) == 1
+    assert result.removed[0]["URL"] == url
+    assert result.written is False
+
+
+def test_retire_write_removes_dead_rows(tmp_path):
+    """write=True should strip dead URLs and rewrite the CSV."""
+    dead_url = "https://www.getyourguide.com/paris-l16/dead-t1/"
+    live_url = "https://www.viator.com/tours/Paris/live-tour/d479-999"
+    csv_file = _csv_with_rows(
+        tmp_path,
+        [
+            f"Paris,CDG,{dead_url},history,🏛,Dead Tour\n",
+            f"Paris,CDG,{live_url},explorer,🗺,Live Tour\n",
+        ],
+    )
+    report = _make_dead_report(dead_url)
+
+    result = retire_dead_rows(report, write=True, csv_path=csv_file)
+
+    assert result.written is True
+    assert len(result.removed) == 1
+    assert result.removed[0]["URL"] == dead_url
+    assert result.kept == 1
+
+    # The rewritten file must contain the live row but not the dead one.
+    content = csv_file.read_text(encoding="utf-8")
+    assert live_url in content
+    assert dead_url not in content
+
+
+def test_retire_preserves_all_columns(tmp_path):
+    """Rewritten CSV must keep all original columns and the header row."""
+    live_url = "https://www.viator.com/tours/Berlin/live-t99"
+    csv_file = _csv_with_rows(
+        tmp_path,
+        [f"Berlin,BER,{live_url},adventure,🏔,Live Berlin Tour\n"],
+    )
+    # Report with no dead URLs — file should be unchanged in structure.
+    report = HealthReport(total=1, results=[])
+
+    result = retire_dead_rows(report, write=True, csv_path=csv_file)
+
+    assert result.written is False  # nothing to remove, no write needed
+    content = csv_file.read_text(encoding="utf-8")
+    assert "CITY,IATA,URL" in content
+
+
+def test_retire_network_errors_are_not_removed(tmp_path):
+    """URLs that timed out (inconclusive) must not be removed."""
+    url = "https://www.getyourguide.com/amsterdam-l36/timeout-t1/"
+    csv_file = _csv_with_rows(
+        tmp_path,
+        [f"Amsterdam,AMS,{url},explorer,🗺,Timeout Tour\n"],
+    )
+    # Build a report where the URL has a network error, not a 404.
+    result_with_error = UrlResult(
+        url=url,
+        city="Amsterdam",
+        title="Timeout Tour",
+        provider="getyourguide",
+        status=None,
+        final_url=None,
+        elapsed_ms=12000.0,
+        error="timeout",
+    )
+    report = HealthReport(total=1, results=[result_with_error])
+    assert not report.dead, "timeout should not be classified as dead"
+
+    retire = retire_dead_rows(report, write=True, csv_path=csv_file)
+
+    assert retire.removed == []
+    assert retire.written is False
+    assert url in csv_file.read_text(encoding="utf-8")
+
+
+def test_retire_no_dead_urls_returns_empty_removed(tmp_path):
+    """When the report has no dead links, removed list is empty."""
+    url = "https://www.viator.com/tours/London/alive-t1"
+    csv_file = _csv_with_rows(
+        tmp_path,
+        [f"London,LHR,{url},explorer,🗺,Alive Tour\n"],
+    )
+    result_ok = UrlResult(
+        url=url,
+        city="London",
+        title="Alive Tour",
+        provider="viator",
+        status=200,
+        final_url=url,
+        elapsed_ms=80.0,
+    )
+    report = HealthReport(total=1, results=[result_ok])
+
+    retire = retire_dead_rows(report, write=False, csv_path=csv_file)
+
+    assert retire.removed == []
+    assert retire.written is False
+
+
+def test_retire_multiple_dead_all_removed(tmp_path):
+    """All dead URLs in the report are stripped; live rows survive."""
+    dead1 = "https://www.getyourguide.com/berlin-l17/dead-t1/"
+    dead2 = "https://www.viator.com/tours/Berlin/dead-t2/d488-999"
+    live = "https://www.getyourguide.com/berlin-l17/live-t3/"
+    csv_file = _csv_with_rows(
+        tmp_path,
+        [
+            f"Berlin,BER,{dead1},history,🏛,Dead One\n",
+            f"Berlin,BER,{dead2},explorer,🗺,Dead Two\n",
+            f"Berlin,BER,{live},adventure,🏔,Live Three\n",
+        ],
+    )
+    report = _make_dead_report(dead1, dead2)
+
+    retire = retire_dead_rows(report, write=True, csv_path=csv_file)
+
+    assert retire.written is True
+    assert len(retire.removed) == 2
+    assert retire.kept == 1
+    content = csv_file.read_text(encoding="utf-8")
+    assert live in content
+    assert dead1 not in content
+    assert dead2 not in content

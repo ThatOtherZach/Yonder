@@ -226,13 +226,25 @@ def check_activities_cmd(
     sample: int = typer.Option(30, "--sample", "-n", min=1, help="Number of URLs to sample"),
     threshold: float = typer.Option(5.0, "--threshold", "-t", help="Fail exit when dead% ≥ this value"),
     seed: Optional[int] = typer.Option(None, "--seed", help="RNG seed for reproducible samples"),
+    fix: bool = typer.Option(
+        False,
+        "--fix",
+        help=(
+            "After the health check, rewrite activities.csv removing every "
+            "confirmed-dead row (404/410 and soft-404 redirects). "
+            "Network timeouts are left in place. "
+            "A dry-run preview is always shown first."
+        ),
+    ),
 ) -> None:
     """Health-check activity-catalog links (GYG / Viator).
 
     Samples partner URLs from activities.csv and reports 404/dead links.
     Exits with code 1 when the percentage of broken links reaches --threshold.
+
+    Pass --fix to automatically remove confirmed-dead rows from the catalog.
     """
-    from yonder.activity_health import CatalogLoadError, check_catalog, _DEFAULT_SAMPLE
+    from yonder.activity_health import CatalogLoadError, check_catalog, retire_dead_rows
 
     n = None if full else sample
     label = "all" if full else f"{n} random"
@@ -287,6 +299,47 @@ def check_activities_cmd(
 
     if not dead and not errors:
         console.print("[green]All sampled links look healthy.[/]")
+
+    # --fix: always show dry-run preview, then write when requested
+    if dead:
+        retire_result = retire_dead_rows(report, write=False)
+        rows_to_drop = retire_result.removed
+
+        console.print()
+        if rows_to_drop:
+            preview_table = Table(
+                title=f"Dry-run preview — {len(rows_to_drop)} row(s) would be removed from activities.csv",
+                show_lines=True,
+            )
+            preview_table.add_column("City", style="bold")
+            preview_table.add_column("IATA")
+            preview_table.add_column("Title")
+            preview_table.add_column("URL", overflow="fold", max_width=60)
+            for row in rows_to_drop:
+                preview_table.add_row(
+                    row.get("CITY", ""),
+                    row.get("IATA", ""),
+                    row.get("SHORTTITLE", ""),
+                    (row.get("URL") or "").strip(),
+                )
+            console.print(preview_table)
+
+            if fix:
+                try:
+                    written = retire_dead_rows(report, write=True)
+                except Exception as exc:
+                    console.print(f"[red bold]ERROR writing catalog:[/] {exc}")
+                    raise typer.Exit(code=2)
+                console.print(
+                    f"[green bold]✓ Retired {len(written.removed)} dead row(s).[/] "
+                    f"activities.csv now has {written.kept} entries."
+                )
+            else:
+                console.print(
+                    "[dim]Run with [bold]--fix[/bold] to apply these removals to activities.csv.[/]"
+                )
+        else:
+            console.print("[dim]No rows matched dead URLs in the CSV (URLs may differ from checked sample).[/]")
 
     if report.dead_pct >= threshold:
         console.print(

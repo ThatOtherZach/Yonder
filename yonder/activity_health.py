@@ -258,3 +258,100 @@ def check_catalog(
     elapsed = time.monotonic() - t0
 
     return HealthReport(total=total, results=list(results), elapsed_s=elapsed)
+
+
+# ---------------------------------------------------------------------------
+# Auto-retire: rewrite the CSV stripping confirmed-dead rows
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RetireResult:
+    """Outcome of a retire_dead_rows call."""
+    removed: list[dict]   # raw CSV row dicts that were (or would be) removed
+    kept: int             # number of rows that survive
+    written: bool         # True only when the CSV was actually overwritten
+
+
+def retire_dead_rows(
+    report: HealthReport,
+    *,
+    write: bool = False,
+    csv_path: "Path | None" = None,
+) -> RetireResult:
+    """Remove confirmed-dead rows from the catalog CSV.
+
+    Only rows whose URL returned a definitive 404/410 or a soft-404 redirect
+    are removed.  Network timeouts (inconclusive errors) are intentionally
+    left in place.
+
+    Args:
+        report:   A :class:`HealthReport` produced by :func:`check_catalog`.
+        write:    When ``True``, atomically overwrite the CSV with dead rows
+                  stripped.  When ``False`` (the default) this is a dry run —
+                  the function returns what *would* be removed without
+                  touching the file.
+        csv_path: Path to the CSV to rewrite (defaults to :data:`CSV_PATH`).
+
+    Returns:
+        A :class:`RetireResult` describing the removed rows and whether the
+        file was actually written.
+
+    Raises:
+        CatalogLoadError: if the CSV cannot be read.
+        OSError: if *write* is True and the file cannot be replaced.
+    """
+    import csv as _csv
+    import os
+    import tempfile
+    from pathlib import Path as _Path
+
+    target: _Path = csv_path or CSV_PATH
+
+    # Collect dead URLs (404/410 and soft-404 redirects; NOT timeouts/errors).
+    dead_urls: set[str] = {r.url for r in report.dead}
+
+    if not dead_urls:
+        # Nothing to do — count surviving rows from the existing file.
+        try:
+            with target.open(newline="", encoding="utf-8-sig") as fh:
+                kept = sum(1 for _ in _csv.DictReader(fh))
+        except Exception:
+            kept = 0
+        return RetireResult(removed=[], kept=kept, written=False)
+
+    # Read all raw rows, preserving original column order and values.
+    all_raw: list[dict] = []
+    fieldnames: list[str] = []
+    try:
+        with target.open(newline="", encoding="utf-8-sig") as fh:
+            reader = _csv.DictReader(fh)
+            fieldnames = list(reader.fieldnames or [])
+            for row in reader:
+                all_raw.append(dict(row))
+    except Exception as exc:
+        raise CatalogLoadError(f"Failed to read catalog for retirement: {exc}") from exc
+
+    removed = [r for r in all_raw if (r.get("URL") or "").strip() in dead_urls]
+    kept_rows = [r for r in all_raw if (r.get("URL") or "").strip() not in dead_urls]
+
+    if write and removed:
+        # Write to a sibling temp file, then atomically replace the original.
+        tmp_fd, tmp_path_str = tempfile.mkstemp(
+            dir=target.parent, suffix=".csv.tmp"
+        )
+        try:
+            with os.fdopen(tmp_fd, "w", newline="", encoding="utf-8") as fh:
+                writer = _csv.DictWriter(fh, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(kept_rows)
+            os.replace(tmp_path_str, target)
+        except Exception:
+            try:
+                os.unlink(tmp_path_str)
+            except OSError:
+                pass
+            raise
+        return RetireResult(removed=removed, kept=len(kept_rows), written=True)
+
+    # Dry run — report without touching the file.
+    return RetireResult(removed=removed, kept=len(kept_rows), written=False)
