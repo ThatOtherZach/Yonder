@@ -208,6 +208,7 @@
       "  </div>" +
       '  <div class="fs-progress-msg" id="fs-progress-msg"></div>' +
       '  <div class="fs-progress-hint" id="fs-progress-hint">Aiming for a quick search — APIs may take longer.</div>' +
+      '  <div class="fs-progress-promo" id="fs-progress-promo"></div>' +
       '  <button type="button" class="fs-progress-skip" id="fs-progress-skip" hidden>Skip</button>' +
       "</div>";
     document.body.appendChild(el);
@@ -287,6 +288,38 @@
       skipBtn.disabled = false;
       skipBtn.textContent = "Skip";
       skipBtn.onclick = null;
+    }
+
+    // Promo slot — VPN/SIM tip while waiting
+    var promoEl = document.getElementById("fs-progress-promo");
+    if (promoEl) {
+      var promo = global.FS_PROMO || null;
+      if (promo && (promo.code || promo.link)) {
+        var parts = [];
+        if (promo.code) {
+          parts.push(
+            'Saley mobile data: <button type="button" class="fs-promo-copy-btn" data-code="' +
+              promo.code.replace(/"/g, "&quot;") +
+              '" aria-label="Copy code ' +
+              promo.code.replace(/"/g, "&quot;") +
+              '">' +
+              '<code>' + promo.code + '</code>' +
+              '<span class="fs-promo-copy-label"> tap to copy</span>' +
+              '</button>'
+          );
+        }
+        if (promo.link) {
+          parts.push(
+            'ProtonVPN: <a href="' +
+              promo.link.replace(/"/g, "&quot;") +
+              '" target="_blank" rel="noopener">ProtonVPN&nbsp;&#8599;</a>'
+          );
+        }
+        promoEl.innerHTML = parts.join(' &middot; ');
+        promoEl.style.display = '';
+      } else {
+        promoEl.style.display = 'none';
+      }
     }
 
     this._start = Date.now();

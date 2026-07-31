@@ -132,9 +132,7 @@
     <script type="application/json" id="escape-offer-json-{{ idx }}">{{ o.model_dump_json() | safe }}</script>
     <script type="application/json" id="escape-query-json">{{ query.model_dump_json() | safe }}</script>
     {% endif %}
-    {% if mode in ('explore', 'share') %}
-    {% include "_promo_note.html" %}
-    {% endif %}
+    {# promo moved to loading overlay (progress.js) #}
     <div class="bp-actions">
       {% if o.google_flights_url %}
       <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Google Flights ↗</a>
@@ -390,9 +388,7 @@
       {% endif %}
     </div>
     {% endif %}
-    {% if mode in ('explore', 'saved', 'share') %}
-    {% include "_promo_note.html" %}
-    {% endif %}
+    {# promo moved to loading overlay (progress.js) #}
     {% if mode == 'explore' %}
     <script type="application/json" id="it-json-{{ idx }}">{{ it.model_dump_json() | safe }}</script>
     {% endif %}
