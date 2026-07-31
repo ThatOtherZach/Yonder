@@ -106,3 +106,33 @@ def test_recent_history_lookup_failure_is_safe() -> None:
 def test_decay_is_mild() -> None:
     """Decay stays a nudge (a couple of tag matches), not a ban."""
     assert 1 <= RECENT_HISTORY_DECAY <= 6
+
+
+# ---------------------------------------------------------------------------
+# 3. Recycled-trip decay: recycled-only city (not in saved) is also demoted
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("vibe", ["gecko", "meltdown"])
+def test_recycled_only_city_is_demoted(vibe: str) -> None:
+    """BKK in the recycle pool (but not saved) must still be demoted from #1."""
+    with (
+        patch("yonder.saved.saved_destination_iatas", return_value=set()),
+        patch("yonder.recycle.recycled_destination_iatas", return_value={"BKK"}),
+    ):
+        ranked = _sort_by_comfort(_seed_stopover_ideas(), _req(vibe))
+    assert ranked[0].iata != "BKK", (
+        "BKK in recycle history (not saved) must not stay #1"
+    )
+    assert any(i.iata == "BKK" for i in ranked), "BKK demoted, not hidden"
+
+
+@pytest.mark.parametrize("vibe", ["gecko", "meltdown"])
+def test_seed_ideas_uses_recycled_history_decay(vibe: str) -> None:
+    """seed_ideas picks up recycled-trip history via _recent_history_iatas."""
+    with (
+        patch("yonder.saved.saved_destination_iatas", return_value=set()),
+        patch("yonder.recycle.recycled_destination_iatas", return_value={"BKK"}),
+    ):
+        ideas = seed_ideas(_req(vibe))
+    assert ideas
+    assert ideas[0].iata != "BKK"

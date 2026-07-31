@@ -201,6 +201,30 @@ def find_recycled_result(
     return AdventureResult(request=req, ideas=[], itineraries=itineraries)
 
 
+def recycled_destination_iatas(*, limit: int = 200) -> set[str]:
+    """IATA codes of destinations from non-mock saved trips (the recycling pool).
+
+    These are cities the user has already seen via the recycled-result path —
+    a strong "seen it already" signal even when the trip was never re-saved.
+    Best-effort: any storage error returns an empty set.
+    """
+    try:
+        out: set[str] = set()
+        for s in list_saved(limit=limit):
+            if _is_mock_saved(s):
+                continue
+            stop = (s.stop_iata or "").strip().upper()
+            dest = (s.destination or "").strip().upper()
+            origin = (s.origin or "").strip().upper()
+            if len(stop) == 3 and stop.isalpha():
+                out.add(stop)
+            if len(dest) == 3 and dest.isalpha() and dest != origin:
+                out.add(dest)
+        return out
+    except Exception:  # noqa: BLE001
+        return set()
+
+
 def strip_revealing_notes(it: AdventureItinerary) -> AdventureItinerary:
     """Remove refresh/provider chatter before returning a repriced card."""
     return it.model_copy(

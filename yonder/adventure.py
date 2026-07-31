@@ -596,17 +596,29 @@ RECENT_HISTORY_DECAY = 3
 
 
 def _recent_history_iatas() -> set[str]:
-    """IATA codes from the user's recent trip history (saved trips).
+    """IATA codes from the user's recent trip history (saved + recycled trips).
 
-    Best-effort — any storage error just returns an empty set so ranking
+    Unions destination IATAs from:
+    - ★ Saved trips (explicit saves)
+    - Recycled-result pool (non-mock saved trips surfaced via the recycle path)
+
+    Best-effort — any storage error on either source is swallowed so ranking
     never breaks on a broken saves DB.
     """
+    iatas: set[str] = set()
     try:
         from yonder.saved import saved_destination_iatas
 
-        return saved_destination_iatas(limit=200) or set()
+        iatas |= saved_destination_iatas(limit=200) or set()
     except Exception:  # noqa: BLE001
-        return set()
+        pass
+    try:
+        from yonder.recycle import recycled_destination_iatas
+
+        iatas |= recycled_destination_iatas(limit=200) or set()
+    except Exception:  # noqa: BLE001
+        pass
+    return iatas
 
 
 def _sort_by_comfort(
