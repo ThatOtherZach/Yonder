@@ -86,6 +86,7 @@
       data-country="{{ esc_theme.country or '' }}"
       data-city=""
       data-role="destination"
+      data-vibe="{{ esc_vibe | e }}"
     >
       <div class="pb-story-body{% if not escape_place_book %} is-loading{% endif %}">
         {% if escape_place_book %}
@@ -306,6 +307,7 @@
           data-country="{{ it.theme_country or '' }}"
           data-city="{{ it.stop_city or '' }}"
           data-role="stopover"
+          data-vibe="{{ ((s.vibe if s else '') or det_vibe) | e }}"
           data-col-ground="{{ it.ground_display or '' }}"
           data-col-compare="{{ it.ground_compare_line or '' }}"
           data-col-budget="{{ it.ground_budget_line or '' }}"

@@ -2420,7 +2420,9 @@
           var facts = brief.facts || [];
           var acts = brief.activity_links || [];
           if (acts.length) facts = facts.slice(0, 2);
-          if (facts.length || acts.length) {
+          var _riskyVibes = ['adventure','chaos','wild','gecko','wildwest','gritty'];
+          var _showInsurance = brief._vibe && _riskyVibes.indexOf(String(brief._vibe).toLowerCase()) !== -1;
+          if (facts.length || acts.length || _showInsurance) {
             h += '<div class="pb-fast-facts" aria-label="Fast facts">';
             facts.forEach(function (f) {
               if (f) h += '<span class="pb-fact">' + escapeHtml(String(f)) + "</span>";
@@ -2434,6 +2436,9 @@
                 escapeHtml(((l.emoji ? l.emoji + " " : "") + (l.title || ""))) +
                 ' <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
             });
+            if (_showInsurance) {
+              h += '<a class="pb-fact pb-fact-link" href="https://tp.media/r?marker=756039.YonderInsurance&amp;trs=557178&amp;p=4129&amp;u=https%3A%2F%2Fcompensair.com&amp;campaign_id=86" target="_blank" rel="noopener sponsored">\uD83D\uDEE1\uFE0F Flight compensation <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
+            }
             h += "</div>";
           }
           var pbTagline = brief.tagline || brief.era_note || brief.vibe;
@@ -2583,6 +2588,7 @@
               slot.classList.remove("is-loading");
               if (data && data.ok && data.brief) {
                 data.brief._compact = slot.id !== "escape-field-note";
+                data.brief._vibe = toneVibe;
                 slot.innerHTML = renderFieldNoteHtml(data.brief, col);
               } else if (hasColData(col)) {
                 slot.innerHTML = renderFieldNoteHtml(null, col);

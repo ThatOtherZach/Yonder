@@ -194,7 +194,9 @@
             return l && l.url && /^https:\/\//i.test(String(l.url));
           });
           if (acts.length) facts = facts.slice(0, 2);
-          if (facts.length || acts.length) {
+          var _riskyVibes = ['adventure','chaos','wild','gecko','wildwest','gritty'];
+          var _showInsurance = brief._vibe && _riskyVibes.indexOf(String(brief._vibe).toLowerCase()) !== -1;
+          if (facts.length || acts.length || _showInsurance) {
             h += '<div class="pb-fast-facts" aria-label="Fast facts">';
             facts.forEach(function (f) { if (f) h += '<span class="pb-fact">' + escapeHtml(String(f)) + "</span>"; });
             acts.forEach(function (l) {
@@ -203,6 +205,9 @@
                    escapeHtml((l.emoji ? l.emoji + " " : "") + (l.title || "")) +
                    ' <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
             });
+            if (_showInsurance) {
+              h += '<a class="pb-fact pb-fact-link" href="https://tp.media/r?marker=756039.YonderInsurance&amp;trs=557178&amp;p=4129&amp;u=https%3A%2F%2Fcompensair.com&amp;campaign_id=86" target="_blank" rel="noopener sponsored">\uD83D\uDEE1\uFE0F Flight compensation <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
+            }
             h += "</div>";
           }
         } else if (hasColData(col)) {
@@ -285,9 +290,12 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
               slot.classList.remove("is-loading");
-              slot.innerHTML = (data && data.ok && data.brief)
-                ? renderFieldNoteHtml(data.brief, col)
-                : renderFieldNoteHtml(null, col);
+              if (data && data.ok && data.brief) {
+                data.brief._vibe = (slot.getAttribute("data-vibe") || "").toLowerCase();
+                slot.innerHTML = renderFieldNoteHtml(data.brief, col);
+              } else {
+                slot.innerHTML = renderFieldNoteHtml(null, col);
+              }
               bindFieldNoteToggles(slot);
             })
             .catch(function () {
