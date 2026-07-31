@@ -2172,7 +2172,7 @@ def _saved_cards(items: list) -> list[dict]:
     return cards
 
 
-def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
+async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
     """Standalone shareable itinerary page (QR target)."""
     settings = reload_settings()
     share = get_share(share_id)
@@ -2201,6 +2201,7 @@ def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
     # Gather cached field notes (never calls Grok — share page must be instant).
     from yonder.encyclopedia import get_any_cached_for_iata
     from yonder.lang import detect_lang as _detect_share_lang
+    from yonder.activities import activity_links_for
 
     p = share.payload or {}
     # Field notes must match the language of the prompt that made the trip;
@@ -2208,25 +2209,8 @@ def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
     _share_lang = _detect_share_lang(
         str((p.get("trip_meta") or {}).get("prompt") or "")
     )
-    place_books: dict[str, dict] = {}
-    if share.kind == "escape":
-        dest = (p.get("query") or {}).get("destination") or ""
-        if dest:
-            brief = get_any_cached_for_iata(dest, lang=_share_lang)
-            if brief:
-                place_books[dest.upper()] = brief
-    elif share.kind == "detour":
-        it = p.get("itinerary") or {}
-        for iata in filter(None, [it.get("stop_iata"), *[
-            leg.get("to_iata") for leg in (it.get("legs") or [])
-        ]]):
-            code = iata.upper()
-            if code not in place_books:
-                brief = get_any_cached_for_iata(code, lang=_share_lang)
-                if brief:
-                    place_books[code] = brief
 
-    # Resolve vibe stored in the share payload (if any) for the badge
+    # Resolve vibe early so activity pills can be vibe-matched.
     share_vibe: dict | None = None
     raw_vibe: str | None = None
     if share.kind == "escape":
@@ -2242,6 +2226,34 @@ def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
         # Only trust the resolution when it wasn't the "adventure" fallback
         if rv["id"] == key or rv["label"].lower() == key:
             share_vibe = rv
+
+    _vibe_id = share_vibe["id"] if share_vibe else None
+
+    place_books: dict[str, dict] = {}
+    if share.kind == "escape":
+        dest = (p.get("query") or {}).get("destination") or ""
+        if dest:
+            brief = get_any_cached_for_iata(dest, lang=_share_lang)
+            if brief:
+                brief = dict(brief)
+                brief["activity_links"] = await activity_links_for(
+                    settings, iata=dest.upper(), vibe=_vibe_id
+                )
+                place_books[dest.upper()] = brief
+    elif share.kind == "detour":
+        it = p.get("itinerary") or {}
+        for iata in filter(None, [it.get("stop_iata"), *[
+            leg.get("to_iata") for leg in (it.get("legs") or [])
+        ]]):
+            code = iata.upper()
+            if code not in place_books:
+                brief = get_any_cached_for_iata(code, lang=_share_lang)
+                if brief:
+                    brief = dict(brief)
+                    brief["activity_links"] = await activity_links_for(
+                        settings, iata=code, vibe=_vibe_id
+                    )
+                    place_books[code] = brief
 
     return templates.TemplateResponse(
         request,
@@ -2266,7 +2278,7 @@ async def shared_trip_pretty(
     request: Request, kind: str, slug: str, share_id: str
 ) -> HTMLResponse:
     """Human-readable share URL: /t/escape/YVR-NRT-2026-08-20/abc123…"""
-    return _render_shared_trip(request, share_id)
+    return await _render_shared_trip(request, share_id)
 
 
 @app.get("/t/{share_id}", response_class=HTMLResponse)
@@ -2275,7 +2287,7 @@ async def shared_trip_page(request: Request, share_id: str) -> HTMLResponse:
     # Avoid capturing multi-segment paths if routed here by mistake
     if "/" in share_id:
         return RedirectResponse(url="/", status_code=302)
-    return _render_shared_trip(request, share_id)
+    return await _render_shared_trip(request, share_id)
 
 
 @app.get("/saved", response_class=HTMLResponse)
