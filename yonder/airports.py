@@ -132,6 +132,25 @@ _COMMON_ABBR: frozenset[str] = frozenset(
 )
 
 
+# Airline brand names / well-known carrier acronyms that are ALSO valid IATA
+# airport codes in the airportsdata dataset.  A Grok reply like "Book with KLM
+# for the best deal" must not seed KLM (Kalskag, Alaska) — or any other
+# airline-name collision — as the flight-search destination.
+_AIRLINE_NAME_CODES: frozenset[str] = frozenset(
+    {
+        "KLM",  # KLM Royal Dutch Airlines — Kalskag, AK
+        "SAS",  # Scandinavian Airlines — Salton City, CA
+        "TAM",  # TAM / LATAM Brasil — Tampere, Finland
+        "GOL",  # GOL Linhas Aéreas — Gol, Norway
+        "ANA",  # All Nippon Airways — Anaheim, CA (rail code region)
+        "LOT",  # LOT Polish Airlines
+        "TAP",  # TAP Air Portugal — Tapachula, Mexico
+        "JAL",  # Japan Airlines
+        "UPS",  # UPS Airlines (cargo)
+    }
+)
+
+
 def is_known_iata(code: str) -> bool:
     """True when the 3-letter code exists in the airport dataset.
 
@@ -142,7 +161,7 @@ def is_known_iata(code: str) -> bool:
     c = (code or "").strip().upper()
     if len(c) != 3 or not c.isalpha():
         return False
-    if c in _COMMON_ABBR:
+    if c in _COMMON_ABBR or c in _AIRLINE_NAME_CODES:
         return False
     import airportsdata
 

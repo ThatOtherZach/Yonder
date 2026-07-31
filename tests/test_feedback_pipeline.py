@@ -633,6 +633,81 @@ class TestGenerateAnswer:
             f"but got dest_iata={answer['dest_iata']!r}"
         )
 
+    async def test_airline_name_in_caps_does_not_seed_dest(self, isolated_dbs):
+        """An all-caps airline brand (KLM) mid-reply must not become dest_iata."""
+        # KLM is a valid IATA code (Kalskag, AK) but here it's an airline name;
+        # _AIRLINE_NAME_CODES in is_known_iata must suppress it.
+        known_text = "Book with KLM for the best deal on your next getaway."
+        settings_mock = self._make_ready_settings()
+
+        with (
+            patch("yonder.web.get_settings", return_value=settings_mock),
+            patch(
+                "yonder.grok.GrokClient._chat",
+                new=AsyncMock(return_value=known_text),
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=web_module.app), base_url="http://test"
+            ) as ac:
+                await ac.post(
+                    "/api/result-feedback",
+                    json={
+                        "direction": "down",
+                        "vibe": "getaway",
+                        "query": "cheap europe deal",
+                        "dest_iata": "AMS",
+                    },
+                )
+            await asyncio.sleep(0.2)
+
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT answer_json FROM vibe_questions WHERE vibe = 'getaway'"
+            ).fetchone()
+        assert row is not None
+        answer = json.loads(row["answer_json"])
+        assert answer["dest_iata"] is None, (
+            f"Airline name 'KLM' must not seed a destination, "
+            f"but got dest_iata={answer['dest_iata']!r}"
+        )
+
+    async def test_airline_name_skipped_but_real_code_still_found(self, isolated_dbs):
+        """Airline names (SAS, GOL) are skipped, but a genuine code later still matches."""
+        known_text = "Fly SAS or GOL if you like, but the real gem is LIS for sure."
+        settings_mock = self._make_ready_settings()
+
+        with (
+            patch("yonder.web.get_settings", return_value=settings_mock),
+            patch(
+                "yonder.grok.GrokClient._chat",
+                new=AsyncMock(return_value=known_text),
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=web_module.app), base_url="http://test"
+            ) as ac:
+                await ac.post(
+                    "/api/result-feedback",
+                    json={
+                        "direction": "down",
+                        "vibe": "sunshine",
+                        "query": "warm coastal city",
+                        "dest_iata": "MAD",
+                    },
+                )
+            await asyncio.sleep(0.2)
+
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT answer_json FROM vibe_questions WHERE vibe = 'sunshine'"
+            ).fetchone()
+        assert row is not None
+        answer = json.loads(row["answer_json"])
+        assert answer["dest_iata"] == "LIS", (
+            f"Expected 'LIS' after skipping airline names, got {answer['dest_iata']!r}"
+        )
+
     async def test_real_iata_selected_over_surrounding_abbreviations(self, isolated_dbs):
         """A real IATA mid-sentence is chosen even when common abbreviations appear first."""
         # GDP and FAQ appear before LIS in the text; the guard must skip them and
