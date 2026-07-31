@@ -2439,6 +2439,13 @@
             if (_showInsurance) {
               h += '<a class="pb-fact pb-fact-link" href="https://tp.media/r?marker=756039.YonderInsurance&amp;trs=557178&amp;p=4129&amp;u=https%3A%2F%2Fcompensair.com&amp;campaign_id=86" target="_blank" rel="noopener sponsored">\uD83D\uDEE1\uFE0F Flight compensation <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
             }
+            var _hasPartnerLinks = acts.some(function(l) {
+              return /viator\.com/i.test(String(l.url)) || /getyourguide\.com/i.test(String(l.url));
+            });
+            if (!_hasPartnerLinks && brief.title && brief.title !== "Somewhere") {
+              var _klookUrl = "https://tp.media/r?marker=756039.YonderKlook&trs=557178&p=4110&u=" + encodeURIComponent("https://www.klook.com/search/result/?query=" + encodeURIComponent(brief.title)) + "&campaign_id=137";
+              h += '<a class="pb-fact pb-fact-link" href="' + escapeHtml(_klookUrl) + '" target="_blank" rel="noopener sponsored">\uD83C\uDF9F\uFE0F Find experiences <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
+            }
             h += "</div>";
           }
           var pbTagline = brief.tagline || brief.era_note || brief.vibe;
