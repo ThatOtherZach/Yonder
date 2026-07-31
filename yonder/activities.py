@@ -298,6 +298,37 @@ def put_cached_title(url: str, lang: str | None, title: str) -> None:
         pass
 
 
+# URLs with an AI-title generation already in flight (don't double-spawn)
+_title_inflight: set[str] = set()
+
+
+async def _generate_titles_bg(
+    todo: list[dict], settings: Settings, lang: str | None
+) -> None:
+    """Background AI title generation — fills the cache for future renders."""
+    try:
+        from yonder.grok import GrokClient
+
+        async with GrokClient(settings) as grok:
+            titles = await asyncio.wait_for(
+                grok.activity_pill_titles(todo, lang=lang), timeout=12.0
+            )
+        for link, title in zip(todo, titles):
+            title = (title or "").strip()
+            if title:
+                put_cached_title(link["url"], lang, title)
+            else:
+                _title_fail_at[link["url"]] = time.time()
+        for link in todo[len(titles):]:
+            _title_fail_at[link["url"]] = time.time()
+    except Exception:
+        for link in todo:
+            _title_fail_at[link["url"]] = time.time()
+    finally:
+        for link in todo:
+            _title_inflight.discard(link["url"])
+
+
 async def resolve_pill_titles(
     links: list[dict],
     settings: Settings | None,
@@ -306,9 +337,12 @@ async def resolve_pill_titles(
 ) -> list[dict]:
     """Swap each link's CSV title for the AI pill title (cache-first).
 
-    Cache miss + configured AI backend → one Grok call for all misses. On
-    failure (or no backend) the CSV SHORTTITLE stays as the visible fallback
-    and the URL is negative-cached in memory for a few minutes.
+    NEVER blocks a card render on the AI backend: cache hits swap in the AI
+    title immediately; misses keep the CSV SHORTTITLE for this render and a
+    background task generates + caches the AI title for future renders. A
+    hung backend therefore costs nothing user-facing (it previously stalled
+    whole searches 12s per miss). Failures are negative-cached in memory for
+    a few minutes.
     """
     misses = []
     for link in links:
@@ -321,29 +355,22 @@ async def resolve_pill_titles(
         return links
     now = time.time()
     todo = [
-        l for l in misses if now - _title_fail_at.get(l["url"], 0.0) > _TITLE_RETRY_SEC
+        dict(l)
+        for l in misses
+        if now - _title_fail_at.get(l["url"], 0.0) > _TITLE_RETRY_SEC
+        and l["url"] not in _title_inflight
     ]
     if not todo:
         return links
+    for link in todo:
+        _title_inflight.add(link["url"])
     try:
-        from yonder.grok import GrokClient
-
-        async with GrokClient(settings) as grok:
-            # Internal timeout — a hung backend must not stall card renders.
-            titles = await asyncio.wait_for(
-                grok.activity_pill_titles(todo, lang=lang), timeout=12.0
-            )
-    except Exception:
+        asyncio.get_running_loop().create_task(
+            _generate_titles_bg(todo, settings, lang)
+        )
+    except RuntimeError:
         for link in todo:
-            _title_fail_at[link["url"]] = time.time()
-        return links
-    for link, title in zip(todo, titles):
-        title = (title or "").strip()
-        if title:
-            link["title"] = title
-            put_cached_title(link["url"], lang, title)
-        else:
-            _title_fail_at[link["url"]] = time.time()
+            _title_inflight.discard(link["url"])
     return links
 
 
