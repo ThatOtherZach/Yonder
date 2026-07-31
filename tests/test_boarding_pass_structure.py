@@ -405,6 +405,34 @@ class TestExploreHooks:
             "btn-save-and-share missing from detour explore card with share pack"
         )
 
+    def test_detour_explore_empty_legs_no_crash(self):
+        """detour_card in explore mode must not crash when it.legs is empty."""
+        from yonder.adventure import AdventureItinerary
+
+        it = AdventureItinerary(
+            kind="stopover",
+            title="Legless Detour",
+            total_price=0.0,
+            currency="USD",
+            stop_iata="TYO",
+            stop_city="Tokyo",
+            stay_days=7,
+            why="AI returned no legs",
+            vibe_tags=["adventure"],
+            legs=[],
+            theme_primary="#e6b450",
+            theme_label="Adventure",
+        )
+        html = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}"
+            "{{ bp.detour_card('explore', it, 0, det_vibe='adventure', det_text='test') }}",
+            it=it,
+            idx=0,
+        )
+        assert "bp-stub" in html, (
+            "bp-stub section missing from detour explore card with empty legs"
+        )
+
 
 # ===========================================================================
 # Suite 3 — Saved-mode form hooks
