@@ -2261,7 +2261,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
         "trip.html",
         {
             "nav": "home",
-            **_base_ctx(settings),
+            **_base_ctx(settings, vibe=_vibe_id),
             "share": share,
             "error": None,
             "share_url": url,
