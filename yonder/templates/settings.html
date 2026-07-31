@@ -276,6 +276,38 @@
       background: var(--bad);
     }
     .status-dot.on { background: var(--good); }
+
+    /* ── Home Base compound control ───────────────────── */
+    .home-base-card {
+      border: 1px solid var(--line, var(--border));
+      border-radius: 8px;
+      background: var(--card-bg, var(--bg));
+      padding: 0.85rem 1rem;
+      margin: 0;
+    }
+    .home-base-card legend {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 0 0.25rem;
+    }
+    .home-base-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 0.5rem;
+    }
+    .home-base-sep {
+      color: var(--muted);
+      font-size: 1rem;
+    }
+    .home-base-hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 0.45rem;
+    }
 {% endblock %}
 {% block body %}
   <header class="page-head container">
@@ -316,6 +348,29 @@
               <p class="xp-bar-label" id="xp-bar-label">Maximum rank — you've been everywhere. ✦</p>
               {% endif %}
             </div>
+            <div class="xp-ladder" id="xp-ladder">
+              {% set ns = namespace(prev=None, next_rung=None) %}
+              {% for rung in xp_profile.ladder %}
+                {% if rung.current %}
+                  {% if not loop.first %}{% set ns.prev = xp_profile.ladder[loop.index0 - 1] %}{% endif %}
+                  {% if not loop.last %}{% set ns.next_rung = xp_profile.ladder[loop.index0 + 1] %}{% endif %}
+                {% endif %}
+              {% endfor %}
+              {% if ns.prev %}
+              <div class="xp-ladder-row">
+                <span class="xp-ladder-dot"></span>
+                <span>{{ ns.prev.emoji }} {{ ns.prev.rank }}</span>
+                <span class="xp-ladder-xp">{{ ns.prev.xp }} XP</span>
+              </div>
+              {% endif %}
+              {% if ns.next_rung %}
+              <div class="xp-ladder-row">
+                <span class="xp-ladder-dot"></span>
+                <span>{{ ns.next_rung.emoji }} {{ ns.next_rung.rank }}</span>
+                <span class="xp-ladder-xp">{{ ns.next_rung.xp }} XP</span>
+              </div>
+              {% endif %}
+            </div>
           </div>
         </div>
         {% endif %}
@@ -342,85 +397,84 @@
             {% endfor %}
           </div>
           <div class="map-links">
-            <a class="btn secondary" href="/?mode=escape" style="padding:0.4rem 0.75rem;font-size:0.85rem">Launch Escape</a>
-            <a class="btn secondary" href="/?mode=detour" style="padding:0.4rem 0.75rem;font-size:0.85rem">Get a Detour</a>
-            <button type="button" id="clear-visited-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" {% if not visited_defaults %}hidden{% endif %}>Clear Visited</button>
+            <a class="btn secondary" href="/?mode=escape" style="padding:0.4rem 0.75rem;font-size:0.85rem">Escape</a>
+            <a class="btn secondary" href="/?mode=detour" style="padding:0.4rem 0.75rem;font-size:0.85rem">Detour</a>
+            <button type="button" id="clear-visited-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" {% if not visited_defaults %}hidden{% endif %}>Clear visited</button>
             <button type="button" id="clear-avoid-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem" {% if not avoid_defaults %}hidden{% endif %}>Clear avoid</button>
-            <button type="button" id="backup-export-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem">Export Backup</button>
-            <button type="button" id="backup-import-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem">Import Backup</button>
+            <button type="button" id="backup-export-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem">Export backup</button>
+            <button type="button" id="backup-import-btn" class="btn secondary" style="padding:0.4rem 0.75rem;font-size:0.85rem">Import backup</button>
             <input type="file" id="backup-import-file" accept=".json,application/json" hidden />
           </div>
           <p class="map-status" id="backup-status" hidden></p>
         </div>
 
-        {# Preferences #}
-        <div class="row g-3">
-          <div class="col-12 col-sm-6">
-          <label for="HOME_IATA">Home airport
-            <span class="help">Default origin (e.g. <code>YVR</code>). Blank → first passport stamp → currency country → USA.
-              Currently resolves to <strong>{{ view.home_resolved or 'JFK' }}</strong>.</span>
+        {# Preferences — Home Base compound control #}
+        <fieldset class="home-base-card">
+          <legend>Home base</legend>
+          <div class="home-base-row">
             <input id="HOME_IATA" name="HOME_IATA" type="text" maxlength="3" pattern="[A-Za-z]{0,3}"
               placeholder="YVR" value="{{ view.home_iata or '' }}"
-              style="max-width:100px;text-transform:uppercase;letter-spacing:0.08em;font-weight:700" />
-          </label>
-          </div>
-
-          <div class="col-12 col-sm-6">
-          <label for="DEFAULT_CURRENCY">Default currency
-            <span class="help">Fare display currency for Escape &amp; Detour. Default <strong>USD</strong>.</span>
-            <select id="DEFAULT_CURRENCY" name="DEFAULT_CURRENCY" style="max-width:140px">
+              style="width:90px;font-family:ui-monospace,Consolas,monospace;text-transform:uppercase;letter-spacing:0.08em;font-weight:700;font-size:1.05rem"
+              aria-label="Home airport IATA code" />
+            <span class="home-base-sep" aria-hidden="true">·</span>
+            <select id="DEFAULT_CURRENCY" name="DEFAULT_CURRENCY" aria-label="Default currency">
               {% set cur_def = (view.default_currency or 'USD')|upper %}
               {% for code in ['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY', 'CHF', 'MXN'] %}
               <option value="{{ code }}" {% if cur_def == code %}selected{% endif %}>{{ code }}</option>
               {% endfor %}
             </select>
-          </label>
           </div>
-        </div>
+          <p class="home-base-hint" id="home-base-hint">
+            Flying from <strong id="hb-iata-display">{{ view.home_resolved or 'JFK' }}</strong>
+            · fares in <strong id="hb-ccy-display">{{ (view.default_currency or 'USD')|upper }}</strong>
+          </p>
+        </fieldset>
 
-        <div class="section-title" style="margin-top:1.25rem">Daily budget</div>
-        <p class="muted" style="margin:0 0 0.65rem;font-size:0.85rem">
-          Personal target per person/day in your default currency.
-          Leave <strong>0</strong> to show destination cost-of-living without ranking.
-        </p>
-        <div class="row g-3">
-          <div class="col-12 col-sm-6">
-          <label for="COL_EXPECTED_DAILY">Cost / day
-            <span class="help">Your total daily spend (hotel + food + transit + culture)</span>
-            <input id="COL_EXPECTED_DAILY" name="COL_EXPECTED_DAILY" type="number" min="0" max="5000" step="5"
-              value="{{ view.col_expected_daily }}" />
-          </label>
+        <fieldset class="home-base-card" style="margin-top:0.85rem">
+          <legend>Daily budget</legend>
+          <p class="home-base-hint" style="margin-top:0.25rem;margin-bottom:0.5rem">
+            Per person/day in your default currency.
+            Leave <strong>0</strong> to rank by cost-of-living without a cap.
+          </p>
+          <div class="home-base-row">
+            <div>
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.2rem">Per day</div>
+              <input id="COL_EXPECTED_DAILY" name="COL_EXPECTED_DAILY" type="number" min="0" max="5000" step="5"
+                value="{{ view.col_expected_daily }}" style="width:90px" />
+            </div>
+            <span class="home-base-sep">·</span>
+            <div>
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.2rem">% slack</div>
+              <input id="COL_TOLERANCE_PCT" name="COL_TOLERANCE_PCT" type="number" min="0" max="100" step="1"
+                value="{{ view.col_tolerance_pct }}" style="width:80px" />
+            </div>
           </div>
-          <div class="col-12 col-sm-6">
-          <label for="COL_TOLERANCE_PCT">Over / under %
-            <span class="help">Acceptable % above your target before a penalty</span>
-            <input id="COL_TOLERANCE_PCT" name="COL_TOLERANCE_PCT" type="number" min="0" max="100" step="1"
-              value="{{ view.col_tolerance_pct }}" />
-          </label>
-          </div>
-        </div>
-        <p class="map-status" style="margin-top:0.55rem">
-          Daily target: <strong id="col-sum-display">0</strong>
-          · OK up to <strong id="col-ceil-display">0</strong>
-        </p>
+          <p class="home-base-hint" style="margin-top:0.45rem">
+            Target: <strong id="col-sum-display">0</strong>
+            · OK up to <strong id="col-ceil-display">0</strong>
+          </p>
+        </fieldset>
 
-        <div class="section-title">Stop length</div>
-        <div class="row g-3">
-          <div class="col-12 col-sm-6">
-          <label for="DETOUR_MIN_STOP_DAYS">Min stop days
-            <span class="help">Shortest multi-day stopover (default 4)</span>
-            <input id="DETOUR_MIN_STOP_DAYS" name="DETOUR_MIN_STOP_DAYS" type="number" min="1" max="21" step="1"
-              value="{{ view.detour_min_stop_days }}" />
-          </label>
+        <fieldset class="home-base-card" style="margin-top:0.75rem">
+          <legend>Stop length</legend>
+          <div class="home-base-row" style="margin-top:0.35rem">
+            <div>
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.2rem">Min nights</div>
+              <input id="DETOUR_MIN_STOP_DAYS" name="DETOUR_MIN_STOP_DAYS" type="number" min="1" max="21" step="1"
+                value="{{ view.detour_min_stop_days }}" style="width:80px" />
+            </div>
+            <span class="home-base-sep">–</span>
+            <div>
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.2rem">Max nights</div>
+              <input id="DETOUR_MAX_STOP_DAYS" name="DETOUR_MAX_STOP_DAYS" type="number" min="1" max="30" step="1"
+                value="{{ view.detour_max_stop_days }}" style="width:80px" />
+            </div>
           </div>
-          <div class="col-12 col-sm-6">
-          <label for="DETOUR_MAX_STOP_DAYS">Max stop days
-            <span class="help">Longest multi-day stopover (default 5)</span>
-            <input id="DETOUR_MAX_STOP_DAYS" name="DETOUR_MAX_STOP_DAYS" type="number" min="1" max="30" step="1"
-              value="{{ view.detour_max_stop_days }}" />
-          </label>
-          </div>
-        </div>
+          <p class="home-base-hint" style="margin-top:0.45rem">
+            Stopovers: <strong id="sl-min-display">{{ view.detour_min_stop_days }}</strong>
+            – <strong id="sl-max-display">{{ view.detour_max_stop_days }}</strong> nights
+          </p>
+        </fieldset>
       </div>
 
       {# ════════════════════════════════════════════════
@@ -878,6 +932,23 @@
       sync();
     })();
 
+    /* Stop length live preview */
+    (function () {
+      var minEl    = document.getElementById("DETOUR_MIN_STOP_DAYS");
+      var maxEl    = document.getElementById("DETOUR_MAX_STOP_DAYS");
+      var minDisp  = document.getElementById("sl-min-display");
+      var maxDisp  = document.getElementById("sl-max-display");
+      function syncStops() {
+        var mn = parseInt(minEl && minEl.value, 10) || 0;
+        var mx = parseInt(maxEl && maxEl.value, 10) || 0;
+        if (minDisp) minDisp.textContent = mn || "—";
+        if (maxDisp) maxDisp.textContent = mx || "—";
+      }
+      if (minEl) minEl.addEventListener("input", syncStops);
+      if (maxEl) maxEl.addEventListener("input", syncStops);
+      syncStops();
+    })();
+
     /* XP live-update from travel map events */
     (function () {
       function setText(id, val) {
@@ -1152,6 +1223,60 @@
           btn.textContent = "Test";
         }
       });
+    })();
+
+    /* Home Base — auto-suggest currency + live hint */
+    (function () {
+      var IATA_TO_CCY = {
+        // Canadian airports
+        YVR:'CAD',YYZ:'CAD',YUL:'CAD',YYC:'CAD',YEG:'CAD',YOW:'CAD',YQB:'CAD',
+        // UK airports
+        LHR:'GBP',LGW:'GBP',MAN:'GBP',EDI:'GBP',GLA:'GBP',BHX:'GBP',STN:'GBP',LTN:'GBP',
+        // EUR airports
+        CDG:'EUR',AMS:'EUR',FRA:'EUR',MAD:'EUR',FCO:'EUR',BCN:'EUR',MUC:'EUR',LIS:'EUR',VIE:'EUR',BRU:'EUR',
+        // CHF airports
+        ZRH:'CHF',GVA:'CHF',BSL:'CHF',
+        // AUD airports
+        SYD:'AUD',MEL:'AUD',BNE:'AUD',PER:'AUD',ADL:'AUD',CBR:'AUD',
+        // JPY airports
+        NRT:'JPY',HND:'JPY',KIX:'JPY',NGO:'JPY',CTS:'JPY',
+        // MXN airports
+        MEX:'MXN',CUN:'MXN',GDL:'MXN',MTY:'MXN'
+      };
+
+      var iataEl = document.getElementById('HOME_IATA');
+      var ccyEl  = document.getElementById('DEFAULT_CURRENCY');
+      var iataDisp = document.getElementById('hb-iata-display');
+      var ccyDisp  = document.getElementById('hb-ccy-display');
+      // Server-provided resolved origin (fallback when the field is blank)
+      var resolvedOrigin = {{ (view.home_resolved or 'JFK')|tojson }};
+
+      function updateHint() {
+        var iata = (iataEl && iataEl.value.trim().toUpperCase()) || '';
+        var ccy  = (ccyEl  && ccyEl.value) || 'USD';
+        if (iataDisp) iataDisp.textContent = iata || resolvedOrigin;
+        if (ccyDisp)  ccyDisp.textContent  = ccy;
+      }
+
+      if (iataEl) {
+        iataEl.addEventListener('input', updateHint);
+        iataEl.addEventListener('blur', function () {
+          var code = iataEl.value.trim().toUpperCase();
+          iataEl.value = code;
+          updateHint();
+          // Auto-suggest currency only if user hasn't changed it from USD
+          if (ccyEl && ccyEl.value === 'USD') {
+            var match = IATA_TO_CCY[code];
+            // Fallback: Y-prefix → CAD
+            if (!match && code.length === 3 && code[0] === 'Y') match = 'CAD';
+            if (match) ccyEl.value = match;
+            updateHint();
+          }
+        });
+      }
+      if (ccyEl) ccyEl.addEventListener('change', updateHint);
+
+      updateHint();
     })();
 
     /* AI spend (dev tools only) */
