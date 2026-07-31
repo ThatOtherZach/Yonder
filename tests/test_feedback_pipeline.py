@@ -105,6 +105,22 @@ class TestThumbsUp:
         assert row is not None
         assert row["vibe"] == "culture"
 
+    def test_missing_dest_iata_returns_ok_and_skips_signal(self, client):
+        """Thumbs-up with no dest_iata must return ok:true and write no signal row."""
+        resp = client.post(
+            "/api/result-feedback",
+            json={"direction": "up", "vibe": "adventure", "query": "somewhere nice"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        # Signal store must be empty — no dest to reinforce
+        with vs._connect() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) AS c FROM search_signals"
+            ).fetchone()["c"]
+        assert count == 0, "No signal row should be written when dest_iata is missing"
+
 
 # ---------------------------------------------------------------------------
 # 2. Thumbs-down stores result_feedback, a rejection (strength=0), and vibe_questions
