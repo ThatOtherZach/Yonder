@@ -7,7 +7,7 @@ from yonder.providers.amadeus import AmadeusProvider
 from yonder.providers.aviationstack import AviationStackProvider
 from yonder.providers.base import FlightProvider
 from yonder.providers.duffel import DuffelProvider
-from yonder.providers.mock import AIDemoProvider, MockProvider
+from yonder.providers.mock import MockProvider
 from yonder.providers.serpapi_google import SerpApiGoogleFlightsProvider
 from yonder.providers.travelpayouts import TravelpayoutsProvider
 
@@ -27,8 +27,7 @@ def build_providers(
         AviationStackProvider(settings, client),
     ]
     if include_mock:
-        # AIDemoProvider uses Grok when a key is present, seeded mock otherwise
-        all_providers.append(AIDemoProvider(settings, client))
+        all_providers.append(MockProvider(client))
 
     if only:
         wanted = {n.lower() for n in only}

@@ -434,50 +434,6 @@ class GrokClient:
                 "tagline": "Trust your gut; recheck the fare.",
             }
 
-    async def activity_pill_titles(
-        self,
-        seeds: list[dict[str, Any]],
-        *,
-        lang: str | None = None,
-    ) -> list[str]:
-        """Short, natural pill labels for bookable-activity links.
-
-        Each seed carries the hand-picked CSV hints (title/vibe/emoji/city) —
-        inspiration and framing only, never copy to echo verbatim. Same voice
-        as the field-note FAST FACT chips. Keep tokens low.
-        """
-        system = (
-            "You rewrite bookable-activity names as tiny pill labels for a "
-            "vibe-first travel app, in the same voice as its FAST FACT chips: "
-            "punchy, concrete, ≤6 words each. No marketing fluff, no emoji "
-            "(shown separately), no booking-site names, no quotes, no trailing "
-            "punctuation. The provided title and vibe are seeds to riff on, "
-            "not copy to repeat verbatim.\n"
-            'STRICT JSON only: {"titles":["…"]} — same order and count as input.'
-            + language_directive(lang)
-        )
-        user = json.dumps(
-            {
-                "activities": [
-                    {
-                        "city": s.get("city") or None,
-                        "seed_title": s.get("title") or None,
-                        "vibe": s.get("vibe") or None,
-                        "emoji": s.get("emoji") or None,
-                    }
-                    for s in seeds
-                ]
-            },
-            ensure_ascii=False,
-            default=str,
-        )
-        text = await self._chat(system, user, temperature=0.6)
-        data = _extract_json(text)
-        titles = data.get("titles") or []
-        if not isinstance(titles, list):
-            return []
-        return [str(t).strip().replace("\u2014", ", ") for t in titles]
-
     def to_search_query(self, trip: ParsedTrip, max_results: int = 5) -> SearchQuery:
         return SearchQuery(
             origin=trip.origin,

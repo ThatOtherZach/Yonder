@@ -12,7 +12,6 @@ from yonder.activities import (
     activity_links_for,
     links_for,
     pick_activity_links,
-    resolve_pill_titles,
 )
 
 
@@ -94,28 +93,38 @@ def test_picks_are_copies_not_cache_rows():
     assert all(r["title"] != "mutated" for r in fresh)
 
 
-def test_resolve_titles_without_ai_keeps_csv_fallback(tmp_path, monkeypatch):
-    monkeypatch.setattr(activities, "TITLE_DB_PATH", tmp_path / "titles.db")
-    links = pick_activity_links(iata="BKK", vibe="foodie", rng=random.Random(3))
-    before = [dict(l) for l in links]
-    out = asyncio.run(resolve_pill_titles(links, None))
-    assert [l["title"] for l in out] == [l["title"] for l in before]
-    assert [l["url"] for l in out] == [l["url"] for l in before]
+def test_csv_shorttitle_used_directly_no_ai():
+    # activity_links_for must return immediately with CSV titles — no AI call.
+    links = asyncio.run(activity_links_for(None, city="Bangkok", vibe="foodie"))
+    assert links
+    for l in links:
+        assert l["title"]  # CSV SHORTTITLE (city-stripped) always present
 
 
-def test_cached_ai_title_is_served(tmp_path, monkeypatch):
-    monkeypatch.setattr(activities, "TITLE_DB_PATH", tmp_path / "titles.db")
-    links = pick_activity_links(iata="BKK", vibe="foodie", rng=random.Random(3))
-    url = links[0]["url"]
-    activities.put_cached_title(url, None, "Tuk-tuk feast after dark")
-    out = asyncio.run(resolve_pill_titles([dict(l) for l in links], None))
-    got = next(l for l in out if l["url"] == url)
-    assert got["title"] == "Tuk-tuk feast after dark"
-
-
-def test_activity_links_for_unmatched_is_empty(tmp_path, monkeypatch):
-    monkeypatch.setattr(activities, "TITLE_DB_PATH", tmp_path / "titles.db")
+def test_activity_links_for_unmatched_is_empty():
     assert asyncio.run(activity_links_for(None, city="Nowhere", iata="XXX")) == []
+
+
+def test_clean_title_strips_city_prefix():
+    from yonder.activities import _clean_title
+    # ≥3 words left after strip → strip applied
+    assert _clean_title("Amsterdam Evening Sunset Canal", "Amsterdam") == "Evening Sunset Canal"
+    assert _clean_title("Bangkok Grand Palace Wat Arun", "Bangkok") == "Grand Palace Wat Arun"
+    assert _clean_title("Athens Odyssey Live Epic Show", "Athens") == "Odyssey Live Epic Show"
+
+
+def test_clean_title_strips_city_suffix():
+    from yonder.activities import _clean_title
+    assert _clean_title("Gourmet Food Walking Athens", "Athens") == "Gourmet Food Walking"
+    assert _clean_title("Hydra Island Trip Athens", "Athens") == "Hydra Island Trip"
+
+
+def test_clean_title_keeps_fragment_results_intact():
+    # Stripped result with < 3 words reads as a fragment — keep the original.
+    from yonder.activities import _clean_title
+    assert _clean_title("Best of Paris", "Paris") == "Best of Paris"      # "Best of" = 2 words
+    assert _clean_title("Paris", "Paris") == "Paris"                      # empty → original
+    assert _clean_title("Tokyo Sky Tour", "Tokyo") == "Tokyo Sky Tour"    # "Sky Tour" = 2 words → keep
 
 
 def test_loader_skips_urlless_rows(tmp_path, monkeypatch):

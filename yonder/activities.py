@@ -5,26 +5,19 @@ Data lives in ``yonder/activities.csv`` (hand-built by the user):
 across both partners. The loader is mtime-cached (hot-reload friendly, like
 other data files) and keyed by city name with IATA as tiebreaker.
 
-Pill titles shown in the UI are AI-generated (SHORTTITLE/GROKVIBE/emoji are
-seeds, not final copy) and cached per URL+language in a small SQLite store;
-the CSV SHORTTITLE is only a fallback when no AI backend is configured or a
-call fails. URLs pass through unchanged.
+SHORTTITLE from the CSV is used directly as the pill label (city prefix/suffix
+stripped so "Amsterdam Evening Sunset Canal" → "Evening Sunset Canal").
+No AI generation, no blocking calls.
 """
 
 from __future__ import annotations
 
-import asyncio
 import csv
 import random
-import sqlite3
-import time
 from pathlib import Path
 from typing import Any
 
-from yonder.config import ROOT, Settings
-
 CSV_PATH = Path(__file__).resolve().parent / "activities.csv"
-TITLE_DB_PATH = ROOT / "activity_titles.db"
 PROVIDERS = ("getyourguide", "viator")
 PROVIDER_LABELS = {"getyourguide": "GetYourGuide", "viator": "Viator"}
 
@@ -41,9 +34,8 @@ _GROK_VIBES = {
     "vibe",
 }
 
-# App vibe id → closest GROKVIBE tag (exact matches like "adventure",
-# "culture", "history", "nature" need no entry). Unknown vibes simply get the
-# pure-random fallback within each provider.
+# App vibe id → closest GROKVIBE tag (exact matches need no entry).
+# Unknown vibes get pure-random fallback within each provider.
 _VIBE_TO_GROK = {
     "food": "foodie",
     "street": "foodie",
@@ -107,11 +99,6 @@ _VIBE_TO_GROK = {
 
 _cache: dict[str, Any] = {"mtime": None, "by_iata": {}, "by_city": {}}
 
-# In-memory negative cache so a failing AI backend doesn't add latency to
-# every render (retry after 5 minutes).
-_title_fail_at: dict[str, float] = {}
-_TITLE_RETRY_SEC = 300.0
-
 
 def _provider_for(url: str) -> str | None:
     low = url.lower()
@@ -120,6 +107,30 @@ def _provider_for(url: str) -> str | None:
     if "viator.com" in low:
         return "viator"
     return None
+
+
+def _clean_title(raw: str, city: str) -> str:
+    """Strip leading/trailing city name from a SEO-style SHORTTITLE.
+
+    "Amsterdam Evening Sunset Canal" → "Evening Sunset Canal"
+    "Hydra Island Trip Athens"       → "Hydra Island Trip"
+    "Bruges Day Trip"                → "Bruges Day Trip"  (no city match)
+    """
+    t = raw.strip()
+    c = city.strip()
+    if not c:
+        return t
+    low_t = t.lower()
+    low_c = c.lower()
+    candidate = t
+    if low_t.startswith(low_c + " "):
+        candidate = t[len(c) :].strip()
+    elif low_t.endswith(" " + low_c):
+        candidate = t[: -len(c)].strip()
+    candidate = candidate.strip("·—–, ")
+    # Keep cleaned version only when it has at least 3 words — shorter
+    # results like "Best of" or "Traditional Dutch" read as fragments.
+    return candidate if len(candidate.split()) >= 3 else t
 
 
 def _load() -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
@@ -137,19 +148,21 @@ def _load() -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
             for row in csv.DictReader(fh):
                 url = (row.get("URL") or "").strip()
                 if not url.lower().startswith("https://"):
-                    continue  # malformed / URL-less row
+                    continue
                 provider = _provider_for(url)
                 if not provider:
                     continue
+                city = (row.get("CITY") or "").strip()
+                raw_title = (row.get("SHORTTITLE") or "").strip()
                 rec = {
-                    "city": (row.get("CITY") or "").strip(),
+                    "city": city,
                     "iata": (row.get("IATA") or "").strip().upper(),
                     "url": url,
                     "provider": provider,
                     "provider_label": PROVIDER_LABELS[provider],
                     "vibe": (row.get("GROKVIBE") or "").strip().lower(),
                     "emoji": (row.get("ACTIVITYEMOJI") or "").strip(),
-                    "title": (row.get("SHORTTITLE") or "").strip(),
+                    "title": _clean_title(raw_title, city),
                 }
                 if not rec["title"] or not (rec["city"] or rec["iata"]):
                     continue
@@ -250,142 +263,16 @@ def pick_activity_links(
     return out
 
 
-# ── AI pill titles (cached per URL + language) ───────────────────────────────
-
-
-def _title_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(TITLE_DB_PATH)
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS activity_titles (
-            cache_key TEXT PRIMARY KEY,
-            title TEXT NOT NULL,
-            fetched_at REAL NOT NULL
-        )
-        """
-    )
-    conn.commit()
-    return conn
-
-
-def _title_key(url: str, lang: str | None) -> str:
-    code = (lang or "en").lower()
-    return url if code == "en" else f"{url}|l:{code}"
-
-
-def get_cached_title(url: str, lang: str | None = None) -> str | None:
-    try:
-        with _title_conn() as conn:
-            row = conn.execute(
-                "SELECT title FROM activity_titles WHERE cache_key = ?",
-                (_title_key(url, lang),),
-            ).fetchone()
-        return str(row[0]) if row and row[0] else None
-    except Exception:
-        return None
-
-
-def put_cached_title(url: str, lang: str | None, title: str) -> None:
-    try:
-        with _title_conn() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO activity_titles (cache_key, title, fetched_at)"
-                " VALUES (?, ?, ?)",
-                (_title_key(url, lang), title, time.time()),
-            )
-            conn.commit()
-    except Exception:
-        pass
-
-
-# URLs with an AI-title generation already in flight (don't double-spawn)
-_title_inflight: set[str] = set()
-
-
-async def _generate_titles_bg(
-    todo: list[dict], settings: Settings, lang: str | None
-) -> None:
-    """Background AI title generation — fills the cache for future renders."""
-    try:
-        from yonder.grok import GrokClient
-
-        async with GrokClient(settings) as grok:
-            titles = await asyncio.wait_for(
-                grok.activity_pill_titles(todo, lang=lang), timeout=12.0
-            )
-        for link, title in zip(todo, titles):
-            title = (title or "").strip()
-            if title:
-                put_cached_title(link["url"], lang, title)
-            else:
-                _title_fail_at[link["url"]] = time.time()
-        for link in todo[len(titles):]:
-            _title_fail_at[link["url"]] = time.time()
-    except Exception:
-        for link in todo:
-            _title_fail_at[link["url"]] = time.time()
-    finally:
-        for link in todo:
-            _title_inflight.discard(link["url"])
-
-
-async def resolve_pill_titles(
-    links: list[dict],
-    settings: Settings | None,
-    *,
-    lang: str | None = None,
-) -> list[dict]:
-    """Swap each link's CSV title for the AI pill title (cache-first).
-
-    NEVER blocks a card render on the AI backend: cache hits swap in the AI
-    title immediately; misses keep the CSV SHORTTITLE for this render and a
-    background task generates + caches the AI title for future renders. A
-    hung backend therefore costs nothing user-facing (it previously stalled
-    whole searches 12s per miss). Failures are negative-cached in memory for
-    a few minutes.
-    """
-    misses = []
-    for link in links:
-        cached = get_cached_title(link["url"], lang)
-        if cached:
-            link["title"] = cached
-        else:
-            misses.append(link)
-    if not misses or settings is None or not settings.grok_ready():
-        return links
-    now = time.time()
-    todo = [
-        dict(l)
-        for l in misses
-        if now - _title_fail_at.get(l["url"], 0.0) > _TITLE_RETRY_SEC
-        and l["url"] not in _title_inflight
-    ]
-    if not todo:
-        return links
-    for link in todo:
-        _title_inflight.add(link["url"])
-    try:
-        asyncio.get_running_loop().create_task(
-            _generate_titles_bg(todo, settings, lang)
-        )
-    except RuntimeError:
-        for link in todo:
-            _title_inflight.discard(link["url"])
-    return links
-
-
 async def activity_links_for(
-    settings: Settings | None,
+    settings: object | None = None,
     *,
     city: str | None = None,
     iata: str | None = None,
     vibe: str | None = None,
     user_prompt: str | None = None,
 ) -> list[dict]:
-    """Picked + titled outbound pills for one card render ([] when no match)."""
-    links = pick_activity_links(city=city, iata=iata, vibe=vibe)
-    if not links:
-        return []
-    from yonder.lang import detect_lang
+    """Outbound activity pills for one card render — [] when no match.
 
-    return await resolve_pill_titles(links, settings, lang=detect_lang(user_prompt))
+    Uses CSV SHORTTITLE (city-stripped) directly. No AI calls, no blocking.
+    """
+    return pick_activity_links(city=city, iata=iata, vibe=vibe)

@@ -605,7 +605,10 @@ async def ask_grok(request: Request) -> HTMLResponse:
         mock = False
     if not settings.configured_providers():
         mock = True
-    mock_forced = mock and not mock_requested
+    # Always inject demo fares when mock=True and real search returns nothing —
+    # whether mock was forced by missing providers or explicitly requested via
+    # the Test Data checkbox.
+    mock_forced = mock
 
     empty_form = {
         "origin": "YVR",
@@ -846,7 +849,10 @@ async def explore_run(request: Request) -> HTMLResponse:
         mock = False
     if not settings.configured_providers():
         mock = True
-    mock_forced = mock and not mock_requested
+    # Always inject demo fares when mock=True and real search returns nothing —
+    # whether mock was forced by missing providers or explicitly requested via
+    # the Test Data checkbox.
+    mock_forced = mock
 
     currency = (settings.default_currency or "USD").upper()
     if not currency.isalpha() or len(currency) != 3:
