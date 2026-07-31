@@ -29,6 +29,17 @@
     tot.style.fontSize = "";
   }
 
+  function buildSearchUrl(d) {
+    var from = d.cfOrigin || "";
+    var to   = d.cfDest   || "";
+    var date = (d.cfDepart || "").replace(/-/g, "");
+    var seg  = from + "." + to + "." + date;
+    if (d.cfReturn) {
+      seg += "*" + to + "." + from + "." + (d.cfReturn || "").replace(/-/g, "");
+    }
+    return "https://www.google.com/flights#flt=" + seg + ";e:1;sd:1;t:f";
+  }
+
   document.addEventListener("click", function (e) {
     var btn = e.target.closest(".btn-check-fares");
     if (!btn || btn.disabled) return;
@@ -37,6 +48,11 @@
     var card = btn.closest(".boarding-pass");
     var err = slot.querySelector(".cf-error");
     var d = slot.dataset;
+
+    if (btn.dataset.cfSearchUrl) {
+      window.open(btn.dataset.cfSearchUrl, "_blank", "noopener");
+      return;
+    }
 
     btn.disabled = true;
     btn.classList.add("is-busy");
@@ -71,14 +87,11 @@
         slot.replaceWith(span);
         updateTotals(card);
       })
-      .catch(function (ex) {
+      .catch(function () {
         btn.disabled = false;
         btn.classList.remove("is-busy");
-        btn.textContent = "Check Fares";
-        if (err) {
-          err.hidden = false;
-          err.textContent = (ex && ex.message) || "Fare check failed — try again.";
-        }
+        btn.textContent = "Search \u2197";
+        btn.dataset.cfSearchUrl = buildSearchUrl(d);
       });
   });
 })();
