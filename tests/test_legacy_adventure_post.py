@@ -171,3 +171,16 @@ class TestLegacyAdventurePost:
         )
         assert "text/html" in resp.headers.get("content-type", "")
         assert "Yonder" in resp.text, "Response is not index.html"
+
+
+class TestLegacyAdventureGet:
+    def test_get_adventure_redirects_to_detour_panel(self, client):
+        """GET /adventure must return 302 → /?mode=detour (bookmarked URLs land on Detour)."""
+        resp = client.get("/adventure", follow_redirects=False)
+        assert resp.status_code == 302, (
+            f"Expected 302 redirect, got {resp.status_code}"
+        )
+        location = resp.headers.get("location", "")
+        assert "mode=detour" in location, (
+            f"Expected Location to contain '?mode=detour', got {location!r}"
+        )
