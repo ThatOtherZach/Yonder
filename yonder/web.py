@@ -2936,8 +2936,20 @@ async def api_result_feedback(request: Request) -> JSONResponse:
                     async with GrokClient(settings) as grok:
                         text = await grok._chat(system, user, temperature=0.7)
                     import re
+                    # Primary: trailing parenthesised IATA, optionally followed by punctuation
                     iata_match = re.search(r"\(([A-Z]{3})\)\s*[.,!?;:]*\s*$", text.strip())
                     iata = iata_match.group(1) if iata_match else None
+                    # Fallback 1: any parenthesised IATA anywhere in the reply
+                    if iata is None:
+                        iata_match2 = re.search(r"\(([A-Z]{3})\)", text)
+                        iata = iata_match2.group(1) if iata_match2 else None
+                    # Fallback 2: first bare uppercase 3-letter token that is a known IATA
+                    if iata is None:
+                        from yonder.airports import is_known_iata as _is_known_iata
+                        for _m in re.finditer(r"\b([A-Z]{3})\b", text):
+                            if _is_known_iata(_m.group(1)):
+                                iata = _m.group(1)
+                                break
                     answer = {"suggestion": text.strip(), "dest_iata": iata, "lang": _ans_lang}
                     save_vibe_answer(question_id, answer)
                 except Exception:

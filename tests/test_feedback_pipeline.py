@@ -440,6 +440,78 @@ class TestGenerateAnswer:
             f"Expected 'NRT' but got {answer['dest_iata']!r} — trailing exclamation must not break extraction"
         )
 
+    async def test_iata_extracted_from_mid_sentence_bare_code(self, isolated_dbs):
+        """IATA code embedded mid-sentence as bare uppercase is recovered by fallback."""
+        known_text = "Fly into LIS for custard tarts and fado — you won't regret it."
+        settings_mock = self._make_ready_settings()
+
+        with (
+            patch("yonder.web.get_settings", return_value=settings_mock),
+            patch(
+                "yonder.grok.GrokClient._chat",
+                new=AsyncMock(return_value=known_text),
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=web_module.app), base_url="http://test"
+            ) as ac:
+                await ac.post(
+                    "/api/result-feedback",
+                    json={
+                        "direction": "down",
+                        "vibe": "culture",
+                        "query": "fado music and pastries",
+                        "dest_iata": "MAD",
+                    },
+                )
+            await asyncio.sleep(0.2)
+
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT answer_json FROM vibe_questions WHERE vibe = 'culture'"
+            ).fetchone()
+        assert row is not None
+        answer = json.loads(row["answer_json"])
+        assert answer["dest_iata"] == "LIS", (
+            f"Expected 'LIS' from mid-sentence bare code but got {answer['dest_iata']!r}"
+        )
+
+    async def test_iata_extracted_from_non_trailing_parens(self, isolated_dbs):
+        """IATA code in parentheses at the start of the reply is recovered by fallback."""
+        known_text = "(GRU) São Paulo is a brilliant chaos for food-obsessed travellers."
+        settings_mock = self._make_ready_settings()
+
+        with (
+            patch("yonder.web.get_settings", return_value=settings_mock),
+            patch(
+                "yonder.grok.GrokClient._chat",
+                new=AsyncMock(return_value=known_text),
+            ),
+        ):
+            async with AsyncClient(
+                transport=ASGITransport(app=web_module.app), base_url="http://test"
+            ) as ac:
+                await ac.post(
+                    "/api/result-feedback",
+                    json={
+                        "direction": "down",
+                        "vibe": "food",
+                        "query": "street food south america",
+                        "dest_iata": "BOG",
+                    },
+                )
+            await asyncio.sleep(0.2)
+
+        with fb._connect() as conn:
+            row = conn.execute(
+                "SELECT answer_json FROM vibe_questions WHERE vibe = 'food'"
+            ).fetchone()
+        assert row is not None
+        answer = json.loads(row["answer_json"])
+        assert answer["dest_iata"] == "GRU", (
+            f"Expected 'GRU' from non-trailing parentheses but got {answer['dest_iata']!r}"
+        )
+
     async def test_no_iata_in_response_stores_none_dest(self, isolated_dbs):
         """If Grok's reply has no trailing (XXX) code, dest_iata is stored as None."""
         known_text = "Consider exploring rural Portugal or the Spanish meseta."
