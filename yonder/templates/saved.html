@@ -219,7 +219,7 @@
         detailInner += renderColBlocksHtml(col);
         if (detailInner) {
           h += '<button type="button" class="pb-toggle" aria-expanded="false">' +
-               '<span class="pb-toggle-label">More \u00b7 culture, food &amp; budget</span>' +
+               '<span class="pb-toggle-label">Culture, Food &amp; Budget</span>' +
                '<span class="pb-chevron" aria-hidden="true">\u25be</span></button>' +
                '<div class="pb-details" hidden><div class="pb-grid pb-mesh-grid">' + detailInner + "</div></div>";
         }
@@ -248,7 +248,7 @@
               slot.classList.remove("is-expanded");
               btn.setAttribute("aria-expanded", "false");
               var lab2 = btn.querySelector(".pb-toggle-label");
-              if (lab2) lab2.textContent = "More \u00b7 culture, food & budget";
+              if (lab2) lab2.textContent = "Culture, Food & Budget";
             }
           });
         });
