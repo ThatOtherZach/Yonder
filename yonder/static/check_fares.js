@@ -50,14 +50,20 @@
   }
 
   function buildSearchUrl(d) {
-    var from = d.cfOrigin || "";
-    var to   = d.cfDest   || "";
-    var date = (d.cfDepart || "").replace(/-/g, "");
-    var seg  = from + "." + to + "." + date;
-    if (d.cfReturn) {
-      seg += "*" + to + "." + from + "." + (d.cfReturn || "").replace(/-/g, "");
-    }
-    return "https://www.google.com/flights#flt=" + seg + ";e:1;sd:1;t:f";
+    var from   = (d.cfOrigin   || "").toUpperCase();
+    var to     = (d.cfDest     || "").toUpperCase();
+    var dep    = d.cfDepart    || "";   // already YYYY-MM-DD
+    var ret    = d.cfReturn    || "";
+    var cur    = (d.cfCurrency || "USD").toUpperCase();
+    var adults = parseInt(d.cfAdults || "1", 10) || 1;
+
+    var q = ret
+      ? "Flights to " + to + " from " + from + " on " + dep + " through " + ret
+      : "Flights to " + to + " from " + from + " on " + dep + " oneway";
+    if (adults > 1) { q += " with " + adults + " adults"; }
+
+    return "https://www.google.com/travel/flights?hl=en&curr="
+      + encodeURIComponent(cur) + "&q=" + encodeURIComponent(q);
   }
 
   /** Promote a button to the "Search ↗" fallback state. */
