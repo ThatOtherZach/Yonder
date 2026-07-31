@@ -3,9 +3,12 @@
  * trip pages are read-only and never render the button).
  * No popups: busy state on the button, inline error on failure.
  *
- * Promoted state ("Search ↗" + Google Flights URL) is persisted to
+ * Promoted state ("Aviasales ↗" + affiliate URL) is persisted to
  * sessionStorage so it survives card re-renders, sort/filter, and
- * Saved-list refreshes within the same browser session. */
+ * Saved-list refreshes within the same browser session.
+ *
+ * Estimate pill: on load, fetches /api/fare-estimate and injects a
+ * ✈ ~$680–$1,240 pill into .pb-fast-facts when cached data exists. */
 (function () {
   "use strict";
 
@@ -49,28 +52,57 @@
     tot.style.fontSize = "";
   }
 
+  /** Build an Aviasales search URL from cf-slot dataset fields.
+   *  Uses window.AVIASALES_MARKER when available (set by Aviasales task).
+   *  Falls back to sub_id=YonderFlights only when marker is missing. */
   function buildSearchUrl(d) {
     var from   = (d.cfOrigin   || "").toUpperCase();
     var to     = (d.cfDest     || "").toUpperCase();
-    var dep    = d.cfDepart    || "";   // already YYYY-MM-DD
+    var dep    = d.cfDepart    || "";   // YYYY-MM-DD
     var ret    = d.cfReturn    || "";
-    var cur    = (d.cfCurrency || "USD").toUpperCase();
     var adults = parseInt(d.cfAdults || "1", 10) || 1;
+    var cur    = (d.cfCurrency || "USD").toUpperCase();
 
-    var q = ret
-      ? "Flights to " + to + " from " + from + " on " + dep + " through " + ret
-      : "Flights to " + to + " from " + from + " on " + dep + " oneway";
-    if (adults > 1) { q += " with " + adults + " adults"; }
+    // Parse depart DDMM
+    var depParts = dep.split("-");
+    if (depParts.length < 3 || !from || !to) {
+      // Fallback: Aviasales homepage
+      var qs = _aviasalesQs(cur);
+      return "https://www.aviasales.com/?" + qs + (from ? "&params=" + encodeURIComponent(from) + "1" : "");
+    }
+    var day   = depParts[2];
+    var month = depParts[1];
+    var ddmm  = day + month;
 
-    return "https://www.google.com/travel/flights?hl=en&curr="
-      + encodeURIComponent(cur) + "&q=" + encodeURIComponent(q);
+    var path;
+    if (ret) {
+      var retParts = ret.split("-");
+      var rday  = retParts[2] || "";
+      var rmonth = retParts[1] || "";
+      var rddmm = rday + rmonth;
+      path = from + ddmm + to + rddmm + adults;
+    } else {
+      path = from + ddmm + to + adults;
+    }
+
+    return "https://www.aviasales.com/search/" + path + "?" + _aviasalesQs(cur);
   }
 
-  /** Promote a button to the "Search ↗" fallback state. */
+  function _aviasalesQs(currency) {
+    var marker = (typeof window !== "undefined" && window.AVIASALES_MARKER) || "";
+    var qs = marker ? "marker=" + encodeURIComponent(marker) + "&" : "";
+    qs += "sub_id=YonderFlights";
+    if (currency) {
+      qs += "&currency=" + currency.toLowerCase();
+    }
+    return qs;
+  }
+
+  /** Promote a button to the "Aviasales ↗" affiliate state. */
   function promoteButton(btn, url) {
     btn.disabled = false;
     btn.classList.remove("is-busy");
-    btn.textContent = "Search \u2197";
+    btn.textContent = "Aviasales \u2197";
     btn.dataset.cfSearchUrl = url;
   }
 
@@ -89,12 +121,56 @@
     });
   }
 
+  /** Inject a ✈ ~$680–$1,240 estimate pill into .pb-fast-facts for a slot. */
+  function injectEstimatePill(slot, label, stale) {
+    // Walk up to the boarding-pass card and find the fast-facts bar nearest this slot
+    var card = slot.closest(".boarding-pass");
+    if (!card) return;
+    var factsEl = card.querySelector(".pb-fast-facts");
+    if (!factsEl) return;
+    // Avoid duplicate pills
+    if (factsEl.querySelector(".pb-estimate")) return;
+    var span = document.createElement("span");
+    span.className = "pb-fact pb-estimate";
+    span.textContent = "\u2708 " + label + (stale ? " (avg)" : "");
+    if (stale) { span.style.opacity = "0.6"; }
+    // Prepend so it appears before activity links
+    factsEl.insertBefore(span, factsEl.firstChild);
+  }
+
+  /** Fetch /api/fare-estimate and inject pill when data exists. */
+  function fetchAndShowEstimate(slot) {
+    var d = slot.dataset;
+    var origin = d.cfOrigin || "";
+    var dest   = d.cfDest   || "";
+    var cur    = d.cfCurrency || "USD";
+    if (!origin || !dest) return;
+    var url = "/api/fare-estimate?origin=" + encodeURIComponent(origin)
+            + "&destination=" + encodeURIComponent(dest)
+            + "&currency=" + encodeURIComponent(cur);
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok && j.label) {
+          injectEstimatePill(slot, j.label, !!j.stale);
+        }
+      })
+      .catch(function () { /* no data — pill simply absent */ });
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     restorePromotedSlots();
+    // Fetch estimates for all visible cf-slots
+    document.querySelectorAll(".cf-slot").forEach(function (slot) {
+      fetchAndShowEstimate(slot);
+    });
   });
 
   // Also expose for callers that inject cards dynamically
-  window.YonderCheckFares = { restorePromotedSlots: restorePromotedSlots };
+  window.YonderCheckFares = {
+    restorePromotedSlots: restorePromotedSlots,
+    fetchAndShowEstimate: fetchAndShowEstimate,
+  };
 
   document.addEventListener("click", function (e) {
     var btn = e.target.closest(".btn-check-fares");
@@ -135,13 +211,36 @@
           throw new Error((res.j && res.j.error) || "No fares found — try again later.");
         }
         var j = res.j;
-        var span = document.createElement("span");
-        span.className = "cf-fare";
-        span.textContent = j.display_price || fmtApprox(j.currency, j.price);
-        span.dataset.cfPrice = String(j.price);
-        span.dataset.cfCurrency = j.currency || "";
-        slot.replaceWith(span);
+        var priceLabel = j.display_price || fmtApprox(j.currency, j.price);
+
+        // Update (or create) the estimate pill with the fresh price
+        var card2 = slot.closest(".boarding-pass");
+        if (card2) {
+          var factsEl = card2.querySelector(".pb-fast-facts");
+          if (factsEl) {
+            var existing = factsEl.querySelector(".pb-estimate");
+            if (existing) {
+              existing.textContent = "\u2708 " + priceLabel;
+              existing.style.opacity = "";
+            } else {
+              var span2 = document.createElement("span");
+              span2.className = "pb-fact pb-estimate";
+              span2.textContent = "\u2708 " + priceLabel;
+              factsEl.insertBefore(span2, factsEl.firstChild);
+            }
+          }
+        }
+
+        var fareSpan = document.createElement("span");
+        fareSpan.className = "cf-fare";
+        fareSpan.textContent = priceLabel;
+        fareSpan.dataset.cfPrice = String(j.price);
+        fareSpan.dataset.cfCurrency = j.currency || "";
+        slot.replaceWith(fareSpan);
         updateTotals(card);
+
+        // Change the action button(s) in bp-actions to Aviasales
+        _upgradeActionsToAviasales(card, d);
       })
       .catch(function () {
         var url = buildSearchUrl(d);
@@ -150,4 +249,22 @@
         storeUrl(d, url);
       });
   });
+
+  /** After a successful live fare fetch, replace Google Flights links in
+   *  .bp-actions with a single Aviasales button for this leg. */
+  function _upgradeActionsToAviasales(card, d) {
+    if (!card) return;
+    var actions = card.querySelector(".bp-actions");
+    if (!actions) return;
+    var url = buildSearchUrl(d);
+    // Check if an Aviasales button already present
+    if (actions.querySelector(".btn-aviasales-result")) return;
+    var a = document.createElement("a");
+    a.className = "btn secondary btn-aviasales-result";
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = "Aviasales \u2197";
+    actions.appendChild(a);
+  }
 })();

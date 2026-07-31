@@ -2750,6 +2750,14 @@ async def api_leg_fare(request: Request) -> JSONResponse:
             status_code=502,
         )
     best = min(offers, key=lambda o: o.price)
+
+    # Silently upsert into fare_estimates cache
+    try:
+        from yonder.fare_estimates import upsert_estimate
+        upsert_estimate(origin, destination, best.price, best.currency or currency)
+    except Exception:  # noqa: BLE001
+        pass
+
     return JSONResponse(
         {
             "ok": True,
@@ -2762,6 +2770,50 @@ async def api_leg_fare(request: Request) -> JSONResponse:
             "stops_out": best.stops_out,
             "provider": best.provider,
             "offer": best.model_dump(mode="json"),
+        }
+    )
+
+
+@app.get("/api/fare-estimate")
+async def api_fare_estimate(
+    origin: str = Query(default=""),
+    destination: str = Query(default=""),
+    currency: str = Query(default="USD"),
+) -> JSONResponse:
+    """Return a cached fare range for a route this month, or no_data.
+
+    Falls back to the previous month with stale=true when current month is empty.
+    """
+    from yonder.fare_estimates import get_estimate
+
+    o = origin.strip().upper()[:3]
+    d = destination.strip().upper()[:3]
+    c = (currency or "USD").strip().upper()[:3]
+    if not c.isalpha() or len(c) != 3:
+        c = "USD"
+
+    if len(o) != 3 or not o.isalpha() or len(d) != 3 or not d.isalpha():
+        return JSONResponse({"ok": False, "reason": "invalid_route"}, status_code=400)
+
+    from datetime import datetime, timezone
+    year_month = datetime.now(timezone.utc).strftime("%Y-%m")
+
+    est = get_estimate(o, d, c, year_month=year_month)
+    if not est:
+        return JSONResponse({"ok": False, "reason": "no_data"})
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "origin": o,
+            "destination": d,
+            "currency": c,
+            "year_month": est["year_month"],
+            "price_low": est["price_low"],
+            "price_high": est["price_high"],
+            "sample_count": est["sample_count"],
+            "stale": est["stale"],
+            "label": est["label"],
         }
     )
 
