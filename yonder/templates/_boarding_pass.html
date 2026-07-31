@@ -254,6 +254,9 @@
       </div>
       {% endif %}
     </div>
+    {% if s and s.model_source %}
+    <p class="bp-note" style="font-size:0.78rem;margin:0.15rem 0 0.5rem;color:var(--muted)">via {{ s.model_source }}</p>
+    {% endif %}
     {% endif %}
 
     {% if it.legs %}

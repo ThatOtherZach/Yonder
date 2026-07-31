@@ -139,15 +139,14 @@ def test_loader_skips_urlless_rows(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(activities, "CSV_PATH", csv_path)
     monkeypatch.setitem(activities._cache, "mtime", None)
-    try:
-        rows = links_for(iata="TST")
-        assert len(rows) == 1
-        assert rows[0]["title"] == "Good Row"
-        assert rows[0]["provider"] == "viator"
-        picks = pick_activity_links(iata="TST", vibe="foodie")
-        assert len(picks) == 1  # only Viator available — never an empty pill
-    finally:
-        monkeypatch.setitem(activities._cache, "mtime", None)
+    monkeypatch.setitem(activities._cache, "by_iata", {})
+    monkeypatch.setitem(activities._cache, "by_city", {})
+    rows = links_for(iata="TST")
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Good Row"
+    assert rows[0]["provider"] == "viator"
+    picks = pick_activity_links(iata="TST", vibe="foodie")
+    assert len(picks) == 1  # only Viator available — never an empty pill
 
 
 def test_hot_reload_on_mtime_change(tmp_path, monkeypatch):
@@ -159,18 +158,17 @@ def test_hot_reload_on_mtime_change(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(activities, "CSV_PATH", csv_path)
     monkeypatch.setitem(activities._cache, "mtime", None)
-    try:
-        assert links_for(iata="TST")[0]["title"] == "First"
-        csv_path.write_text(
-            header + "Testville,TST,https://www.viator.com/tours/b,foodie,X,Second\n",
-            encoding="utf-8",
-        )
-        import os
+    monkeypatch.setitem(activities._cache, "by_iata", {})
+    monkeypatch.setitem(activities._cache, "by_city", {})
+    assert links_for(iata="TST")[0]["title"] == "First"
+    csv_path.write_text(
+        header + "Testville,TST,https://www.viator.com/tours/b,foodie,X,Second\n",
+        encoding="utf-8",
+    )
+    import os
 
-        os.utime(csv_path, (1e9, 1e9))  # force a distinct mtime
-        assert links_for(iata="TST")[0]["title"] == "Second"
-    finally:
-        monkeypatch.setitem(activities._cache, "mtime", None)
+    os.utime(csv_path, (1e9, 1e9))  # force a distinct mtime
+    assert links_for(iata="TST")[0]["title"] == "Second"
 
 
 @pytest.mark.parametrize(

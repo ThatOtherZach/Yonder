@@ -130,6 +130,7 @@
     <p class="trip-meta">
       Shared {{ kind_label }} · scan the QR or open this link on another device.
       Fares are signals only — re-check before you buy.
+      {% set _tm = p.trip_meta or {} %}{% if _tm.model_source %}<br /><span style="font-size:0.85em;color:var(--muted)">via {{ _tm.model_source }}</span>{% endif %}
     </p>
   </header>
   <main class="trip-share container">
