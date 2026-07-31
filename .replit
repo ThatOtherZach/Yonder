@@ -17,6 +17,7 @@ XAI_MODEL = "grok-4.5"
 DETOUR_MAX_CANDIDATES = "5"
 SEARCH_BUDGET_SECONDS = "30.0"
 SEARCH_MAX_SECONDS = "42.0"
+CODE_PROMO = "YONDERCITY"
 
 [workflows]
 runButton = "Project"
