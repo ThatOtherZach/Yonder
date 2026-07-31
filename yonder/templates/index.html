@@ -1039,41 +1039,6 @@
       0%, 100% { opacity: 0.55; }
       50% { opacity: 1; }
     }
-    .pb-toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.35rem;
-      margin-top: 0.75rem;
-      padding: 0.35rem 0.75rem;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: var(--paper-2, #f4f1ea);
-      color: var(--ink);
-      font-family: inherit;
-      font-size: 0.8rem;
-      font-weight: 700;
-      letter-spacing: 0.03em;
-      cursor: pointer;
-    }
-    .pb-toggle:hover {
-      border-color: color-mix(in srgb, var(--vibe-now, var(--sky-bright)) 45%, var(--line));
-    }
-    .pb-toggle .pb-chevron {
-      display: inline-block;
-      transition: transform 0.15s ease;
-      font-size: 0.75em;
-    }
-    .field-note-slot.is-expanded .pb-toggle .pb-chevron {
-      transform: rotate(180deg);
-    }
-    .pb-details[hidden] {
-      display: none !important;
-    }
-    .pb-details {
-      margin-top: 0.75rem;
-      padding-top: 0.65rem;
-      border-top: 1px dashed var(--line);
-    }
 {% endblock %}
 {% block body %}
   {% set mode = mode or 'escape' %}

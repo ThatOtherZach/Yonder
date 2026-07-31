@@ -297,7 +297,7 @@
 
     {% set show_all_in = it.all_in_display and not cf.pending %}
     {% set has_col = it.ground_display or it.ground_compare_line or it.ground_budget_line or show_all_in %}
-    {% if mode == 'explore' %}
+    {% if mode in ('explore', 'saved') %}
       {% if it.stop_iata or has_col %}
         {% set has_more = (pb and (pb.culture or pb.food or pb.caution)) or has_col %}
         <div

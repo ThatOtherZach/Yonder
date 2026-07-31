@@ -44,6 +44,22 @@
       padding: 0.45rem 0.9rem !important;
       font-size: 0.84rem !important;
     }
+    /* Field note loading state */
+    .field-note-slot.is-loading {
+      opacity: 0.92;
+      border-style: dashed;
+    }
+    .pb-loading-msg {
+      margin: 0.35rem 0 0;
+      font-size: 0.9rem;
+      color: var(--muted);
+      font-style: italic;
+      animation: pb-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pb-pulse {
+      0%, 100% { opacity: 0.55; }
+      50% { opacity: 1; }
+    }
 {% endblock %}
 {% block body %}
   <header class="page-head container">
@@ -118,6 +134,177 @@
     Vibes aren't tickets. Re-check live fares before you book.
   </footer>
   <script>
+    /* ── Field notes for Saved cards ─────────────────────────────────────── */
+    (function () {
+      function escapeHtml(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      }
+
+      /* Read COL attributes baked into the slot by the boarding-pass macro */
+      function colFromSlot(slot) {
+        if (!slot || !slot.getAttribute) return null;
+        return {
+          ground: slot.getAttribute("data-col-ground") || "",
+          compare: slot.getAttribute("data-col-compare") || "",
+          budget: slot.getAttribute("data-col-budget") || "",
+          budgetStatus: slot.getAttribute("data-col-budget-status") || "",
+          allin: slot.getAttribute("data-col-allin") || "",
+        };
+      }
+
+      function hasColData(col) {
+        return !!(col && (col.ground || col.compare || col.budget || col.allin));
+      }
+
+      function renderColBlocksHtml(col) {
+        if (!hasColData(col)) return "";
+        var h = "";
+        if (col.ground || col.compare) {
+          h += '<div class="pb-block pb-col"><h4>Daily Spend</h4>';
+          if (col.ground) h += "<p>" + escapeHtml(col.ground) + "</p>";
+          if (col.compare) h += '<p class="muted" style="margin-top:0.25rem">' + escapeHtml(col.compare) + "</p>";
+          h += "</div>";
+        }
+        if (col.budget) {
+          var cls = "pb-block pb-col";
+          if (col.budgetStatus === "under") cls += " col-under";
+          else if (col.budgetStatus === "over") cls += " col-over";
+          h += '<div class="' + cls + '"><h4>Your budget</h4><p>' + escapeHtml(col.budget) + "</p></div>";
+        }
+        if (col.allin) {
+          h += '<div class="pb-block pb-col pb-col-allin"><h4>Trip Estimate</h4><p><strong>' + escapeHtml(col.allin) + "</strong></p></div>";
+        }
+        return h;
+      }
+
+      /* Full-parity renderer — matches Explore's renderFieldNoteHtml(brief, col) */
+      function renderFieldNoteHtml(brief, col) {
+        var h = '<div class="pb-story-body">';
+        if (brief) {
+          h += '<span class="pb-tag">Field note</span>';
+          var tagline = brief.tagline || brief.era_note || brief.vibe;
+          h += '<div class="pb-title-line"><h3 style="font-size:1.15rem">' + escapeHtml(brief.title || "Somewhere") + "</h3>";
+          if (tagline) h += '<p class="pb-closer">' + escapeHtml(tagline) + "</p>";
+          h += "</div>";
+          if (brief.subtitle) h += '<p class="pb-sub">' + escapeHtml(brief.subtitle) + "</p>";
+          var facts = brief.facts || [];
+          var acts = (brief.activity_links || []).filter(function (l) {
+            return l && l.url && /^https:\/\//i.test(String(l.url));
+          });
+          if (acts.length) facts = facts.slice(0, 2);
+          if (facts.length || acts.length) {
+            h += '<div class="pb-fast-facts" aria-label="Fast facts">';
+            facts.forEach(function (f) { if (f) h += '<span class="pb-fact">' + escapeHtml(String(f)) + "</span>"; });
+            acts.forEach(function (l) {
+              h += '<a class="pb-fact pb-fact-link" href="' + escapeHtml(String(l.url)) +
+                   '" target="_blank" rel="noopener sponsored">' +
+                   escapeHtml((l.emoji ? l.emoji + " " : "") + (l.title || "")) +
+                   ' <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
+            });
+            h += "</div>";
+          }
+        } else if (hasColData(col)) {
+          h += '<span class="pb-tag">On the ground</span><h3 style="font-size:1.15rem">Stop details</h3>';
+        }
+        h += "</div>"; /* end pb-story-body */
+
+        var detailInner = "";
+        if (brief) {
+          if (brief.culture) detailInner += '<div class="pb-block"><h4>Culture</h4><p>' + escapeHtml(brief.culture) + "</p></div>";
+          if (brief.food)    detailInner += '<div class="pb-block"><h4>Food</h4><p>' + escapeHtml(brief.food) + "</p></div>";
+          if (brief.caution) detailInner += '<div class="pb-block"><h4>Heads-up</h4><p>' + escapeHtml(brief.caution) + "</p></div>";
+        }
+        detailInner += renderColBlocksHtml(col);
+        if (detailInner) {
+          h += '<button type="button" class="pb-toggle" aria-expanded="false">' +
+               '<span class="pb-toggle-label">More \u00b7 culture, food &amp; budget</span>' +
+               '<span class="pb-chevron" aria-hidden="true">\u25be</span></button>' +
+               '<div class="pb-details" hidden><div class="pb-grid pb-mesh-grid">' + detailInner + "</div></div>";
+        }
+        return h;
+      }
+
+      function bindFieldNoteToggles(root) {
+        var scope = root || document;
+        scope.querySelectorAll(".field-note-slot .pb-toggle").forEach(function (btn) {
+          if (btn._pbBound) return;
+          btn._pbBound = true;
+          btn.addEventListener("click", function () {
+            var slot = btn.closest(".field-note-slot");
+            if (!slot) return;
+            var details = slot.querySelector(".pb-details");
+            if (!details) return;
+            var open = details.hasAttribute("hidden");
+            if (open) {
+              details.removeAttribute("hidden");
+              slot.classList.add("is-expanded");
+              btn.setAttribute("aria-expanded", "true");
+              var lab = btn.querySelector(".pb-toggle-label");
+              if (lab) lab.textContent = "Less details";
+            } else {
+              details.setAttribute("hidden", "");
+              slot.classList.remove("is-expanded");
+              btn.setAttribute("aria-expanded", "false");
+              var lab2 = btn.querySelector(".pb-toggle-label");
+              if (lab2) lab2.textContent = "More \u00b7 culture, food & budget";
+            }
+          });
+        });
+      }
+
+      function bootFieldNotes() {
+        bindFieldNoteToggles(document);
+        var slots = document.querySelectorAll(".field-note-slot.is-loading");
+        if (!slots.length) return;
+        var queue = Array.prototype.slice.call(slots);
+        var i = 0;
+        function next() {
+          if (i >= queue.length) return;
+          var slot = queue[i++];
+          var iata = (slot.getAttribute("data-iata") || "").toUpperCase();
+          var col = colFromSlot(slot); /* read COL before innerHTML is replaced */
+          if (iata.length !== 3) {
+            slot.classList.remove("is-loading");
+            if (hasColData(col)) slot.innerHTML = renderFieldNoteHtml(null, col);
+            bindFieldNoteToggles(slot);
+            setTimeout(next, 0);
+            return;
+          }
+          var q = new URLSearchParams({
+            iata: iata,
+            country: slot.getAttribute("data-country") || "",
+            city: slot.getAttribute("data-city") || "",
+            role: slot.getAttribute("data-role") || "stopover",
+          });
+          fetch("/api/place-brief?" + q.toString(), {
+            credentials: "same-origin",
+            headers: { Accept: "application/json" },
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              slot.classList.remove("is-loading");
+              slot.innerHTML = (data && data.ok && data.brief)
+                ? renderFieldNoteHtml(data.brief, col)
+                : renderFieldNoteHtml(null, col);
+              bindFieldNoteToggles(slot);
+            })
+            .catch(function () {
+              slot.classList.remove("is-loading");
+              if (hasColData(col)) slot.innerHTML = renderFieldNoteHtml(null, col);
+              bindFieldNoteToggles(slot);
+            })
+            .finally(function () { setTimeout(next, 120); });
+        }
+        next();
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        setTimeout(bootFieldNotes, 50);
+      });
+    })();
+
     (function () {
       // Two-click confirm for Remove buttons (same pattern as Reset Map)
       document.querySelectorAll(".js-remove-confirm").forEach(function (btn) {
