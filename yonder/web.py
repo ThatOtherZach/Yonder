@@ -995,7 +995,7 @@ async def explore_run(request: Request) -> HTMLResponse:
 
     decision = decide_shape(prompt, force=force, vibe=vibe, demo=bool(mock))
     max_cand = mix_candidate_cap(decision.shape, max_cand_settings)
-    notes: list[str] = []
+    notes: list[str] = [decision.shape]
     if save_ban:
         n = len(save_ban)
         notes.append(f"Skipping {n} saved {'city' if n == 1 else 'cities'}")
