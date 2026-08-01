@@ -1,219 +1,193 @@
-/** Variant B — "The Brief"
- *  1200 × 627 px LinkedIn landscape ad.
- *  Desert highway full-bleed with night-sky gradient. Copy styled as a
- *  professional deliverable brief — Yonder's own product language as punchline.
- */
 export function AdB() {
   return (
-    <div
-      style={{
-        width: 1200,
-        height: 627,
-        position: "relative",
-        overflow: "hidden",
-        fontFamily: "Georgia, 'Times New Roman', serif",
-        background: "#0f0d0b",
-      }}
-    >
-      {/* Hero — desert highway, landscape-cropped */}
-      <img
-        src="/__mockup/images/yonder-desert-highway.png"
-        alt="Desert highway winding into a twilight horizon"
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          objectPosition: "center 55%",
-          filter: "sepia(.12) saturate(.8) contrast(1.1) brightness(.72)",
-        }}
-      />
-
-      {/* Right-to-left dark vignette — content sits on the left */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
+    <main className="ad-b" aria-label="Yonder travel advertisement">
+      <style>{`
+        .ad-b, .ad-b * { box-sizing: border-box; }
+        .ad-b {
+          width: 100vw;
+          height: 100vh;
+          min-height: 100%;
+          overflow: hidden;
+          position: relative;
+          isolation: isolate;
+          color: #f5eed8;
+          background: #1a1208 url('/__mockup/images/yonder-desert-highway.png') center center / cover no-repeat;
+          font-family: 'Playfair Display', Georgia, serif;
+        }
+        .ad-b::before {
+          content: '';
+          position: absolute;
+          z-index: -1;
+          inset: 0;
           background:
-            "linear-gradient(to right, rgba(12,9,6,.94) 0%, rgba(12,9,6,.82) 38%, rgba(12,9,6,.4) 62%, rgba(12,9,6,.1) 100%), linear-gradient(to top, rgba(8,6,4,.6) 0%, transparent 40%)",
-        }}
-      />
-
-      {/* Grain */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          opacity: 0.12,
-          mixBlendMode: "screen",
-          backgroundImage:
-            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='.3'/%3E%3C/svg%3E\")",
-        }}
-      />
-
-      {/* Content — left column */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          padding: "0 68px",
-          maxWidth: 620,
-        }}
-      >
-        {/* Document header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 32,
-          }}
-        >
-          <div
-            style={{
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              fontSize: 10,
-              letterSpacing: "0.28em",
-              color: "#c8743a",
-              fontWeight: 700,
-            }}
-          >
-            YONDER / TRIP BRIEF
+            linear-gradient(180deg, rgba(17, 12, 5, .7) 0%, rgba(20, 15, 7, .78) 48%, rgba(13, 10, 5, .9) 100%),
+            radial-gradient(ellipse at center, rgba(42, 107, 79, .12), transparent 66%);
+        }
+        .ad-b::after {
+          content: '';
+          pointer-events: none;
+          position: absolute;
+          z-index: 4;
+          inset: 0;
+          opacity: .18;
+          mix-blend-mode: screen;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.75'/%3E%3C/svg%3E");
+        }
+        .ad-b__frame {
+          position: absolute;
+          inset: clamp(16px, 3.1vw, 46px);
+          border: 1px solid rgba(245, 238, 216, .38);
+          pointer-events: none;
+        }
+        .ad-b__frame::before, .ad-b__frame::after {
+          content: '';
+          position: absolute;
+          width: 38px;
+          height: 38px;
+          border-color: #d9be79;
+          border-style: solid;
+        }
+        .ad-b__frame::before { left: -1px; top: -1px; border-width: 1px 0 0 1px; }
+        .ad-b__frame::after { right: -1px; bottom: -1px; border-width: 0 1px 1px 0; }
+        .ad-b__topline {
+          position: absolute;
+          top: clamp(28px, 5vw, 74px);
+          left: 50%;
+          transform: translateX(-50%);
+          color: #2a6b4f;
+          font: 700 clamp(10px, 1.25vw, 14px)/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+          letter-spacing: .19em;
+          text-transform: uppercase;
+          white-space: nowrap;
+        }
+        .ad-b__topline::after {
+          content: '';
+          display: block;
+          width: 44px;
+          height: 1px;
+          margin: 13px auto 0;
+          background: #d9be79;
+          opacity: .8;
+        }
+        .ad-b__content {
+          position: relative;
+          z-index: 2;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 100%;
+          padding: 72px 20px 54px;
+        }
+        .ad-b__card {
+          width: min(670px, 100%);
+          position: relative;
+          background: rgba(20, 15, 7, .72);
+          border: 1px solid rgba(217, 190, 121, .62);
+          box-shadow: 0 18px 80px rgba(0, 0, 0, .32);
+          padding: clamp(24px, 4.4vw, 56px) clamp(20px, 5.4vw, 68px) 0;
+          animation: adB-rise .8s cubic-bezier(.2,.75,.2,1) both;
+        }
+        .ad-b__card::before, .ad-b__card::after {
+          content: '';
+          position: absolute;
+          top: -5px;
+          height: 9px;
+          width: 9px;
+          border: 1px solid #d9be79;
+          background: #1a1208;
+          transform: rotate(45deg);
+        }
+        .ad-b__card::before { left: 20px; }
+        .ad-b__card::after { right: 20px; }
+        .ad-b__meta {
+          display: flex;
+          justify-content: space-between;
+          gap: 20px;
+          color: #d9be79;
+          font: 600 clamp(9px, 1.2vw, 12px)/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+          letter-spacing: .105em;
+          text-transform: uppercase;
+        }
+        .ad-b__meta span { white-space: nowrap; }
+        .ad-b__meta b { color: #f5eed8; font-weight: 400; }
+        .ad-b__rule {
+          height: 1px;
+          background: rgba(245, 238, 216, .45);
+          margin: clamp(19px, 3vw, 34px) 0 clamp(21px, 3.3vw, 38px);
+        }
+        .ad-b__headline {
+          max-width: 540px;
+          margin: 0;
+          color: #f5eed8;
+          font-size: clamp(36px, 6.3vw, 72px);
+          font-weight: 500;
+          line-height: .98;
+          letter-spacing: -.045em;
+        }
+        .ad-b__headline em { color: #d9be79; font-style: italic; }
+        .ad-b__sub {
+          margin: clamp(22px, 3.6vw, 36px) 0 clamp(27px, 4vw, 45px);
+          color: rgba(245, 238, 216, .78);
+          font: 400 clamp(11px, 1.4vw, 15px)/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+          letter-spacing: .035em;
+        }
+        .ad-b__cta {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 18px;
+          min-height: 58px;
+          margin: 0 clamp(-20px, -5.4vw, -68px);
+          padding: 17px clamp(20px, 5.4vw, 68px);
+          color: #f5eed8;
+          background: #2a6b4f;
+          text-decoration: none;
+          font: 700 clamp(10px, 1.3vw, 13px)/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+          letter-spacing: .105em;
+          text-transform: uppercase;
+          transition: background-color .2s ease, color .2s ease;
+        }
+        .ad-b__cta::after { content: '↗'; color: #d9be79; font-size: 20px; }
+        .ad-b__cta:hover, .ad-b__cta:focus-visible { background: #347e5e; color: #fff9e8; outline: none; }
+        .ad-b__stamp {
+          position: absolute;
+          right: clamp(24px, 7vw, 112px);
+          bottom: clamp(27px, 6vw, 83px);
+          color: #d9be79;
+          border: 1px solid rgba(217, 190, 121, .75);
+          padding: 8px 10px 7px;
+          transform: rotate(-8deg);
+          font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+          letter-spacing: .15em;
+          text-transform: uppercase;
+        }
+        @keyframes adB-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+        @media (max-width: 520px) {
+          .ad-b__meta { flex-wrap: wrap; row-gap: 10px; }
+          .ad-b__headline { font-size: clamp(34px, 11vw, 54px); }
+          .ad-b__stamp { display: none; }
+          .ad-b__cta { min-height: 64px; }
+        }
+      `}</style>
+      <div className="ad-b__frame" aria-hidden="true" />
+      <div className="ad-b__topline">The Brief /</div>
+      <div className="ad-b__content">
+        <section className="ad-b__card">
+          <div className="ad-b__meta" aria-label="Trip brief details">
+            <span>Origin: <b>—</b></span>
+            <span>Dates: <b>open</b></span>
+            <span>Vibe: <b>retro</b></span>
           </div>
-          <div
-            style={{
-              flex: 1,
-              height: 1,
-              background: "rgba(200,116,58,.38)",
-              maxWidth: 140,
-            }}
-          />
-        </div>
-
-        {/* Brief block */}
-        <div
-          style={{
-            borderLeft: "2px solid #c8743a",
-            paddingLeft: 24,
-            marginBottom: 36,
-          }}
-        >
-          <div
-            style={{
-              fontFamily: "ui-monospace, monospace",
-              fontSize: 11,
-              letterSpacing: "0.2em",
-              color: "rgba(217,190,121,.72)",
-              marginBottom: 14,
-              textTransform: "uppercase",
-            }}
-          >
-            The brief
-          </div>
-          <p
-            style={{
-              margin: 0,
-              color: "#f0e8d4",
-              fontSize: 22,
-              lineHeight: 1.45,
-              fontStyle: "italic",
-              fontWeight: 400,
-            }}
-          >
-            4 days, open dates, retro vibes.
-          </p>
-        </div>
-
-        {/* Result block */}
-        <div
-          style={{
-            borderLeft: "2px solid rgba(240,232,212,.18)",
-            paddingLeft: 24,
-            marginBottom: 40,
-          }}
-        >
-          <div
-            style={{
-              fontFamily: "ui-monospace, monospace",
-              fontSize: 11,
-              letterSpacing: "0.2em",
-              color: "rgba(217,190,121,.72)",
-              marginBottom: 14,
-              textTransform: "uppercase",
-            }}
-          >
-            The result
-          </div>
-          <p
-            style={{
-              margin: 0,
-              color: "#f0e8d4",
-              fontSize: 22,
-              lineHeight: 1.45,
-              fontWeight: 400,
-            }}
-          >
-            YVR → MEX with a stopover that made it worth it.
-          </p>
-        </div>
-
-        {/* CTA */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-          }}
-        >
-          <div
-            style={{
-              background: "#c8743a",
-              color: "#1c1410",
-              fontFamily: "ui-monospace, monospace",
-              fontSize: 12,
-              fontWeight: 700,
-              letterSpacing: "0.14em",
-              padding: "11px 22px",
-              textTransform: "uppercase",
-            }}
-          >
-            Run your own brief
-          </div>
-          <span
-            style={{
-              fontFamily: "ui-monospace, monospace",
-              fontSize: 12,
-              letterSpacing: "0.12em",
-              color: "rgba(240,232,212,.56)",
-            }}
-          >
-            yonder.city
-          </span>
-        </div>
+          <div className="ad-b__rule" />
+          <h1 className="ad-b__headline">4 days. <em>Retro vibes.</em> One stopover.</h1>
+          <p className="ad-b__sub">YVR → MEX. Yonder found it in 6 seconds.</p>
+          <a className="ad-b__cta" href="https://yonder.city" target="_blank" rel="noreferrer">
+            <span>Run your own brief — yonder.city</span>
+          </a>
+        </section>
       </div>
-
-      {/* Bottom-right wordmark */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 36,
-          right: 56,
-          fontFamily: "ui-monospace, monospace",
-          fontSize: 13,
-          fontWeight: 700,
-          letterSpacing: "0.08em",
-          color: "rgba(240,232,212,.38)",
-        }}
-      >
-        YONDER
-      </div>
-    </div>
+      <div className="ad-b__stamp" aria-hidden="true">Filed / 06.24</div>
+    </main>
   );
 }
-
-export default AdB;

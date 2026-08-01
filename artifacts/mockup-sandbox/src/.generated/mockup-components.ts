@@ -6,7 +6,6 @@ export const modules: ModuleMap = {
   "./components/mockups/linkedin-ads/AdA.tsx": () => import("../components/mockups/linkedin-ads/AdA.tsx"),
   "./components/mockups/linkedin-ads/AdB.tsx": () => import("../components/mockups/linkedin-ads/AdB.tsx"),
   "./components/mockups/linkedin-ads/AdC.tsx": () => import("../components/mockups/linkedin-ads/AdC.tsx"),
-  "./components/mockups/linkedin-ads/Canvas.tsx": () => import("../components/mockups/linkedin-ads/Canvas.tsx"),
   "./components/mockups/social-ads/CassieStory.tsx": () => import("../components/mockups/social-ads/CassieStory.tsx"),
   "./components/mockups/social-ads/IGSquare.tsx": () => import("../components/mockups/social-ads/IGSquare.tsx"),
   "./components/mockups/social-ads/XPost.tsx": () => import("../components/mockups/social-ads/XPost.tsx")
