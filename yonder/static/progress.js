@@ -207,8 +207,8 @@
       '    <span id="fs-progress-elapsed">0s</span>' +
       "  </div>" +
       '  <div class="fs-progress-msg" id="fs-progress-msg"></div>' +
-      '  <div class="fs-progress-hint" id="fs-progress-hint">Aiming for a quick search — APIs may take longer.</div>' +
       '  <div class="fs-progress-promo" id="fs-progress-promo"></div>' +
+      '  <div class="fs-progress-hint" id="fs-progress-hint">Aiming for a quick search — APIs may take longer.</div>' +
       '  <button type="button" class="fs-progress-skip" id="fs-progress-skip" hidden>Skip</button>' +
       "</div>";
     document.body.appendChild(el);
@@ -290,36 +290,17 @@
       skipBtn.onclick = null;
     }
 
-    // Promo slot — VPN/SIM tip while waiting
+    // Promo slot — always shown
     var promoEl = document.getElementById("fs-progress-promo");
     if (promoEl) {
       var promo = global.FS_PROMO || null;
-      if (promo && (promo.code || promo.link)) {
-        var parts = [];
-        if (promo.code) {
-          parts.push(
-            '<a href="https://tp.media/r?marker=756039.YonderSIMCards&amp;trs=557178&amp;p=8979&amp;u=https%3A%2F%2Fsaily.com&amp;campaign_id=629" target="_blank" rel="noopener sponsored">Saily</a> mobile data: <button type="button" class="fs-promo-copy-btn" data-code="' +
-              promo.code.replace(/"/g, "&quot;") +
-              '" aria-label="Copy code ' +
-              promo.code.replace(/"/g, "&quot;") +
-              '">' +
-              '<code>' + promo.code + '</code>' +
-              '<span class="fs-promo-copy-label"> tap to copy</span>' +
-              '</button>'
-          );
-        }
-        if (promo.link) {
-          parts.push(
-            'ProtonVPN: <a href="' +
-              promo.link.replace(/"/g, "&quot;") +
-              '" target="_blank" rel="noopener">ProtonVPN&nbsp;&#8599;</a>'
-          );
-        }
-        promoEl.innerHTML = parts.join(' &middot; ');
-        promoEl.style.display = '';
-      } else {
-        promoEl.style.display = 'none';
-      }
+      var promoCode = (promo && promo.code) ? promo.code : "YONDERCITY";
+      var vpnHref = (promo && promo.link) ? promo.link.replace(/"/g, "&quot;") : "https://protonvpn.com";
+      promoEl.innerHTML =
+        'Grab a <a href="https://tp.media/r?marker=756039.YonderSIMCards&amp;trs=557178&amp;p=8979&amp;u=https%3A%2F%2Fsaily.com&amp;campaign_id=629" target="_blank" rel="noopener sponsored">Saily eSIM</a> with ' +
+        '<button type="button" class="fs-promo-copy-btn" data-code="' + promoCode.replace(/"/g, "&quot;") + '" aria-label="Copy code ' + promoCode.replace(/"/g, "&quot;") + '">' +
+        '<code>' + promoCode + '</code><span class="fs-promo-copy-label"> tap to copy</span></button>' +
+        ' &middot; Need a VPN? Try <a href="' + vpnHref + '" target="_blank" rel="noopener">ProtonVPN&nbsp;&#8599;</a>';
     }
 
     this._start = Date.now();
