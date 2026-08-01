@@ -1578,7 +1578,7 @@
           } catch (e) { /* ignore */ }
         });
         try {
-          var qEl = document.getElementById("escape-query-json");
+          var qEl = document.querySelector("[id^='escape-query-json-']");
           if (qEl) {
             var q = JSON.parse(qEl.textContent || "{}");
             add(q.destination);
@@ -2171,7 +2171,7 @@
               // Escape card
               var idx = offerIdx || "0";
               var oEl = document.getElementById("escape-offer-json-" + idx);
-              var qEl = document.getElementById("escape-query-json");
+              var qEl = document.getElementById("escape-query-json-" + idx);
               if (!oEl || !qEl) { if (shareUrl) window.location.href = shareUrl; return; }
               var offer, query;
               try {
@@ -2594,7 +2594,7 @@
             .then(function (data) {
               slot.classList.remove("is-loading");
               if (data && data.ok && data.brief) {
-                data.brief._compact = slot.id !== "escape-field-note";
+                data.brief._compact = slot.getAttribute("data-role") !== "destination";
                 data.brief._vibe = toneVibe;
                 slot.innerHTML = renderFieldNoteHtml(data.brief, col);
               } else if (hasColData(col)) {

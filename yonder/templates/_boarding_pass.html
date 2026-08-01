@@ -79,24 +79,33 @@
 
     {% if mode == 'explore' %}
     {# Field note — same collapsible pattern as Detour #}
+    {% set esc_show_all_in = o.all_in_display and not fare_missing %}
+    {% set esc_has_col = o.ground_display or o.ground_compare_line or o.ground_budget_line or esc_show_all_in %}
+    {% set esc_has_more = (escape_place_book and (escape_place_book.culture or escape_place_book.food or escape_place_book.caution)) or esc_has_col %}
     <div
       class="place-book field-note-inset field-note-slot{% if not escape_place_book %} is-loading{% endif %}"
-      id="escape-field-note"
+      id="escape-field-note-{{ idx }}"
       data-iata="{{ query.destination }}"
       data-country="{{ esc_theme.country or '' }}"
       data-city=""
       data-role="destination"
       data-vibe="{{ esc_vibe | e }}"
+      data-col-ground="{{ o.ground_display or '' }}"
+      data-col-compare="{{ o.ground_compare_line or '' }}"
+      data-col-budget="{{ o.ground_budget_line or '' }}"
+      data-col-budget-status="{{ o.ground_budget_status or '' }}"
+      data-col-allin="{{ (o.all_in_display if esc_show_all_in else '') or '' }}"
     >
       <div class="pb-story-body{% if not escape_place_book %} is-loading{% endif %}">
         {% if escape_place_book %}
         <span class="pb-tag">Field note</span>
-        {% set pb_tagline = escape_place_book.tagline or escape_place_book.era_note or escape_place_book.vibe %}
+        {% set _esc_tagline_src = escape_place_book.tagline or escape_place_book.era_note or escape_place_book.vibe %}
+        {% set pb_tagline = _esc_tagline_src or escape_place_book.subtitle %}
         <div class="pb-title-line">
           <h3 style="font-size:1.15rem">{{ escape_place_book.title }}</h3>
           {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
         </div>
-        {% if escape_place_book.subtitle %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
+        {% if escape_place_book.subtitle and _esc_tagline_src %}<p class="pb-sub">{{ escape_place_book.subtitle }}</p>{% endif %}
         {% set esc_acts = escape_place_book.activity_links or [] %}
         {% set esc_airport_trains = airport_train_for(query.destination) if query.destination else [] %}
         {% if escape_place_book.facts or esc_acts or esc_airport_trains %}
@@ -111,29 +120,46 @@
         <p class="pb-loading-msg">Writing field note…</p>
         {% endif %}
       </div>
-      {% if escape_place_book and (escape_place_book.culture or escape_place_book.food or escape_place_book.caution) %}
-      <button type="button" class="pb-toggle" aria-expanded="false">
+      {% if esc_has_more or not escape_place_book %}
+      <button type="button" class="pb-toggle" aria-expanded="false"{% if not escape_place_book and not esc_has_col %} hidden{% endif %}>
         <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
         <span class="pb-chevron" aria-hidden="true">▾</span>
       </button>
       <div class="pb-details" hidden>
         <div class="pb-grid pb-mesh-grid">
-          {% if escape_place_book.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ escape_place_book.culture }}</p></div>{% endif %}
-          {% if escape_place_book.food %}<div class="pb-block"><h4>Food</h4><p>{{ escape_place_book.food }}</p></div>{% endif %}
-          {% if escape_place_book.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ escape_place_book.caution }}</p></div>{% endif %}
+          {% if escape_place_book %}
+            {% if escape_place_book.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ escape_place_book.culture }}</p></div>{% endif %}
+            {% if escape_place_book.food %}<div class="pb-block"><h4>Food</h4><p>{{ escape_place_book.food }}</p></div>{% endif %}
+            {% if escape_place_book.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ escape_place_book.caution }}</p></div>{% endif %}
+          {% endif %}
+          {% if esc_has_col %}
+          {% if o.ground_display or o.ground_compare_line %}
+          <div class="pb-block pb-col">
+            <h4>Daily Spend</h4>
+            {% if o.ground_display %}<p>{{ o.ground_display }}</p>{% endif %}
+            {% if o.ground_compare_line %}<p class="muted" style="margin-top:0.25rem">{{ o.ground_compare_line }}</p>{% endif %}
+          </div>
+          {% endif %}
+          {% if o.ground_budget_line %}
+          <div class="pb-block pb-col{% if o.ground_budget_status == 'under' %} col-under{% elif o.ground_budget_status == 'over' %} col-over{% endif %}">
+            <h4>Your budget</h4>
+            <p>{{ o.ground_budget_line }}</p>
+          </div>
+          {% endif %}
+          {% if esc_show_all_in %}
+          <div class="pb-block pb-col pb-col-allin">
+            <h4>Trip Estimate</h4>
+            <p><strong>{{ o.all_in_display }}</strong></p>
+          </div>
+          {% endif %}
+          {% endif %}
         </div>
       </div>
-      {% elif not escape_place_book %}
-      <button type="button" class="pb-toggle" aria-expanded="false" hidden>
-        <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
-        <span class="pb-chevron" aria-hidden="true">▾</span>
-      </button>
-      <div class="pb-details" hidden></div>
       {% endif %}
     </div>
 
     <script type="application/json" id="escape-offer-json-{{ idx }}">{{ o.model_dump_json() | safe }}</script>
-    <script type="application/json" id="escape-query-json">{{ query.model_dump_json() | safe }}</script>
+    <script type="application/json" id="escape-query-json-{{ idx }}">{{ query.model_dump_json() | safe }}</script>
     {% endif %}
     {# promo moved to loading overlay (progress.js) #}
     <div class="bp-actions">
