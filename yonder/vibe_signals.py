@@ -68,12 +68,21 @@ def _connect() -> sqlite3.Connection:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(search_signals)").fetchall()}
     if "model_source" not in cols:
         conn.execute("ALTER TABLE search_signals ADD COLUMN model_source TEXT")
+    # Older DBs predate intent columns — add them in place (nullable, legacy rows stay NULL)
+    if "intent_confidence" not in cols:
+        conn.execute("ALTER TABLE search_signals ADD COLUMN intent_confidence REAL")
+    if "intent_rationale" not in cols:
+        conn.execute("ALTER TABLE search_signals ADD COLUMN intent_rationale TEXT")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_signals_dest_vibe"
         " ON search_signals(dest_iata, vibe)"
     )
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_signals_ts ON search_signals(ts DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_signals_result_count"
+        " ON search_signals(result_count, intent_confidence)"
     )
     conn.execute(
         """
@@ -112,7 +121,14 @@ def _norm_vibe(vibe: str | None) -> str:
 
 
 def prompt_hash(prompt: str | None) -> str | None:
-    p = (prompt or "").strip()
+    """Canonical 16-char hash of a prompt.
+
+    Normalised before hashing (lowercase, collapsed whitespace, 200-char trim)
+    so that prompts differing only in case or spacing produce the same hash.
+    Both record_search (write side) and low_confidence_misses (read side) must
+    call this function — never hash raw text directly.
+    """
+    p = " ".join((prompt or "").lower().split())[:200]
     if not p:
         return None
     return hashlib.sha256(p.encode("utf-8")).hexdigest()[:16]
@@ -137,6 +153,8 @@ def record_search(
     signal_strength: int = SEARCHED,
     signal_id: str | None = None,
     model_source: str | None = None,
+    intent_confidence: float | None = None,
+    intent_rationale: str | None = None,
 ) -> str | None:
     """Write one search signal row. Returns the signal id (or None in MOCK mode)."""
     if _mock_mode():
@@ -152,8 +170,8 @@ def record_search(
                 INSERT OR IGNORE INTO search_signals (
                     id, ts, session_hash, vibe, origin, dest_iata,
                     search_type, result_count, signal_strength, prompt_hash,
-                    model_source
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    model_source, intent_confidence, intent_rationale
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     sid,
@@ -167,6 +185,8 @@ def record_search(
                     max(1, min(4, int(signal_strength or 1))),
                     prompt_hash(prompt),
                     (model_source or "").strip() or None,
+                    float(intent_confidence) if intent_confidence is not None else None,
+                    (intent_rationale or "").strip()[:200] or None,
                 ),
             )
             conn.commit()
@@ -467,3 +487,88 @@ def top_for_vibe(
     for it in items:
         grouped.setdefault(it["country"] or "??", []).append(it)
     return grouped
+
+
+def low_confidence_misses(
+    *,
+    confidence_threshold: float = 0.7,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Return search_signals rows that are zero-result with low intent confidence.
+
+    Also flags rows whose prompt_hash appears as a thumbs-down in result_feedback
+    (via a cross-DB Python join), making them prime candidates to add to the
+    paraphrase regression test suite.
+
+    Returns [] in MOCK mode or on error.
+    """
+    if _mock_mode():
+        return []
+    try:
+        with _connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    prompt_hash,
+                    vibe,
+                    search_type,
+                    intent_confidence,
+                    intent_rationale,
+                    MAX(ts) AS ts,
+                    COUNT(id) AS search_count
+                FROM search_signals
+                WHERE result_count = 0
+                  AND intent_confidence IS NOT NULL
+                  AND intent_confidence < ?
+                  AND prompt_hash IS NOT NULL
+                GROUP BY prompt_hash
+                ORDER BY ts DESC
+                LIMIT ?
+                """,
+                (float(confidence_threshold), int(limit)),
+            ).fetchall()
+    except Exception:
+        return []
+
+    # Cross-DB thumbs-down lookup from feedback.db (no shared schema, Python join)
+    thumbs_down_hashes: set[str] = set()
+    try:
+        from yonder.config import ROOT as _ROOT
+
+        _fb_path = _ROOT / "feedback.db"
+        if _fb_path.exists():
+            import sqlite3 as _sqlite3
+
+            _fconn = _sqlite3.connect(str(_fb_path), check_same_thread=False)
+            _fconn.row_factory = _sqlite3.Row
+            try:
+                _fb_rows = _fconn.execute(
+                    "SELECT DISTINCT query FROM result_feedback WHERE direction = 'down'"
+                ).fetchall()
+                for fr in _fb_rows:
+                    _q = " ".join((fr["query"] or "").lower().split())[:200]
+                    _h = prompt_hash(_q)
+                    if _h:
+                        thumbs_down_hashes.add(_h)
+            finally:
+                _fconn.close()
+    except Exception:
+        pass
+
+    return [
+        {
+            "prompt_hash": r["prompt_hash"],
+            "vibe": r["vibe"],
+            "search_type": r["search_type"],
+            "intent_confidence": (
+                round(float(r["intent_confidence"]), 4)
+                if r["intent_confidence"] is not None
+                else None
+            ),
+            "intent_rationale": r["intent_rationale"],
+            "search_count": int(r["search_count"] or 0),
+            "ts": float(r["ts"] or 0.0),
+            "thumbs_down": r["prompt_hash"] in thumbs_down_hashes,
+        }
+        for r in rows
+    ]

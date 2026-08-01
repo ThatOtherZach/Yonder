@@ -73,9 +73,15 @@ _STOP_MARKERS = (
     "stop over in",
     "stop-over",
     "make a stop",
+    "make a quick stop",
     "pass through",
+    "passing through",
     "swing through",
     "swing by",
+    "pop into",
+    "with a night in",
+    "hop over to",
+    "drop into",
 )
 _ESCAPE_ONLY = (
     "nonstop",

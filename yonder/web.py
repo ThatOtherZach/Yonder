@@ -62,6 +62,60 @@ _VIBES_PATH = Path(__file__).parent / "vibes.json"
 _vibes_json: str | None = None
 _vibes_v: str | None = None
 
+# ── Intent AI-override cache (prompt_hash → (timestamp, shape)) ───────────────
+# Keeps repeated identical prompts from re-firing the secondary AI call.
+_INTENT_OVERRIDE_CACHE: dict[str, tuple[float, str]] = {}
+_INTENT_OVERRIDE_TTL = 3600.0  # 1 hour
+
+
+async def _ai_shape_override(
+    prompt: str,
+    settings,
+    *,
+    demo: bool = False,
+) -> str | None:
+    """Reclassify an ambiguous prompt via a cheap secondary AI call.
+
+    Returns 'detour', 'escape', or None when the AI is unavailable / fails.
+    Result is cached for 1 hour keyed on prompt SHA-256 hash so repeated
+    identical prompts skip the network round-trip.
+    """
+    import time as _time
+
+    from yonder.vibe_signals import prompt_hash as _ph
+
+    ph = _ph(prompt)
+    if ph:
+        cached = _INTENT_OVERRIDE_CACHE.get(ph)
+        if cached and (_time.time() - cached[0]) < _INTENT_OVERRIDE_TTL:
+            return cached[1]
+
+    if demo or not settings.grok_ready():
+        return None
+
+    try:
+        async with GrokClient(settings) as _grok:
+            raw = await _grok._chat(
+                "You are a travel intent classifier. Reply with exactly one word and nothing else.",
+                (
+                    "Is this travel prompt asking for "
+                    "(a) a stopover/detour trip, "
+                    "(b) a direct flight to a named destination, or "
+                    "(c) an open getaway with no specific destination? "
+                    f'Prompt: "{prompt[:240]}"\n'
+                    "Reply with exactly one word: detour, escape, or getaway."
+                ),
+                temperature=0.0,
+            )
+        word = (raw or "").strip().lower().split()[0] if (raw or "").strip() else ""
+        # "getaway" → detour (open getaway is routed as a detour round-trip)
+        shape: str | None = {"detour": "detour", "escape": "escape", "getaway": "detour"}.get(word)
+        if shape and ph:
+            _INTENT_OVERRIDE_CACHE[ph] = (_time.time(), shape)
+        return shape
+    except Exception:
+        return None
+
 
 def _vibes_data() -> tuple[str, str]:
     """Return (vibes_json_str, content_hash) — loaded once and cached."""
@@ -995,6 +1049,29 @@ async def explore_run(request: Request) -> HTMLResponse:
         )
 
     decision = decide_shape(prompt, force=force, vibe=vibe, demo=bool(mock))
+
+    # Confidence-gated AI fallback: when decide_shape returns a low-confidence
+    # "mix" and the prompt is non-trivial (≥ 6 words), fire a cheap secondary
+    # AI call to reclassify before the pricing path is chosen.
+    if (
+        decision.shape == "mix"
+        and decision.confidence <= 0.65
+        and len(prompt.split()) >= 6
+        and not decision.forced
+    ):
+        try:
+            _ai_override = await _ai_shape_override(prompt, settings, demo=bool(mock))
+            if _ai_override and _ai_override != decision.shape:
+                from yonder.intent import IntentDecision as _IntentDecision
+
+                decision = _IntentDecision(
+                    shape=_ai_override,  # type: ignore[arg-type]
+                    confidence=0.75,
+                    rationale=f"ai-fallback:{decision.rationale}",
+                )
+        except Exception:
+            pass
+
     max_cand = mix_candidate_cap(decision.shape, max_cand_settings)
     notes: list[str] = [decision.shape]
     if save_ban:
@@ -1716,6 +1793,8 @@ async def explore_run(request: Request) -> HTMLResponse:
                 _loop = asyncio.get_running_loop()
                 _sess = click_id or None
                 _ms_label = settings.model_source_label() or None
+                _ic = decision.confidence
+                _ir = decision.rationale
                 if has_esc:
                     esc_tm = escape_override.get("trip_meta") or {}
                     esc_dest = str(
@@ -1725,11 +1804,13 @@ async def explore_run(request: Request) -> HTMLResponse:
                     ).upper()
                     esc_res = escape_override.get("result")
                     esc_n = len(getattr(esc_res, "offers", None) or [])
-                    if len(esc_dest) == 3 and esc_dest.isalpha() and esc_n:
+                    # Always record — including zero-result — so low_confidence_misses
+                    # can surface this prompt for the paraphrase regression suite.
+                    if len(esc_dest) == 3 and esc_dest.isalpha():
                         esc_sig = _uuid.uuid4().hex
                         _loop.run_in_executor(
                             None,
-                            lambda d=esc_dest, n=esc_n, s=esc_sig: record_search(
+                            lambda d=esc_dest, n=esc_n, s=esc_sig, ic=_ic, ir=_ir: record_search(
                                 vibe=vibe,
                                 origin=home_iata,
                                 dest_iata=d,
@@ -1739,15 +1820,20 @@ async def explore_run(request: Request) -> HTMLResponse:
                                 session_hash=_sess,
                                 signal_id=s,
                                 model_source=_ms_label,
+                                intent_confidence=ic,
+                                intent_rationale=ir,
                             ),
                         )
-                        esc_tm["signal_id"] = esc_sig
-                        escape_override["trip_meta"] = esc_tm
+                        if esc_n:
+                            esc_tm["signal_id"] = esc_sig
+                            escape_override["trip_meta"] = esc_tm
                 if has_det:
                     det_res = detour_override.get("result")
                     det_tm = detour_override.get("trip_meta") or {}
                     its = list(getattr(det_res, "itineraries", None) or [])[:5]
                     sig_map: dict[str, str] = {}
+                    _dic = decision.confidence
+                    _dir = decision.rationale
                     for it in its:
                         dest = str(getattr(it, "stop_iata", "") or "").upper()
                         if len(dest) != 3 or not dest.isalpha() or dest in sig_map:
@@ -1756,7 +1842,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                         sig_map[dest] = sid
                         _loop.run_in_executor(
                             None,
-                            lambda d=dest, s=sid: record_search(
+                            lambda d=dest, s=sid, ic=_dic, ir=_dir: record_search(
                                 vibe=vibe,
                                 origin=home_iata,
                                 dest_iata=d,
@@ -1766,12 +1852,59 @@ async def explore_run(request: Request) -> HTMLResponse:
                                 session_hash=_sess,
                                 signal_id=s,
                                 model_source=_ms_label,
+                                intent_confidence=ic,
+                                intent_rationale=ir,
                             ),
                         )
                     if sig_map:
                         det_tm["signal_ids"] = sig_map
                         det_tm["signal_id"] = next(iter(sig_map.values()))
                         detour_override["trip_meta"] = det_tm
+                    elif not has_esc:
+                        # Zero detour itineraries AND no escape side: write a single
+                        # tombstone signal so low_confidence_misses can surface the prompt.
+                        _zero_dest = (
+                            str(det_tm.get("destination") or det_tm.get("stop_iata") or home_iata or "")
+                            .strip().upper()
+                        )
+                        if len(_zero_dest) == 3 and _zero_dest.isalpha():
+                            sid0 = _uuid.uuid4().hex
+                            _loop.run_in_executor(
+                                None,
+                                lambda s=sid0, d=_zero_dest, ic=_dic, ir=_dir: record_search(
+                                    vibe=vibe,
+                                    origin=home_iata,
+                                    dest_iata=d,
+                                    search_type="detour",
+                                    result_count=0,
+                                    prompt=prompt,
+                                    session_hash=_sess,
+                                    signal_id=s,
+                                    model_source=_ms_label,
+                                    intent_confidence=ic,
+                                    intent_rationale=ir,
+                                ),
+                            )
+                # Total failure: both sides failed — write one tombstone with home_iata
+                # so low_confidence_misses can surface the prompt for the test suite.
+                if not has_esc and not has_det and home_iata and len(home_iata) == 3 and home_iata.isalpha():
+                    sid_fail = _uuid.uuid4().hex
+                    _loop.run_in_executor(
+                        None,
+                        lambda s=sid_fail, ic=_ic, ir=_ir: record_search(
+                            vibe=vibe,
+                            origin=home_iata,
+                            dest_iata=home_iata,
+                            search_type=decision.shape,
+                            result_count=0,
+                            prompt=prompt,
+                            session_hash=_sess,
+                            signal_id=s,
+                            model_source=_ms_label,
+                            intent_confidence=ic,
+                            intent_rationale=ir,
+                        ),
+                    )
         except Exception:
             pass
 
@@ -3815,6 +3948,42 @@ async def api_probe_providers() -> dict:
     async with httpx.AsyncClient(timeout=45.0) as client:
         active = await get_registry().probe_active(s, client, force=True)
     return {"active": active, "budgets": budgets_snapshot(s)}
+
+
+@app.get("/admin/intent-misses")
+async def admin_intent_misses(
+    request: Request,
+    threshold: float = 0.7,
+    limit: int = 100,
+) -> JSONResponse:
+    """Return zero-result searches where intent confidence was below threshold.
+
+    Joined against result_feedback to flag any thumbs-down on the same prompt.
+    Use these as candidates to add to the paraphrase regression test suite.
+
+    Session-gated: only accessible from localhost / when TESTING=true.
+    """
+    settings = get_settings()
+    # Simple local-only guard: allow when TESTING mode is on, or the request
+    # comes from localhost (127.0.0.1 / ::1 / forwarded-for absent).
+    client_host = (getattr(request.client, "host", "") or "").split(":")[0]
+    is_local = client_host in ("127.0.0.1", "::1", "localhost", "")
+    if not is_local and not settings.testing:
+        return JSONResponse({"error": "Forbidden"}, status_code=403)
+
+    from yonder.vibe_signals import low_confidence_misses
+
+    misses = low_confidence_misses(
+        confidence_threshold=max(0.0, min(1.0, threshold)),
+        limit=max(1, min(500, limit)),
+    )
+    return JSONResponse(
+        {
+            "threshold": threshold,
+            "count": len(misses),
+            "misses": misses,
+        }
+    )
 
 
 @app.post("/api/byom/test")
