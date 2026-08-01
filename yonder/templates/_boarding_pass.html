@@ -251,16 +251,27 @@
     </div>
     {% if it.legs and it.legs|length >= 1 %}
     <div class="bp-route">
-      <span class="bp-iata">{{ it.legs[0].from_iata }}</span>
-      <span class="bp-plane" aria-hidden="true">✈</span>
-      {% if it.stop_iata and (mode != 'saved' or it.legs|length > 1) %}<span class="bp-iata" style="font-size:1.35rem;opacity:0.85">{{ it.stop_iata }}</span>
-      <span class="bp-plane" aria-hidden="true">✈</span>{% endif %}
-      <span class="bp-iata">{{ (it.legs|last).to_iata }}</span>
+      {% if it.legs|length > 1 %}
+        {# Multi-leg (stopover, multi-stop, rescue): show each from_iata + final to_iata #}
+        {% for leg in it.legs %}
+        <span class="bp-iata{% if not loop.first %} bp-iata-mid{% endif %}"{% if not loop.first %} style="font-size:1.35rem;opacity:0.85"{% endif %}>{{ leg.from_iata }}</span>
+        <span class="bp-plane" aria-hidden="true">✈</span>
+        {% endfor %}
+        <span class="bp-iata">{{ (it.legs|last).to_iata }}</span>
+      {% else %}
+        {# Single leg #}
+        <span class="bp-iata">{{ it.legs[0].from_iata }}</span>
+        <span class="bp-plane" aria-hidden="true">✈</span>
+        {% if it.stop_iata and mode != 'saved' %}<span class="bp-iata" style="font-size:1.35rem;opacity:0.85">{{ it.stop_iata }}</span>
+        <span class="bp-plane" aria-hidden="true">✈</span>{% endif %}
+        <span class="bp-iata">{{ (it.legs|last).to_iata }}</span>
+      {% endif %}
     </div>
     {% endif %}
     <p class="bp-cities">{{ it.title or fallback_title }}</p>
-    {% if it.stay_days %}<p class="bp-stop-days">{{ it.stay_days }} Day Stop</p>{% endif %}
-    {% if it.why %}<p class="bp-why">{{ it.why }}</p>{% endif %}
+    {% if it.rescue %}<p class="bp-why" style="color:var(--accent,#e6b450);font-weight:600">No direct route? Take up to six flights to get you there.</p>{% endif %}
+    {% if it.stay_days and not it.rescue %}<p class="bp-stop-days">{{ it.stay_days }} Day Stop</p>{% endif %}
+    {% if it.why and not it.rescue %}<p class="bp-why">{{ it.why }}</p>{% endif %}
 
     {% if mode == 'saved' %}
     <div class="bp-fields" style="margin-bottom:0.65rem">
@@ -446,12 +457,11 @@
       {% if it.google_flights_url %}
       <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Book full trip ↗</a>
       {% endif %}
-      {% if it.legs and it.legs[0].google_flights_url %}
-      <a class="btn secondary" href="{{ it.legs[0].google_flights_url }}" target="_blank" rel="noopener">Book {{ it.legs[0].from_iata }} → {{ it.legs[0].to_iata }} ↗</a>
+      {% for leg in (it.legs or []) %}
+      {% if leg.google_flights_url %}
+      <a class="btn secondary" href="{{ leg.google_flights_url }}" target="_blank" rel="noopener">Book {{ leg.from_iata }} → {{ leg.to_iata }} ↗</a>
       {% endif %}
-      {% if it.legs|length > 1 and it.legs[1].google_flights_url %}
-      <a class="btn secondary" href="{{ it.legs[1].google_flights_url }}" target="_blank" rel="noopener">Book {{ it.legs[1].from_iata }} → {{ it.legs[1].to_iata }} ↗</a>
-      {% endif %}
+      {% endfor %}
       {% if mode == 'explore' and it.kayak_url %}
       <a class="btn secondary" href="{{ it.kayak_url }}" target="_blank" rel="noopener">Kayak (leg 1) ↗</a>
       {% endif %}

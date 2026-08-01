@@ -445,21 +445,45 @@ async def briefs_for_stops(
 def stops_from_itineraries(
     itineraries: list[Any] | None, *, limit: int = 8
 ) -> list[tuple[str | None, str | None, str | None]]:
-    """(iata, country, city) for Detour boarding passes."""
+    """(iata, country, city) for Detour boarding passes.
+
+    For multi-stop itineraries (kind='multi-stop' or 'rescue'), also extracts
+    the additional intermediate stops from the ``stops`` list so field notes
+    load for every hop, not just the first.
+    """
     out: list[tuple[str | None, str | None, str | None]] = []
     seen: set[str] = set()
-    for it in itineraries or []:
-        code = (getattr(it, "stop_iata", None) or "").upper()
+
+    def _add(iata: str, country: str | None, city: str | None) -> None:
+        code = (iata or "").upper()
         if not code or code in seen:
-            continue
+            return
         seen.add(code)
-        out.append(
-            (
+        out.append((code, country, city))
+
+    for it in itineraries or []:
+        kind = (getattr(it, "kind", None) or "").lower()
+        if kind in ("multi-stop", "rescue"):
+            # Extract all intermediate stops from the stops list first
+            stops_list = getattr(it, "stops", None) or []
+            for s in stops_list:
+                if len(out) >= limit:
+                    break
+                if isinstance(s, dict):
+                    _add(s.get("iata", ""), s.get("country"), s.get("city"))
+                else:
+                    _add(
+                        getattr(s, "iata", ""),
+                        getattr(s, "country", None),
+                        getattr(s, "city", None),
+                    )
+        else:
+            code = (getattr(it, "stop_iata", None) or "").upper()
+            _add(
                 code,
                 getattr(it, "theme_country", None) or getattr(it, "stop_country", None),
                 getattr(it, "stop_city", None),
             )
-        )
         if len(out) >= limit:
             break
     return out

@@ -206,6 +206,11 @@ class AdventureItinerary(BaseModel):
     ground_budget_status: str | None = None  # under | within | over
     ground_budget_line: str | None = None
     ground_rank_delta: float | None = None
+    # Multi-stop: ordered list of intermediate stops (empty for single-stop/direct)
+    # Each entry: {iata, city, country, stay_days}
+    stops: list[dict] = Field(default_factory=list)
+    # True when this card is the rescue fallback chain
+    rescue: bool = False
 
 
 class AdventureResult(BaseModel):
@@ -395,6 +400,339 @@ async def _price_leg(
         google_flights_url=gurl,
         booking_url=gurl,
     )
+
+
+# Well-connected global hubs used as rescue chain candidates (ordered by connectivity)
+_RESCUE_HUBS = [
+    "LHR", "CDG", "FRA", "AMS", "IST", "DXB", "DOH",
+    "SIN", "ICN", "NRT", "LAX", "JFK", "ATL", "ORD",
+]
+
+
+async def _price_multi_stop_chain(
+    req: AdventureRequest,
+    stop_ideas: list[StopoverIdea],
+    *,
+    settings: Settings,
+    include_mock: bool,
+    http: httpx.AsyncClient,
+    only: list[str] | None,
+    fallback_chain: list[str],
+    direct_price: float | None,
+    ground_batch: dict,
+    cancel_id: str | None = None,
+    rescue: bool = False,
+    pricing_name: str | None = None,
+) -> "AdventureItinerary | None":
+    """Price a multi-stop chain: origin → stop1 → stop2 → … → destination.
+
+    Builds N+1 legs with cumulative depart dates from each stop's stay_days.
+    Caps at 5 intermediate stops (6 legs total — affiliate multi-city limit).
+    Honours arrive_by by trimming stays from last stop backwards.
+    Returns None when stop_ideas is empty.
+    """
+    settings = settings or get_settings()
+    if not stop_ideas:
+        return None
+    # Cap at 5 intermediate stops = 6 legs
+    stop_ideas = stop_ideas[:5]
+
+    # Build cumulative dates, trimming to fit arrive_by
+    stays: list[int] = []
+    trimmed: list[StopoverIdea] = []
+    current_date = req.depart_date
+    for idea in stop_ideas:
+        stay = max(req.min_stop_days, min(req.max_stop_days, idea.stay_days))
+        if req.arrive_by:
+            remaining = (req.arrive_by - current_date).days
+            # Need at least min_stop_days per remaining stop after this one
+            remaining_stops_after = len(stop_ideas) - len(trimmed) - 1
+            buffer = req.min_stop_days * remaining_stops_after
+            if remaining < req.min_stop_days + buffer:
+                break  # can't fit this stop; truncate chain
+            stay = min(stay, remaining - buffer)
+            stay = max(req.min_stop_days, stay)
+        stays.append(stay)
+        trimmed.append(idea.model_copy(update={"stay_days": stay}))
+        current_date = current_date + timedelta(days=stay)
+
+    if not trimmed:
+        return None
+
+    # Build leg definitions: (from_iata, to_iata, depart_date)
+    leg_defs: list[tuple[str, str, date]] = []
+    current_date = req.depart_date
+    prev_iata = req.origin
+    for idea, stay in zip(trimmed, stays):
+        leg_defs.append((prev_iata, idea.iata, current_date))
+        current_date = current_date + timedelta(days=stay)
+        prev_iata = idea.iata
+    leg_defs.append((prev_iata, req.destination, current_date))
+
+    # Bail early if the user has already skipped/cancelled before we start pricing.
+    if cancel_id:
+        from yonder.search_cancel import is_cancelled as _is_canc
+        if _is_canc(cancel_id):
+            return None
+
+    # Price all legs concurrently
+    priced_legs: list[PricedLeg] = list(await asyncio.gather(*[
+        _price_leg(
+            fr, to, dep, req,
+            settings=settings, include_mock=include_mock,
+            only=only, http=http, fallback_chain=fallback_chain,
+        )
+        for fr, to, dep in leg_defs
+    ]))
+
+    # Multi-city booking URL covering all legs
+    multi_url = google_flights_multi(
+        [(fr, to, dep) for fr, to, dep in leg_defs],
+        currency=req.currency,
+    )
+
+    # Stops metadata for the new `stops` field (backward-compat: first stop → stop_iata)
+    stops_data = [
+        {
+            "iata": idea.iata,
+            "city": idea.city,
+            "country": idea.country,
+            "stay_days": stay,
+        }
+        for idea, stay in zip(trimmed, stays)
+    ]
+    first_stop = trimmed[0]
+
+    # Combined vibe tags from all stops
+    all_vibe_tags: list[str] = list({
+        tag for idea in trimmed for tag in (idea.vibe_tags or [])
+    })
+
+    # Title: "YVR → Tokyo (3n) → HKG (2n) → Bangkok"
+    title_parts = [format_place(req.origin)]
+    for idea, stay in zip(trimmed, stays):
+        title_parts.append(f"{format_place(idea.iata, idea.city)} ({stay}n)")
+    title_parts.append(format_place(req.destination))
+    title = " → ".join(title_parts)
+
+    errors_in = [lg.error for lg in priced_legs if lg.error]
+    all_priced = all(lg.offer for lg in priced_legs)
+
+    # Notes
+    notes: list[str] = []
+    if rescue:
+        notes.append("No direct route? Take up to six flights to get you there.")
+    stop_summary = ", ".join(
+        f"{idea.city} ({stay}d)" for idea, stay in zip(trimmed, stays)
+    )
+    notes.append(f"Multi-hop via {stop_summary}")
+    notes.append(f"{len(priced_legs)}-leg chain — book each leg separately, self-transfer risk")
+    notes.append(f"Priced via {pricing_name or 'providers'} in {req.currency}")
+
+    kind = "rescue" if rescue else "multi-stop"
+
+    if not all_priced:
+        return _apply_theme(
+            AdventureItinerary(
+                kind=kind,
+                title=title,
+                total_price=None,
+                currency=req.currency,
+                stop_city=first_stop.city,
+                stop_iata=first_stop.iata,
+                stay_days=first_stop.stay_days,
+                why=first_stop.why,
+                vibe_tags=all_vibe_tags,
+                legs=priced_legs,
+                adventure_score=0.0,
+                notes=notes + (
+                    [f"Pricing incomplete: {'; '.join(errors_in[:2])}"]
+                    if errors_in else []
+                ),
+                google_flights_url=multi_url,
+                booking_url=multi_url,
+                theme_country=first_stop.country,
+                stops=stops_data,
+                rescue=rescue,
+            )
+        )
+
+    total = round(sum(float(lg.offer.price) for lg in priced_legs if lg.offer), 2)
+    cur = req.currency
+    delta = (total - direct_price) if direct_price is not None else None
+
+    # Ground cost for first stop only (multi-stop ground totals are complex)
+    ground_fields: dict = {}
+    col_delta = 0.0
+    try:
+        from yonder.daily_costs import compare_for_stop, settings_ground_fields
+
+        gcmp = (
+            compare_for_stop(
+                ground_batch, stop_iata=first_stop.iata, stay_days=first_stop.stay_days
+            )
+            if ground_batch
+            else None
+        )
+        if gcmp:
+            col_delta = float(gcmp.rank_delta or 0.0)
+            ground_fields = {
+                "ground_daily_stop": gcmp.daily_stop,
+                "ground_daily_origin": gcmp.daily_origin,
+                "ground_total": gcmp.ground_total,
+                "ground_display": (
+                    f"+{gcmp.display_ground} "
+                    f"({gcmp.display_daily_stop} per Day for {first_stop.stay_days} Days)"
+                ),
+                "ground_compare_line": gcmp.ground_compare_line,
+                "ground_budget_status": gcmp.budget_status,
+                "ground_budget_line": gcmp.budget_line or None,
+                "ground_rank_delta": col_delta,
+            }
+    except Exception:
+        pass
+
+    if delta is not None and delta <= 0:
+        notes.append(
+            f"Flight signal {format_approx(abs(delta), cur)} under direct (same source)"
+        )
+    elif delta is not None and direct_price:
+        notes.append(
+            f"Flight signal {format_approx(delta, cur)} over direct "
+            f"(~{delta / max(direct_price, 1) * 100:.0f}% multi-hop premium)"
+        )
+
+    score = _adventure_score(first_stop, total, direct_price, col_rank_delta=col_delta)
+    # Bonus for multi-stop — more adventurous by definition
+    score += len(trimmed) * 5.0
+    tot_pd = price_display(total, cur, vs_delta=delta)
+
+    all_in = None
+    if ground_fields.get("ground_total") is not None:
+        all_in = format_approx(total + float(ground_fields["ground_total"]), cur)
+        ground_fields["all_in_display"] = all_in
+
+    return _apply_theme(
+        AdventureItinerary(
+            kind=kind,
+            title=title,
+            total_price=total,
+            currency=cur,
+            stop_city=first_stop.city,
+            stop_iata=first_stop.iata,
+            stay_days=first_stop.stay_days,
+            why=first_stop.why,
+            vibe_tags=all_vibe_tags,
+            legs=priced_legs,
+            vs_direct_delta=round(delta, 2) if delta is not None else None,
+            adventure_score=round(score, 1),
+            notes=notes,
+            bookable_separately=True,
+            google_flights_url=multi_url,
+            booking_url=multi_url,
+            display_price=tot_pd.full,
+            display_price_base=tot_pd.base,
+            price_sign=tot_pd.sign or None,
+            price_glyph=tot_pd.glyph or None,
+            price_tone=tot_pd.tone,
+            theme_country=first_stop.country,
+            stops=stops_data,
+            rescue=rescue,
+            **ground_fields,
+        )
+    )
+
+
+async def _try_rescue_chain(
+    req: AdventureRequest,
+    *,
+    settings: Settings | None = None,
+    include_mock: bool = False,
+    http: httpx.AsyncClient,
+    only: list[str] | None,
+    fallback_chain: list[str],
+    pricing_name: str | None,
+    cancel_id: str | None = None,
+    max_legs: int = 6,
+    rescue_budget: float = 25.0,
+) -> "AdventureItinerary | None":
+    """Try hub chains when direct + single-stop pricing both failed.
+
+    Attempts progressively longer chains through well-known connecting hubs:
+      1 hub  → 2 legs  (origin → hub → dest)
+      2 hubs → 3 legs
+      …
+      5 hubs → 6 legs  (the affiliate multi-city hard cap)
+
+    ``max_legs`` controls the maximum chain length (default 6).  ``cancel_id``
+    is checked before every attempt; ``rescue_budget`` (seconds, default 25) is
+    a hard wall-clock cutoff — once exceeded the search returns whatever it has.
+    Chains are tried shortest-first; the first successful pricing is returned.
+    The number of permutations tried per length is bounded to keep runtime
+    within the budget even when providers are slow.
+    """
+    import itertools
+    import time as _time
+
+    settings = settings or get_settings()
+
+    from yonder.search_cancel import is_cancelled as _is_canc
+
+    o, d = req.origin.upper(), req.destination.upper()
+    hubs = [h for h in _RESCUE_HUBS if h != o and h != d]
+    # intermediate stops = total legs − 1; cap at 5 (= 6 legs, affiliate limit)
+    max_hubs = min(max_legs - 1, 5)
+
+    def _idea_for(iata: str) -> StopoverIdea:
+        seed = next((s for s in SEED_STOPOVERS if s["iata"] == iata), None)
+        return StopoverIdea(
+            iata=iata,
+            city=(seed["city"] if seed else iata),
+            stay_days=1,  # transit — minimum stay
+            why="rescue hub connection",
+            vibe_tags=list(seed.get("vibe_tags", [])) if seed else [],
+            country=(seed.get("country") if seed else None),
+            source="rescue",
+        )
+
+    # Per-length caps: shorter chains are tried more exhaustively; longer chains
+    # are bounded so the total search stays within the rescue_budget wall time.
+    _per_len_limit: dict[int, int] = {1: 10, 2: 10, 3: 8, 4: 5, 5: 3}
+
+    deadline = _time.monotonic() + rescue_budget
+
+    for n_hubs in range(1, max_hubs + 1):
+        limit = _per_len_limit.get(n_hubs, 2)
+        attempted = 0
+        for combo in itertools.permutations(hubs, n_hubs):
+            # Hard budget check — bail out if wall clock exceeded.
+            if _time.monotonic() >= deadline:
+                return None
+            # Respect user Skip / cancellation signal.
+            if cancel_id and _is_canc(cancel_id):
+                return None
+            if attempted >= limit:
+                break
+            attempted += 1
+            ideas = [_idea_for(h) for h in combo]
+            result = await _price_multi_stop_chain(
+                req,
+                ideas,
+                settings=settings,
+                include_mock=include_mock,
+                http=http,
+                only=only,
+                fallback_chain=fallback_chain,
+                direct_price=None,
+                ground_batch={},
+                cancel_id=cancel_id,
+                rescue=True,
+                pricing_name=pricing_name,
+            )
+            if result and result.total_price is not None:
+                return result
+
+    return None
 
 
 def _adventure_score(
@@ -776,11 +1114,19 @@ async def plan_adventure(
     req: AdventureRequest,
     ideas: list[StopoverIdea],
     *,
+    named_stop_chain: list[StopoverIdea] | None = None,
     settings: Settings | None = None,
     include_mock: bool = False,
     cancel_id: str | None = None,
     exclude_iatas: set[str] | None = None,
 ) -> AdventureResult:
+    """Plan an adventure itinerary.
+
+    ``named_stop_chain`` — when the user explicitly named 2+ intermediate cities
+    in the prompt (e.g. "stopping in Tokyo and Hong Kong"), pass those as an
+    ordered list of StopoverIdeas.  A multi-stop itinerary covering all of them
+    in sequence will be priced first and prepended to the results.
+    """
     settings = settings or get_settings()
     trip_kind = (req.trip_kind or "detour").lower().strip()
     if req.origin.upper() == req.destination.upper():
@@ -1132,6 +1478,33 @@ async def plan_adventure(
                 )
             )
 
+        # ── Multi-stop chain: user named 2+ intermediate cities ────────────────
+        # Price before single-stop alternatives so it leads the results.
+        if named_stop_chain and len(named_stop_chain) >= 2:
+            if not (cancel_id and is_cancelled(cancel_id)):
+                try:
+                    ms_it = await _price_multi_stop_chain(
+                        req,
+                        named_stop_chain,
+                        settings=settings,
+                        include_mock=include_mock,
+                        http=http,
+                        only=only,
+                        fallback_chain=fallback_chain,
+                        direct_price=direct_price,
+                        ground_batch=ground_batch,
+                        cancel_id=cancel_id,
+                        rescue=False,
+                        pricing_name=pricing_name,
+                    )
+                    if ms_it is not None:
+                        itineraries.insert(0, ms_it)
+                        errors.append(
+                            f"Multi-stop chain: {' → '.join(s.iata for s in named_stop_chain)}"
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"Multi-stop chain pricing error: {exc}")
+
         # At most five ideas priced per search — sequential so Skip can stop mid-list
         ideas = ideas[: max(2, min(5, req.max_candidates))]
         for idea in ideas:
@@ -1152,6 +1525,46 @@ async def plan_adventure(
         ):
             errors.append(f"Past soft aim (~{aim:.0f}s) — still finished pricing")
 
+        # ── Rescue routing ──────────────────────────────────────────────────────
+        # When no normally-priced itinerary succeeded, attempt hub chains (up to
+        # 6 legs) as a last resort. Skipped for getaways (no fixed destination).
+        #
+        # VIBE GATE: rescue is an AI-proposed multi-hop so it must be gated.
+        # - Wander vibes (adventure, chaotic, budget, slow-travel …) → allowed.
+        # - Comfort vibes (luxury, romantic, relaxing …) prefer clean direct
+        #   routes; rescue chains don't fit their intent → blocked.
+        # - Exception: user explicitly named 2+ stops (named_stop_chain) →
+        #   rescue is also allowed even for comfort vibes, because the traveler
+        #   has already opted into a multi-hop journey.
+        from yonder.intent import is_wander_vibe as _is_wander_vibe
+        _rescue_allowed = _is_wander_vibe(req.vibe) or bool(
+            named_stop_chain and len(named_stop_chain) >= 2
+        )
+        priced_so_far = [i for i in itineraries if i.total_price is not None]
+        if (
+            not priced_so_far
+            and not _is_getaway(req)
+            and not (cancel_id and is_cancelled(cancel_id))
+            and req.origin.upper() != req.destination.upper()
+            and _rescue_allowed
+        ):
+            try:
+                rescue_it = await _try_rescue_chain(
+                    req,
+                    settings=settings,
+                    include_mock=include_mock,
+                    http=http,
+                    only=only,
+                    fallback_chain=fallback_chain,
+                    pricing_name=pricing_name,
+                    cancel_id=cancel_id,
+                )
+                if rescue_it is not None:
+                    itineraries.append(rescue_it)
+                    errors.append("Rescue chain: no direct route — chained via hubs")
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"Rescue routing error: {exc}")
+
     complete = [i for i in itineraries if i.total_price is not None]
     # Never surface banned stops (prior Saves / already shown)
     if ban:
@@ -1160,19 +1573,26 @@ async def plan_adventure(
             for i in complete
             if (i.stop_iata or "").upper() not in ban
         ]
-    # Rank cheapest → most expensive; one package per destination city
+    # Rank cheapest → most expensive; one package per destination city.
+    # Multi-stop and rescue cards use their title as the dedup key since
+    # they may share stop_iata with single-stop alternatives.
     complete.sort(key=lambda i: (i.total_price or 1e12, -i.adventure_score))
     top: list[AdventureItinerary] = []
     seen_cities: set[str] = set()
     for it in complete:
-        city_key = (
-            (it.stop_iata or "").upper()
-            or (it.stop_city or "").strip().lower()
-            or it.title.strip().lower()
-        )
+        if it.kind in ("multi-stop", "rescue"):
+            # Multi-stop/rescue cards use title as dedup key so they don't
+            # collapse with single-stop alternatives at the same first stop.
+            city_key = it.title.strip().lower()
+        else:
+            city_key = (
+                (it.stop_iata or "").upper()
+                or (it.stop_city or "").strip().lower()
+                or it.title.strip().lower()
+            )
         if not city_key or city_key in seen_cities:
             continue
-        if ban and (it.stop_iata or "").upper() in ban:
+        if ban and (it.stop_iata or "").upper() in ban and it.kind not in ("multi-stop", "rescue"):
             continue
         seen_cities.add(city_key)
         top.append(it)

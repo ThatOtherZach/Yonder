@@ -1540,43 +1540,46 @@ async def explore_run(request: Request) -> HTMLResponse:
                 req, exclude_iatas=exclude_iatas, shuffle=is_refresh
             )
 
-        # Pin user-named stop as first candidate when it's not already present.
-        # "stop over in Tokyo", "layover in Tokyo", "stopover in Tokyo" etc.
-        # are parsed by extract_named_stop; if we can map the city to an IATA
-        # we force it to the front so it always gets priced.
+        # Pin user-named stops as first candidates and build multi-stop chain.
+        # Handles single: "stop over in Tokyo" → pin Tokyo as first idea.
+        # Handles multi: "stopping in Tokyo and Hong Kong" → pin both AND pass
+        # named_stop_chain so plan_adventure prices them as one chained itinerary.
+        named_stop_chain: list = []
         if req is not None and ideas is not None:
-            from yonder.intent import extract_named_stop as _extract_named_stop
-            _pin_city = _extract_named_stop(prompt)
-            if _pin_city:
+            from yonder.intent import extract_named_stops as _extract_named_stops
+            _pin_cities = _extract_named_stops(prompt)
+            if _pin_cities:
                 from yonder.airports import iata_for_city as _iata_for_city
                 from yonder.airports import city_country_for_iata as _cc_for_iata
                 from yonder.adventure import StopoverIdea as _StopoverIdea
-                _pin_raw = _pin_city.upper()
-                _pin_iata = (
-                    _pin_raw
-                    if (len(_pin_raw) == 3 and _pin_raw.isalpha())
-                    else _iata_for_city(_pin_city)
-                )
                 _orig = (req.origin or "").upper()
                 _dest = (req.destination or "").upper()
-                if (
-                    _pin_iata
-                    and _pin_iata not in (_orig, _dest)
-                    and not any((i.iata or "").upper() == _pin_iata for i in ideas)
-                ):
-                    _cc = _cc_for_iata(_pin_iata)
-                    ideas.insert(
-                        0,
-                        _StopoverIdea(
-                            iata=_pin_iata,
-                            city=(_cc[0] if _cc else _pin_city.title()),
-                            country=(_cc[1] if _cc else None),
-                            stay_days=max(min_stop, min(max_stop, 3)),
-                            why="You asked to stop here",
-                            vibe_tags=[vibe] if vibe else [],
-                            source="user",
-                        ),
+                _insert_pos = 0  # insert pinned stops at front in order
+                for _pin_city in _pin_cities:
+                    _pin_raw = _pin_city.upper()
+                    _pin_iata = (
+                        _pin_raw
+                        if (len(_pin_raw) == 3 and _pin_raw.isalpha())
+                        else _iata_for_city(_pin_city)
                     )
+                    if not _pin_iata or _pin_iata in (_orig, _dest):
+                        continue
+                    _cc = _cc_for_iata(_pin_iata)
+                    _idea = _StopoverIdea(
+                        iata=_pin_iata,
+                        city=(_cc[0] if _cc else _pin_city.title()),
+                        country=(_cc[1] if _cc else None),
+                        stay_days=max(min_stop, min(max_stop, 3)),
+                        why="You asked to stop here",
+                        vibe_tags=[vibe] if vibe else [],
+                        source="user",
+                    )
+                    # Add to the named_stop_chain (for multi-stop itinerary)
+                    named_stop_chain.append(_idea)
+                    # Also pin in ideas list so the stop is priced individually too
+                    if not any((i.iata or "").upper() == _pin_iata for i in ideas):
+                        ideas.insert(_insert_pos, _idea)
+                        _insert_pos += 1
 
         assert req is not None
         if search_id and is_cancelled(search_id) and not ideas:
@@ -1586,6 +1589,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         result = await plan_adventure(
             req,
             ideas,
+            named_stop_chain=named_stop_chain if len(named_stop_chain) >= 2 else None,
             settings=settings,
             include_mock=mock,
             cancel_id=search_id or None,

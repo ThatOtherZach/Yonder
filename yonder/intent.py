@@ -235,6 +235,98 @@ def extract_named_stop(prompt: str) -> str | None:
     return _clean_city(m.group(1)) if m else None
 
 
+# Matches "stopping in X and Y" / "stopping over in X and Y" / "via X and Y"
+# Used for multi-stop extraction when user names two consecutive stops.
+_STOP_IN_MULTI = re.compile(
+    r"\b(?:"
+    r"stopp?(?:ing)?\s+(?:(?:off|over)\s+)?in|"
+    r"stop\s+in|"
+    r"via\s+(?:city\s+of\s+)?"
+    r")\s*"
+    r"([A-Za-z][A-Za-z\s.'-]{1,28}?)"
+    r"\s*(?:,\s*(?:and\s+)?|\band\s+)"
+    r"([A-Za-z][A-Za-z\s.'-]{1,28})\b",
+    re.I,
+)
+
+
+def extract_named_stops(prompt: str) -> list[str]:
+    """Return an ordered list of cities explicitly named as mid-route stops.
+
+    Handles:
+    - "stopping in Tokyo and Hong Kong" / "stopping over in X and Y"
+    - "via X and Y"
+    - Multiple separate stop markers: "stop over in X … layover in Y"
+    - "stop off in X then go to Y" (X only; Y is the destination)
+
+    Returns empty list when no named stops found.
+    Returns a single-element list when one stop is found (same as
+    extract_named_stop but in list form).
+    """
+    p = (prompt or "").strip()
+    if not p:
+        return []
+
+    stops: list[str] = []
+    seen: set[str] = set()
+
+    def _add(raw: str) -> None:
+        c = _clean_city(raw)
+        if c and c not in seen:
+            stops.append(c)
+            seen.add(c)
+
+    # Pattern: "stopping in X and Y", "via X and Y" — two stops in one phrase
+    for m in _STOP_IN_MULTI.finditer(p):
+        _add(m.group(1))
+        _add(m.group(2))
+
+    # Individual stop markers (may span multi-word city names).
+    # Search iteratively rather than using finditer: the _NAMED_STOP regex is
+    # greedy and its captured group includes spaces, so a single match can
+    # consume "Tokyo then layover in Singapore" as one big city name.  We
+    # advance past the CLEANED city (which _clean_city() already truncates at
+    # stop-words like "then" / "and") so the next marker is not swallowed.
+    pos = 0
+    while pos < len(p):
+        m = _NAMED_STOP.search(p, pos)
+        if not m:
+            break
+        raw_city = m.group(1)
+        c = _clean_city(raw_city)
+        if c and c not in seen:
+            stops.append(c)
+            seen.add(c)
+        # Advance past where the cleaned city actually ends in the source text.
+        # - When c is truthy: advance by len(c) chars from the group start so
+        #   multi-word names (e.g. "Hong Kong" = 9 chars) are handled correctly
+        #   and subsequent markers in the same string are not swallowed.
+        # - When c is None / falsy (e.g. "stop over in LA" where _clean_city
+        #   filters the two-letter token): advance past only the first word of
+        #   the captured group.  Advancing past m.end() would swallow any valid
+        #   markers that follow (e.g. "layover in Tokyo" after "stop over in LA").
+        city_start = m.start(1)
+        if c:
+            pos = city_start + len(c)
+        else:
+            # Skip just the first word of the uncleanable token; anything
+            # that follows (including the next stop marker) stays reachable.
+            first_word = (raw_city or "").split()[0] if raw_city else ""
+            pos = city_start + max(1, len(first_word))
+
+    return stops
+
+
+def is_wander_vibe(vibe: str | None) -> bool:
+    """Return True when the vibe is a wander/adventure style that allows multi-hop itineraries.
+
+    Wander vibes (adventure, chaotic, budget, slow-travel, etc.) are willing to
+    chain multiple hops — comfort vibes (luxury, romantic, relaxing) prefer
+    clean direct routes and should stay single-stop/direct.
+    """
+    return (vibe or "").strip().lower() in _WANDER_VIBES
+
+
 def looks_like_stop_off_route(prompt: str) -> bool:
     """True when the prompt uses an explicit 'stop off in X then go to Y' pattern,
     or a swing-by / pass-through variant.
