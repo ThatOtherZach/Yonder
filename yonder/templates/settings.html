@@ -348,29 +348,6 @@
               <p class="xp-bar-label" id="xp-bar-label">Maximum rank — you've been everywhere. ✦</p>
               {% endif %}
             </div>
-            <div class="xp-ladder" id="xp-ladder">
-              {% set ns = namespace(prev=None, next_rung=None) %}
-              {% for rung in xp_profile.ladder %}
-                {% if rung.current %}
-                  {% if not loop.first %}{% set ns.prev = xp_profile.ladder[loop.index0 - 1] %}{% endif %}
-                  {% if not loop.last %}{% set ns.next_rung = xp_profile.ladder[loop.index0 + 1] %}{% endif %}
-                {% endif %}
-              {% endfor %}
-              {% if ns.prev %}
-              <div class="xp-ladder-row">
-                <span class="xp-ladder-dot"></span>
-                <span>{{ ns.prev.emoji }} {{ ns.prev.rank }}</span>
-                <span class="xp-ladder-xp">{{ ns.prev.xp }} XP</span>
-              </div>
-              {% endif %}
-              {% if ns.next_rung %}
-              <div class="xp-ladder-row">
-                <span class="xp-ladder-dot"></span>
-                <span>{{ ns.next_rung.emoji }} {{ ns.next_rung.rank }}</span>
-                <span class="xp-ladder-xp">{{ ns.next_rung.xp }} XP</span>
-              </div>
-              {% endif %}
-            </div>
           </div>
         </div>
         {% endif %}
@@ -384,14 +361,14 @@
           </p>
           <div class="chip-row" id="xp-visited-chips" aria-label="Visited countries">
             {% for code in visited_defaults or [] %}
-              <span class="chip visited">{{ code|flag_emoji }} {{ code }}</span>
+              <span class="chip visited" title="{{ code }}">{{ code|flag_emoji }}</span>
             {% else %}
               <span class="muted" style="font-size:0.8rem">No stamps yet</span>
             {% endfor %}
           </div>
           <div class="chip-row" id="xp-avoid-chips" aria-label="Avoid countries">
             {% for code in avoid_defaults or [] %}
-              <span class="chip avoid">{{ code|flag_emoji }} {{ code }}</span>
+              <span class="chip avoid" title="{{ code }}">{{ code|flag_emoji }}</span>
             {% else %}
               <span class="muted" style="font-size:0.8rem">No avoid countries</span>
             {% endfor %}
@@ -999,7 +976,7 @@
         if (vc) {
           if (visited.length) {
             vc.innerHTML = visited.map(function (c) {
-              return '<span class="chip visited">' + flagEmoji(c) + ' ' + c + '</span>';
+              return '<span class="chip visited" title="' + c + '">' + flagEmoji(c) + '</span>';
             }).join('');
           } else {
             vc.innerHTML = '<span class="muted" style="font-size:0.8rem">No stamps yet</span>';
@@ -1010,7 +987,7 @@
         if (ac) {
           if (avoid.length) {
             ac.innerHTML = avoid.map(function (c) {
-              return '<span class="chip avoid">' + flagEmoji(c) + ' ' + c + '</span>';
+              return '<span class="chip avoid" title="' + c + '">' + flagEmoji(c) + '</span>';
             }).join('');
           } else {
             ac.innerHTML = '<span class="muted" style="font-size:0.8rem">No avoid countries</span>';
@@ -1021,6 +998,7 @@
         if (cvb) cvb.hidden = visited.length === 0;
         var cab = document.getElementById("clear-avoid-btn");
         if (cab) cab.hidden = avoid.length === 0;
+        applyTwemoji();
       }
 
       (function wireClearButtons() {
@@ -1320,6 +1298,21 @@
         .catch(function () {
           body.innerHTML = '<p class="muted" style="font-size:0.88rem">Could not load usage data.</p>';
         });
+    })();
+
+    /* Twemoji — renders flag emoji as images cross-platform */
+    (function () {
+      function applyTwemoji() {
+        if (typeof twemoji === "undefined") return;
+        var rows = document.querySelectorAll(".chip-row");
+        rows.forEach(function (el) { twemoji.parse(el, { folder: "svg", ext: ".svg" }); });
+      }
+      window.applyTwemoji = applyTwemoji;
+      var s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/twemoji@14/dist/twemoji.min.js";
+      s.crossOrigin = "anonymous";
+      s.onload = applyTwemoji;
+      document.head.appendChild(s);
     })();
   </script>
 {% endblock %}
