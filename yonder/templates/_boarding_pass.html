@@ -344,7 +344,39 @@
     {% set show_all_in = it.all_in_display and not cf.pending %}
     {% set has_col = it.ground_display or it.ground_compare_line or it.ground_budget_line or show_all_in %}
     {% if mode in ('explore', 'saved') %}
-      {% if it.stop_iata or has_col %}
+      {# ── Multi-stop / rescue: one field-note-slot per intermediate stop ── #}
+      {% if it.kind in ('multi-stop', 'rescue') and it.stops %}
+        {% for _ms in it.stops %}
+        {% set _ms_iata = (_ms.iata if _ms is mapping else _ms.iata) | upper %}
+        <div
+          class="place-book field-note-inset field-note-slot is-loading"
+          data-iata="{{ _ms_iata }}"
+          data-country="{{ (_ms.country if _ms is mapping else _ms.country) or '' }}"
+          data-city="{{ (_ms.city if _ms is mapping else _ms.city) or '' }}"
+          data-role="stopover"
+          data-vibe="{{ ((s.vibe if s else '') or det_vibe) | e }}"
+          data-col-ground=""
+          data-col-compare=""
+          data-col-budget=""
+          data-col-budget-status=""
+          data-col-allin=""
+        >
+          <div class="pb-story-body is-loading">
+            <span class="pb-tag">Field note</span>
+            <div class="pb-fn-loading">
+              <div class="pb-fn-bar-track"><div class="pb-fn-bar-fill"></div></div>
+              <div class="pb-fn-promo"></div>
+            </div>
+          </div>
+          <button type="button" class="pb-toggle" aria-expanded="false" hidden>
+            <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
+            <span class="pb-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="pb-details" hidden><div class="pb-grid pb-mesh-grid"></div></div>
+        </div>
+        {% endfor %}
+      {# ── Single-stop / stopover: original single slot ── #}
+      {% elif it.stop_iata or has_col %}
         {% set has_more = (pb and (pb.culture or pb.food or pb.caution)) or has_col %}
         <div
           class="place-book field-note-inset field-note-slot{% if it.stop_iata and not pb %} is-loading{% endif %}"
