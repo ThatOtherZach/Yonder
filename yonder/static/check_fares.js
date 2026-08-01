@@ -102,11 +102,14 @@
     return qs;
   }
 
-  /** Promote a button to the "Aviasales ↗" affiliate state. */
+  /** Promote a button to the "ORG → DST ↗" affiliate state. */
   function promoteButton(btn, url) {
+    var slot = btn.closest(".cf-slot");
+    var origin = slot && slot.dataset.cfOrigin;
+    var dest = slot && slot.dataset.cfDest;
     btn.disabled = false;
     btn.classList.remove("is-busy");
-    btn.textContent = "Aviasales \u2197";
+    btn.textContent = (origin && dest ? origin + " \u2192 " + dest : "Aviasales") + " \u2197";
     btn.dataset.cfSearchUrl = url;
   }
 
@@ -268,7 +271,7 @@
     a.href = url;
     a.target = "_blank";
     a.rel = "noopener";
-    a.textContent = "Aviasales \u2197";
+    a.textContent = (d.cfOrigin && d.cfDest ? d.cfOrigin + " \u2192 " + d.cfDest : "Aviasales") + " \u2197";
     actions.appendChild(a);
   }
 })();
