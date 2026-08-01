@@ -361,14 +361,14 @@
           </p>
           <div class="chip-row" id="xp-visited-chips" aria-label="Visited countries">
             {% for code in visited_defaults or [] %}
-              <span class="chip visited" title="{{ code }}">{{ code|flag_emoji }}</span>
+              <span class="chip visited">{{ code|flag_emoji }} {{ code }}</span>
             {% else %}
               <span class="muted" style="font-size:0.8rem">No stamps yet</span>
             {% endfor %}
           </div>
           <div class="chip-row" id="xp-avoid-chips" aria-label="Avoid countries">
             {% for code in avoid_defaults or [] %}
-              <span class="chip avoid" title="{{ code }}">{{ code|flag_emoji }}</span>
+              <span class="chip avoid">{{ code|flag_emoji }} {{ code }}</span>
             {% else %}
               <span class="muted" style="font-size:0.8rem">No avoid countries</span>
             {% endfor %}
@@ -976,7 +976,7 @@
         if (vc) {
           if (visited.length) {
             vc.innerHTML = visited.map(function (c) {
-              return '<span class="chip visited" title="' + c + '">' + flagEmoji(c) + '</span>';
+              return '<span class="chip visited">' + flagEmoji(c) + ' ' + c + '</span>';
             }).join('');
           } else {
             vc.innerHTML = '<span class="muted" style="font-size:0.8rem">No stamps yet</span>';
@@ -987,7 +987,7 @@
         if (ac) {
           if (avoid.length) {
             ac.innerHTML = avoid.map(function (c) {
-              return '<span class="chip avoid" title="' + c + '">' + flagEmoji(c) + '</span>';
+              return '<span class="chip avoid">' + flagEmoji(c) + ' ' + c + '</span>';
             }).join('');
           } else {
             ac.innerHTML = '<span class="muted" style="font-size:0.8rem">No avoid countries</span>';
