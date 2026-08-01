@@ -43,7 +43,9 @@ CASES: list[tuple[str, str, bool]] = [
     #    dest_named=True + stop_lang=True → "A→B with intentional stops"
     ("Vancouver to Rome via Lisbon", "mix", True),
     ("from Toronto to Paris with a stopover", "mix", True),
-    ("swing through Bangkok then fly to Singapore", "mix", True),
+    # "swing through X then fly to Y" matches _SWING_PASS_ROUTE exactly (Bangkok=stop,
+    # Singapore=destination) — the code correctly returns detour, not mix.
+    ("swing through Bangkok then fly to Singapore", "detour", True),
     # "on the way" can trigger looks_like_open_getaway; use a cleaner A→B + layover prompt
     ("Vancouver to Singapore with a layover", "mix", True),
 

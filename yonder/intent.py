@@ -478,6 +478,14 @@ def decide_shape(
     if dest_named and (stop_off_route or named_stop):
         return IntentDecision("detour", 0.87, "stop-off route: named mid-stop → destination")
 
+    # Row: named stop found even when city extraction missed the full A→B pair.
+    # This happens when a verb ("fly", "flying") precedes the origin city, causing
+    # _CITY_TO_CITY to capture e.g. "fly Vancouver" as group-1 which _clean_city
+    # then nulls out (stopword). An explicitly named stop city is a strong
+    # detour signal on its own — "fly Vancouver to Bangkok stopping over in Tokyo".
+    if named_stop:
+        return IntentDecision("detour", 0.82, "named mid-stop → detour (city extraction missed A→B)")
+
     # Row: origin + destination + explicit stop markers → mix (directs AND
     # the named-stop packages both make sense)
     if dest_named and stop_lang:
