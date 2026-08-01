@@ -177,42 +177,47 @@
     {# ——— Product ad widget ——— #}
     {% include "_product_ad.html" %}
 
-    {# ——— Field notes ——— #}
+    {# ——— Field notes — same HTML structure as _boarding_pass.html field-note-inset ——— #}
     {% if place_books %}
       {# Escape: one note for the destination #}
       {% if share.kind == 'escape' %}
         {% set q = (share.payload or {}).get('query') or {} %}
         {% set pb = place_books.get((q.destination or '').upper()) %}
         {% if pb %}
-        {% include "_field_note_card.html" ignore missing %}
-        <div class="place-book"{% if share_vibe %} style="--bp-accent: {{ share_vibe.color }}"{% endif %}>
-          <span class="pb-tag">Field note</span>
-          <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
-          {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
-          {% set pb_acts = pb.activity_links or [] %}
-          {% set pb_airport_trains = airport_train_for(q.destination) if q.destination else [] %}
-          {% if pb.facts or pb_acts or pb_airport_trains %}
-          <div class="pb-fast-facts" aria-label="Fast facts">
-            {% for f in (pb.facts or [])[:2 if pb_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
-            {% for l in pb_acts %}<a class="pb-fact pb-fact-link" href="{{ l.url }}" target="_blank" rel="noopener sponsored">{{ l.emoji }} {{ l.title }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
-            {% for t in pb_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
-          </div>
-          {% endif %}
-          {% set pb_tagline = pb.tagline or pb.era_note or pb.vibe %}
-          {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
-          {% if pb.culture or pb.food or pb.caution %}
-          <button type="button" class="pb-toggle" aria-expanded="false">
-            <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
-            <span class="pb-chevron" aria-hidden="true">▾</span>
-          </button>
-          <div class="pb-details" hidden>
-            <div class="pb-grid pb-mesh-grid">
-              {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
-              {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
-              {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
+        {% set _tagline = pb.tagline or pb.era_note or pb.vibe %}
+        <div class="card" style="padding:1rem;overflow:hidden;">
+          <div class="place-book field-note-inset"{% if share_vibe %} style="--bp-accent: {{ share_vibe.color }}"{% endif %}>
+            <div class="pb-story-body">
+              <span class="pb-tag">Field note</span>
+              <div class="pb-title-line">
+                <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+                {% if _tagline %}<p class="pb-closer">{{ _tagline }}</p>{% endif %}
+              </div>
+              {% if pb.subtitle and _tagline %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
+              {% set pb_acts = pb.activity_links or [] %}
+              {% set pb_airport_trains = airport_train_for(q.destination) if q.destination else [] %}
+              {% if pb.facts or pb_acts or pb_airport_trains %}
+              <div class="pb-fast-facts" aria-label="Fast facts">
+                {% for f in (pb.facts or [])[:2 if pb_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
+                {% for l in pb_acts %}<a class="pb-fact pb-fact-link" href="{{ l.url }}" target="_blank" rel="noopener sponsored">{{ l.emoji }} {{ l.title }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+                {% for t in pb_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+              </div>
+              {% endif %}
             </div>
+            {% if pb.culture or pb.food or pb.caution %}
+            <button type="button" class="pb-toggle" aria-expanded="false">
+              <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
+              <span class="pb-chevron" aria-hidden="true">▾</span>
+            </button>
+            <div class="pb-details" hidden>
+              <div class="pb-grid pb-mesh-grid">
+                {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
+                {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
+                {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
+              </div>
+            </div>
+            {% endif %}
           </div>
-          {% endif %}
         </div>
         {% endif %}
 
@@ -228,34 +233,40 @@
           {% set pb = place_books.get(code) %}
           {% if pb and code not in shown.iatas %}
             {% set shown.iatas = shown.iatas + [code] %}
-        <div class="place-book" style="{% if it.theme_primary %}--bp-accent: {{ it.theme_primary }};{% endif %}{% if not loop.first %}margin-top:0.75rem{% endif %}">
-          <span class="pb-tag">Field note · {{ iata }}</span>
-          <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
-          {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
-          {% set pb_acts = pb.activity_links or [] %}
-          {% set pb_airport_trains = airport_train_for(iata) if iata else [] %}
-          {% if pb.facts or pb_acts or pb_airport_trains %}
-          <div class="pb-fast-facts" aria-label="Fast facts">
-            {% for f in (pb.facts or [])[:2 if pb_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
-            {% for l in pb_acts %}<a class="pb-fact pb-fact-link" href="{{ l.url }}" target="_blank" rel="noopener sponsored">{{ l.emoji }} {{ l.title }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
-            {% for t in pb_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
-          </div>
-          {% endif %}
-          {% set pb_tagline = pb.tagline or pb.era_note or pb.vibe %}
-          {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
-          {% if pb.culture or pb.food or pb.caution %}
-          <button type="button" class="pb-toggle" aria-expanded="false">
-            <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
-            <span class="pb-chevron" aria-hidden="true">▾</span>
-          </button>
-          <div class="pb-details" hidden>
-            <div class="pb-grid pb-mesh-grid">
-              {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
-              {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
-              {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
+            {% set _tagline = pb.tagline or pb.era_note or pb.vibe %}
+        <div class="card" style="padding:1rem;overflow:hidden;">
+          <div class="place-book field-note-inset" style="{% if it.theme_primary %}--bp-accent: {{ it.theme_primary }};{% endif %}">
+            <div class="pb-story-body">
+              <span class="pb-tag">Field note · {{ iata }}</span>
+              <div class="pb-title-line">
+                <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+                {% if _tagline %}<p class="pb-closer">{{ _tagline }}</p>{% endif %}
+              </div>
+              {% if pb.subtitle and _tagline %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
+              {% set pb_acts = pb.activity_links or [] %}
+              {% set pb_airport_trains = airport_train_for(iata) if iata else [] %}
+              {% if pb.facts or pb_acts or pb_airport_trains %}
+              <div class="pb-fast-facts" aria-label="Fast facts">
+                {% for f in (pb.facts or [])[:2 if pb_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
+                {% for l in pb_acts %}<a class="pb-fact pb-fact-link" href="{{ l.url }}" target="_blank" rel="noopener sponsored">{{ l.emoji }} {{ l.title }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+                {% for t in pb_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+              </div>
+              {% endif %}
             </div>
+            {% if pb.culture or pb.food or pb.caution %}
+            <button type="button" class="pb-toggle" aria-expanded="false">
+              <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
+              <span class="pb-chevron" aria-hidden="true">▾</span>
+            </button>
+            <div class="pb-details" hidden>
+              <div class="pb-grid pb-mesh-grid">
+                {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
+                {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
+                {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
+              </div>
+            </div>
+            {% endif %}
           </div>
-          {% endif %}
         </div>
           {% endif %}
         {% endfor %}
