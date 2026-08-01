@@ -1540,6 +1540,44 @@ async def explore_run(request: Request) -> HTMLResponse:
                 req, exclude_iatas=exclude_iatas, shuffle=is_refresh
             )
 
+        # Pin user-named stop as first candidate when it's not already present.
+        # "stop over in Tokyo", "layover in Tokyo", "stopover in Tokyo" etc.
+        # are parsed by extract_named_stop; if we can map the city to an IATA
+        # we force it to the front so it always gets priced.
+        if req is not None and ideas is not None:
+            from yonder.intent import extract_named_stop as _extract_named_stop
+            _pin_city = _extract_named_stop(prompt)
+            if _pin_city:
+                from yonder.airports import iata_for_city as _iata_for_city
+                from yonder.airports import city_country_for_iata as _cc_for_iata
+                from yonder.adventure import StopoverIdea as _StopoverIdea
+                _pin_raw = _pin_city.upper()
+                _pin_iata = (
+                    _pin_raw
+                    if (len(_pin_raw) == 3 and _pin_raw.isalpha())
+                    else _iata_for_city(_pin_city)
+                )
+                _orig = (req.origin or "").upper()
+                _dest = (req.destination or "").upper()
+                if (
+                    _pin_iata
+                    and _pin_iata not in (_orig, _dest)
+                    and not any((i.iata or "").upper() == _pin_iata for i in ideas)
+                ):
+                    _cc = _cc_for_iata(_pin_iata)
+                    ideas.insert(
+                        0,
+                        _StopoverIdea(
+                            iata=_pin_iata,
+                            city=(_cc[0] if _cc else _pin_city.title()),
+                            country=(_cc[1] if _cc else None),
+                            stay_days=max(min_stop, min(max_stop, 3)),
+                            why="You asked to stop here",
+                            vibe_tags=[vibe] if vibe else [],
+                            source="user",
+                        ),
+                    )
+
         assert req is not None
         if search_id and is_cancelled(search_id) and not ideas:
             errors.append("Detour cancelled before pricing")

@@ -112,9 +112,21 @@ _ARRIVE_PHRASE = re.compile(
     re.I,
 )
 _STOP_OFF_ROUTE = re.compile(
-    r"\bstopp?(?:ing)?\s+(?:off\s+)?(?:in|at)\s+"
+    r"\bstopp?(?:ing)?\s+(?:(?:off|over)\s+)?(?:in|at)\s+"
     r"([A-Za-z][A-Za-z\s.'-]{1,28}?)"
     r"\s*(?:and\s+)?then\s+(?:go|head|fly|travel)\s+to\s+"
+    r"([A-Za-z][A-Za-z\s.'-]{1,28})\b",
+    re.I,
+)
+# Matches an explicitly named mid-route stop without requiring a "then go to Y" tail:
+# "stop over in Tokyo", "stopover in Tokyo", "stop off in Berlin",
+# "stopping over in Hong Kong", "layover in Singapore"
+_NAMED_STOP = re.compile(
+    r"\b(?:"
+    r"stopp?(?:ing)?\s+(?:off|over)\s+(?:in|at)|"
+    r"stop-?over\s+(?:in|at)|"
+    r"layover\s+(?:in|at)"
+    r")\s+"
     r"([A-Za-z][A-Za-z\s.'-]{1,28})\b",
     re.I,
 )
@@ -210,6 +222,17 @@ def looks_like_journey_phrasing(prompt: str) -> bool:
 def looks_like_stopover_intent(prompt: str) -> bool:
     p = (prompt or "").lower()
     return any(m in p for m in _STOP_MARKERS)
+
+
+def extract_named_stop(prompt: str) -> str | None:
+    """Return the city the user explicitly named as a mid-route stop, or None.
+
+    Recognises 'stop over in X', 'stopover in X', 'stop off in X',
+    'stopping over in X', 'layover in X' — even when no 'then go to Y' tail
+    is present and regardless of word order in the sentence.
+    """
+    m = _NAMED_STOP.search((prompt or "").strip())
+    return _clean_city(m.group(1)) if m else None
 
 
 def looks_like_stop_off_route(prompt: str) -> bool:
@@ -342,6 +365,7 @@ def decide_shape(
     stop_lang = looks_like_stopover_intent(p)  # "via", "with a stopover"…
     journey_lang = looks_like_journey_phrasing(p)  # "end up in", "arrive in"…
     stop_off_route = looks_like_stop_off_route(p)  # "stop off in X then go to Y"
+    named_stop = extract_named_stop(p)  # "stop over in X", "layover in X"…
 
     # Row: destination named + direct language → escape (they know where)
     if direct_lang and dest_named:
@@ -355,10 +379,11 @@ def decide_shape(
     if open_getaway and stop_lang:
         return IntentDecision("detour", 0.88, "getaway + stop language")
 
-    # Row: explicit "stop off in X then go to Y" → detour (origin → X → Y);
-    # the user named a specific mid-route stop AND a final destination, so
-    # we route through the stop rather than offering directs-first mix results.
-    if dest_named and stop_off_route:
+    # Row: user named a specific mid-route stop → detour (origin → X → Y).
+    # Covers "stop off in X then go to Y" (tail phrase) AND shorter forms like
+    # "stop over in X", "layover in X", "stopover in X" — even when the stop
+    # is mentioned after the destination ("Vancouver to Bangkok, stop over in Tokyo").
+    if dest_named and (stop_off_route or named_stop):
         return IntentDecision("detour", 0.87, "stop-off route: named mid-stop → destination")
 
     # Row: origin + destination + explicit stop markers → mix (directs AND
