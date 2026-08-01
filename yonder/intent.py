@@ -68,6 +68,14 @@ _STOP_MARKERS = (
     " with a stop",
     " with stops",
     " intentional stop",
+    "stop off",
+    "stopping off",
+    "stop over in",
+    "stop-over",
+    "make a stop",
+    "pass through",
+    "swing through",
+    "swing by",
 )
 _ESCAPE_ONLY = (
     "nonstop",
@@ -95,6 +103,13 @@ _ARRIVE_PHRASE = re.compile(
     r"\b(?:end(?:\s+up)?\s+in|be\s+in|arrive\s+(?:in|at)|arriving\s+(?:in|at)|"
     r"land(?:ing)?\s+in|get(?:ting)?\s+to|finish(?:ing)?\s+in|wind\s+up\s+in|make\s+it\s+to)\s+"
     r"([A-Za-z][A-Za-z.'-]*(?:\s+[A-Za-z.'-]+){0,2})",
+    re.I,
+)
+_STOP_OFF_ROUTE = re.compile(
+    r"\bstopp?(?:ing)?\s+(?:off\s+)?(?:in|at)\s+"
+    r"([A-Za-z][A-Za-z\s.'-]{1,28}?)"
+    r"\s*(?:and\s+)?then\s+(?:go|head|fly|travel)\s+to\s+"
+    r"([A-Za-z][A-Za-z\s.'-]{1,28})\b",
     re.I,
 )
 _CITY_STOPWORDS = {
@@ -135,6 +150,12 @@ def extract_route_cities(prompt: str) -> tuple[str, str] | None:
     m = _IATA_PAIR.search(p)
     if m:
         return m.group(1).lower(), m.group(2).lower()
+    # "stop off in X then go to Y" — stopover city + final destination
+    m = _STOP_OFF_ROUTE.search(p)
+    if m:
+        a, b = _clean_city(m.group(1)), _clean_city(m.group(2))
+        if a and b and a != b:
+            return a, b
     m = _CITY_TO_CITY.search(p)
     if m:
         a, b = _clean_city(m.group(1)), _clean_city(m.group(2))
@@ -174,6 +195,18 @@ def looks_like_journey_phrasing(prompt: str) -> bool:
 def looks_like_stopover_intent(prompt: str) -> bool:
     p = (prompt or "").lower()
     return any(m in p for m in _STOP_MARKERS)
+
+
+def looks_like_stop_off_route(prompt: str) -> bool:
+    """True when the prompt uses an explicit 'stop off in X then go to Y' pattern.
+
+    Detects constructions like:
+      "stop off in Tokyo then go to Hong Kong"
+      "stopping off in Berlin then head to Paris"
+      "stop in Lisbon then fly to Madrid"
+    These are routed detours (origin → X → Y), not ambiguous mix results.
+    """
+    return bool(_STOP_OFF_ROUTE.search((prompt or "").strip()))
 
 
 def looks_like_escape_only(prompt: str) -> bool:
@@ -288,6 +321,7 @@ def decide_shape(
     open_getaway = looks_like_open_getaway(p)  # no destination in mind
     stop_lang = looks_like_stopover_intent(p)  # "via", "with a stopover"…
     journey_lang = looks_like_journey_phrasing(p)  # "end up in", "arrive in"…
+    stop_off_route = looks_like_stop_off_route(p)  # "stop off in X then go to Y"
 
     # Row: destination named + direct language → escape (they know where)
     if direct_lang and dest_named:
@@ -300,6 +334,12 @@ def decide_shape(
         return IntentDecision("detour", 0.9, "open getaway / somewhere new")
     if open_getaway and stop_lang:
         return IntentDecision("detour", 0.88, "getaway + stop language")
+
+    # Row: explicit "stop off in X then go to Y" → detour (origin → X → Y);
+    # the user named a specific mid-route stop AND a final destination, so
+    # we route through the stop rather than offering directs-first mix results.
+    if dest_named and stop_off_route:
+        return IntentDecision("detour", 0.87, "stop-off route: named mid-stop → destination")
 
     # Row: origin + destination + explicit stop markers → mix (directs AND
     # the named-stop packages both make sense)

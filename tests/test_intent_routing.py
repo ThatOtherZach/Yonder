@@ -1,7 +1,13 @@
 """Regression tests for A→B detection with arrival phrasing (vs getaways)."""
 
 from yonder.grok import detect_route_iatas, looks_like_open_getaway
-from yonder.intent import decide_shape, extract_route_cities, looks_like_a_to_b
+from yonder.intent import (
+    decide_shape,
+    extract_route_cities,
+    looks_like_a_to_b,
+    looks_like_stop_off_route,
+    looks_like_stopover_intent,
+)
 
 REPORTED = "I'll leave Vancouver and would like to be in London after a three day stop"
 
@@ -225,3 +231,79 @@ class TestVibePriorTieBreaker:
     def test_forced_shape_beats_everything(self):
         d = decide_shape(self.AMBIGUOUS, vibe="adventure", force="escape", demo=True)
         assert d.shape == "escape" and d.forced
+
+
+class TestStopOffRouting:
+    """'Stop off in X then go to Y' must produce detour shape, not mix."""
+
+    REPORTED = (
+        "Stop off in Tokyo and then go to Hong Kong, "
+        "looking for some party stuff in Tokyo - clubs"
+    )
+
+    def test_reported_prompt_is_detour(self):
+        d = decide_shape(self.REPORTED)
+        assert d.shape == "detour", d
+
+    def test_reported_prompt_extracts_route_cities(self):
+        route = extract_route_cities(self.REPORTED)
+        assert route is not None, "expected (tokyo, hong kong)"
+        assert route[0] == "tokyo"
+        assert route[1] == "hong kong"
+
+    def test_stop_off_markers_detected(self):
+        """All new stop-off phrasings must trigger looks_like_stopover_intent."""
+        phrasings = [
+            "stop off in Tokyo",
+            "stopping off in Berlin",
+            "stop over in Paris",
+            "stop-over in Lisbon",
+            "make a stop in Dubai",
+            "pass through Singapore",
+            "swing through Bangkok",
+            "swing by Seoul",
+        ]
+        for phrase in phrasings:
+            assert looks_like_stopover_intent(phrase), phrase
+
+    def test_stop_off_route_regex_variants(self):
+        """Structural 'X then go to Y' patterns must be detected."""
+        variants = [
+            "stop off in Tokyo then go to Hong Kong",
+            "stopping off in Berlin then head to Paris",
+            "stop in Lisbon then fly to Madrid",
+            "stop off in Dubai then travel to Mumbai",
+        ]
+        for v in variants:
+            assert looks_like_stop_off_route(v), v
+
+    def test_stop_off_route_shape_is_detour_not_mix(self):
+        """All stop-off-route variants must route to detour."""
+        prompts = [
+            "stop off in Tokyo then go to Hong Kong",
+            "stopping off in Berlin then head to Paris",
+            "stop in Lisbon then fly to Madrid",
+            "Stop off in Tokyo and then go to Hong Kong, looking for party clubs in Tokyo",
+        ]
+        for p in prompts:
+            d = decide_shape(p)
+            assert d.shape == "detour", (p, d)
+
+    def test_stop_off_route_beats_vibe_prior(self):
+        """stop-off route wins even when a comfort vibe would lean escape."""
+        d = decide_shape(
+            "stop off in Tokyo then go to Hong Kong",
+            vibe="luxury",
+            demo=True,
+        )
+        assert d.shape == "detour", d
+
+    def test_generic_stopover_language_still_mix(self):
+        """Plain A→B with generic stop language stays mix (not detour)."""
+        prompts = [
+            "Vancouver to Rome via Lisbon",
+            "from Toronto to Paris with a stopover",
+        ]
+        for p in prompts:
+            d = decide_shape(p)
+            assert d.shape == "mix", (p, d)
