@@ -168,8 +168,7 @@
         <span class="pack-card-emoji" aria-hidden="true">{{ p.emoji }}</span>
         <div>
           <p class="pack-card-name">{{ p.name }}</p>
-          <p class="pack-card-brand">{{ p.brand }}</p>
-          <p class="pack-card-model">{{ p.model }}</p>
+          <p class="pack-card-brand">{{ p.brand }} · {{ p.model }}</p>
           <span class="pack-card-stars" aria-label="{{ p.rating }} out of 5">
             {% set full = p.rating | int %}
             {% for i in range(full) %}★{% endfor %}
