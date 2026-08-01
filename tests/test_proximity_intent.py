@@ -245,3 +245,162 @@ class TestProximityModeBoostRanking:
             f"Got top: {top_iata}. "
             "If this flips, the domestic boost may be firing when it should not."
         )
+
+
+# ---------------------------------------------------------------------------
+# Grok-merge path: proximity_mode survives when Grok appends extra candidates
+# ---------------------------------------------------------------------------
+
+
+class TestProximityModePreservedAfterGrokMerge:
+    """Confirm that proximity_mode=True still boosts US cities when seed ideas
+    and Grok-sourced StopoverIdeas are merged into a single list before the
+    sort pass — matching the plan_adventure Grok branch behaviour."""
+
+    def test_us_city_in_top3_of_merged_seed_plus_grok_list(self):
+        """Merge seed ideas (contains one US city) with Grok-appended candidates
+        (all foreign, tag-rich cities), call _sort_by_comfort once with
+        proximity_mode=True, and assert a US city still lands in the top 3.
+
+        Without the domestic +3 boost the tag-rich Grok cities (IST, NRT, MEX)
+        would crowd out the US seed.  This test confirms the flag survives a
+        second sort pass over the merged list.
+        """
+        from yonder.adventure import AdventureRequest, StopoverIdea, _sort_by_comfort
+
+        req = AdventureRequest(
+            origin="JFK",
+            destination="JFK",
+            depart_date=date(2026, 10, 1),
+            vibe="culture",
+            prompt="not too far, something cultural",
+            proximity_mode=True,
+            visited_countries=[],  # zero-stamp user — no XP-based boost
+        )
+
+        # --- Seed ideas (what seed_ideas() would return for a JFK user) ---
+        seed = [
+            StopoverIdea(
+                iata="BOS", city="Boston", stay_days=3,
+                why="Historic East Coast city",
+                vibe_tags=["city", "culture", "safe", "ancient", "nostalgic"],
+                country="US",
+            ),
+            StopoverIdea(
+                iata="DCA", city="Washington DC", stay_days=3,
+                why="Free world-class museums",
+                vibe_tags=["city", "culture", "safe", "opulent"],
+                country="US",
+            ),
+        ]
+
+        # --- Grok-appended candidates (foreign, tag-rich — likely to crowd out
+        #     domestic seeds if proximity_mode is not carried through the merge) ---
+        grok_extras = [
+            StopoverIdea(
+                iata="IST", city="Istanbul", stay_days=3,
+                why="Grok pick: crossroads of cultures",
+                vibe_tags=["city", "culture", "bazaar", "ancient", "nostalgic",
+                           "velvet", "vivid", "hazy", "goldenhour", "moody"],
+                country="TR",
+            ),
+            StopoverIdea(
+                iata="NRT", city="Tokyo Narita", stay_days=3,
+                why="Grok pick: refined culture scene",
+                vibe_tags=["city", "culture", "ancient", "serene", "safe",
+                           "neon", "whimsical", "electric"],
+                country="JP",
+            ),
+            StopoverIdea(
+                iata="MEX", city="Mexico City", stay_days=3,
+                why="Grok pick: vibrant art and food",
+                vibe_tags=["city", "culture", "food", "vivid", "ancient", "cheap"],
+                country="MX",
+            ),
+            StopoverIdea(
+                iata="CDG", city="Paris", stay_days=3,
+                why="Grok pick: classic European culture capital",
+                vibe_tags=["city", "culture", "ancient", "opulent", "velvet",
+                           "goldenhour", "nostalgic"],
+                country="FR",
+            ),
+        ]
+
+        # Merge exactly as the plan_adventure Grok branch does: seed first,
+        # then Grok extras appended, then a single _sort_by_comfort pass.
+        merged = seed + grok_extras
+        ranked = _sort_by_comfort(merged, req, recent_iatas=set())
+        order = [s.iata for s in ranked]
+
+        us_iatas = {"BOS", "DCA"}
+        us_in_top3 = [iata for iata in order[:3] if iata in us_iatas]
+
+        assert us_in_top3, (
+            f"No US city in the top 3 after merging seed + Grok extras with "
+            f"proximity_mode=True (zero-stamp JFK user, vibe='culture'). "
+            f"Top 3: {order[:3]}, full order: {order}. "
+            "The domestic +3 boost in _sort_by_comfort must fire for US cities "
+            "regardless of how many tag-rich foreign Grok candidates are appended."
+        )
+
+    def test_proximity_mode_not_diluted_by_large_grok_batch(self):
+        """Even when Grok appends a large batch of tag-rich foreign cities, the
+        domestic +3 boost must still place at least one US city in the top 3.
+
+        This exercises the case where Grok returns more candidates than the seed
+        list (realistic for the re-rank / append branch in plan_adventure).
+        """
+        from yonder.adventure import AdventureRequest, StopoverIdea, _sort_by_comfort
+
+        req = AdventureRequest(
+            origin="ORD",
+            destination="ORD",
+            depart_date=date(2026, 10, 1),
+            vibe="culture",
+            prompt="not too far",
+            proximity_mode=True,
+            visited_countries=[],
+        )
+
+        # BNA has 2 culture-map matching tags (culture + ancient → 4 pts raw).
+        # The domestic +3 boost brings it to 7 pts, which beats foreign cities
+        # that also have 2 culture-map matches (4 pts) but no boost.
+        us_seed = StopoverIdea(
+            iata="BNA", city="Nashville", stay_days=3,
+            why="Seed pick: domestic culture hub",
+            vibe_tags=["city", "culture", "ancient", "electric", "warmnights"],
+            country="US",
+        )
+
+        # Eight Grok-style foreign candidates — each has at most 2 culture-map
+        # matching tags (4 pts raw), so they score below BNA's boosted 7 pts.
+        grok_extras = [
+            StopoverIdea(iata="LHR", city="London", stay_days=3,
+                         why="Grok", vibe_tags=["city", "culture", "moody", "stormy"], country="GB"),
+            StopoverIdea(iata="IST", city="Istanbul", stay_days=3,
+                         why="Grok", vibe_tags=["city", "culture", "bazaar", "vivid", "hazy"], country="TR"),
+            StopoverIdea(iata="CDG", city="Paris", stay_days=3,
+                         why="Grok", vibe_tags=["city", "culture", "opulent", "velvet", "goldenhour"], country="FR"),
+            StopoverIdea(iata="FCO", city="Rome", stay_days=3,
+                         why="Grok", vibe_tags=["city", "culture", "ancient", "opulent"], country="IT"),
+            StopoverIdea(iata="BCN", city="Barcelona", stay_days=3,
+                         why="Grok", vibe_tags=["city", "culture", "vivid", "warmnights", "seasalt"], country="ES"),
+            StopoverIdea(iata="NRT", city="Tokyo", stay_days=3,
+                         why="Grok", vibe_tags=["city", "culture", "serene", "electric"], country="JP"),
+            StopoverIdea(iata="MEX", city="Mexico City", stay_days=3,
+                         why="Grok", vibe_tags=["city", "culture", "vivid", "food", "cheap"], country="MX"),
+            StopoverIdea(iata="GRU", city="São Paulo", stay_days=3,
+                         why="Grok", vibe_tags=["city", "culture", "electric", "vivid"], country="BR"),
+        ]
+
+        merged = [us_seed] + grok_extras
+        ranked = _sort_by_comfort(merged, req, recent_iatas=set())
+        order = [s.iata for s in ranked]
+
+        assert order[:3].count("BNA") >= 1, (
+            f"BNA (the sole US city, 2 culture-map tags → 4 pts raw + 3 boost = 7 pts) "
+            f"should appear in the top 3 when proximity_mode=True, even against "
+            f"8 Grok foreign cities (each ≤2 culture-map tags → ≤4 pts, no boost). "
+            f"Got top 3: {order[:3]}, full order: {order}. "
+            "The domestic +3 boost must survive the merge-then-sort path."
+        )
