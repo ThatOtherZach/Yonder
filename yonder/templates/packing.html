@@ -163,7 +163,7 @@
             {% set full = p.rating | int %}
             {% for i in range(full) %}★{% endfor %}
             {% if (p.rating - full) >= 0.5 %}½{% endif %}
-            <span style="color:var(--muted);font-style:normal"> {{ p.rating }}</span>
+            <span style="color:var(--muted);font-style:normal"> {{ p.rating }} Stars</span>
           </span>
         </div>
       </div>
