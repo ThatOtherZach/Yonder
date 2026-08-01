@@ -307,3 +307,40 @@ class TestStopOffRouting:
         for p in prompts:
             d = decide_shape(p)
             assert d.shape == "mix", (p, d)
+
+    def test_swing_pass_route_regex_variants(self):
+        """swing-by / pass-through structural patterns must trigger looks_like_stop_off_route."""
+        variants = [
+            "swing by Tokyo then go to Hong Kong",
+            "swing by Tokyo on the way to Hong Kong",
+            "swing through Berlin then head to Paris",
+            "swing through Berlin on the way to Paris",
+            "pass through Singapore then head to Bangkok",
+            "pass through Singapore on the way to Bangkok",
+            "passing through Seoul then fly to Tokyo",
+        ]
+        for v in variants:
+            assert looks_like_stop_off_route(v), v
+
+    def test_swing_pass_route_shape_is_detour(self):
+        """All swing-by / pass-through route variants must produce detour shape."""
+        prompts = [
+            "swing by Tokyo then go to Hong Kong",
+            "swing by Tokyo on the way to Hong Kong",
+            "swing through Berlin then head to Paris",
+            "swing through Berlin on the way to Paris",
+            "pass through Singapore then head to Bangkok",
+            "pass through Singapore on the way to Bangkok",
+        ]
+        for p in prompts:
+            d = decide_shape(p)
+            assert d.shape == "detour", (p, d)
+
+    def test_swing_pass_route_beats_comfort_vibe(self):
+        """swing-by route wins even when a comfort vibe would lean escape."""
+        d = decide_shape(
+            "swing by Tokyo on the way to Hong Kong",
+            vibe="luxury",
+            demo=True,
+        )
+        assert d.shape == "detour", d

@@ -118,6 +118,15 @@ _STOP_OFF_ROUTE = re.compile(
     r"([A-Za-z][A-Za-z\s.'-]{1,28})\b",
     re.I,
 )
+# Matches "swing by/through X then go to Y", "pass through X on the way to Y", etc.
+_SWING_PASS_ROUTE = re.compile(
+    r"\b(?:swing\s+(?:by|through)|pass\s+through|passing\s+through)\s+"
+    r"([A-Za-z][A-Za-z\s.'-]{1,28}?)"
+    r"\s*(?:(?:and\s+)?then\s+(?:go|head|fly|travel)\s+to"
+    r"|on\s+(?:(?:my|our|the)\s+)?way\s+to)\s+"
+    r"([A-Za-z][A-Za-z\s.'-]{1,28})\b",
+    re.I,
+)
 _CITY_STOPWORDS = {
     "and", "after", "before", "by", "on", "in", "for", "with", "then", "but",
     "the", "a", "an", "to", "via", "this", "next", "would", "want", "around",
@@ -157,7 +166,7 @@ def extract_route_cities(prompt: str) -> tuple[str, str] | None:
     if m:
         return m.group(1).lower(), m.group(2).lower()
     # "stop off in X then go to Y" — stopover city + final destination
-    m = _STOP_OFF_ROUTE.search(p)
+    m = _STOP_OFF_ROUTE.search(p) or _SWING_PASS_ROUTE.search(p)
     if m:
         a, b = _clean_city(m.group(1)), _clean_city(m.group(2))
         if a and b and a != b:
@@ -204,15 +213,20 @@ def looks_like_stopover_intent(prompt: str) -> bool:
 
 
 def looks_like_stop_off_route(prompt: str) -> bool:
-    """True when the prompt uses an explicit 'stop off in X then go to Y' pattern.
+    """True when the prompt uses an explicit 'stop off in X then go to Y' pattern,
+    or a swing-by / pass-through variant.
 
     Detects constructions like:
       "stop off in Tokyo then go to Hong Kong"
       "stopping off in Berlin then head to Paris"
       "stop in Lisbon then fly to Madrid"
+      "swing by Tokyo then go to Hong Kong"
+      "swing through Berlin on the way to Paris"
+      "pass through Singapore then head to Bangkok"
     These are routed detours (origin → X → Y), not ambiguous mix results.
     """
-    return bool(_STOP_OFF_ROUTE.search((prompt or "").strip()))
+    p = (prompt or "").strip()
+    return bool(_STOP_OFF_ROUTE.search(p) or _SWING_PASS_ROUTE.search(p))
 
 
 def looks_like_escape_only(prompt: str) -> bool:
