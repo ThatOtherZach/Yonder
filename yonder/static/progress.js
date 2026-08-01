@@ -300,7 +300,7 @@
         'Grab a <a href="https://tp.media/r?marker=756039.YonderSIMCards&amp;trs=557178&amp;p=8979&amp;u=https%3A%2F%2Fsaily.com&amp;campaign_id=629" target="_blank" rel="noopener sponsored">Saily eSIM</a> with ' +
         '<button type="button" class="fs-promo-copy-btn" data-code="' + promoCode.replace(/"/g, "&quot;") + '" aria-label="Copy code ' + promoCode.replace(/"/g, "&quot;") + '">' +
         '<code>' + promoCode + '</code><span class="fs-promo-copy-label"> tap to copy</span></button>' +
-        ' &middot; Need a VPN? Try <a href="' + vpnHref + '" target="_blank" rel="noopener">ProtonVPN&nbsp;&#8599;</a>';
+        '<br>Need a VPN? Try <a href="' + vpnHref + '" target="_blank" rel="noopener">ProtonVPN&nbsp;&#8599;</a>';
     }
 
     this._start = Date.now();
