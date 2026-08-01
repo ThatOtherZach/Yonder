@@ -137,11 +137,22 @@
     border-radius: 8px;
     white-space: nowrap;
   }
+  .affiliate-disclosure {
+    font-size: 0.82rem;
+    color: var(--muted);
+    background: var(--paper-2);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-sm);
+    padding: 0.5rem 0.85rem;
+    margin: 0 0 1.5rem;
+  }
 {% endblock %}
 {% block body %}
 <div class="packing-page">
   <h1>🧳 Packing List</h1>
   <p class="packing-sub">57 Hand picked products that travelers like you actually use</p>
+
+  <p class="affiliate-disclosure">🔗 Some links on this page are affiliate links — if you buy through them we may earn a small commission at no extra cost to you.</p>
 
   <div class="dept-filters" id="dept-filters">
     <button type="button" class="dept-pill active" data-dept="">All</button>
