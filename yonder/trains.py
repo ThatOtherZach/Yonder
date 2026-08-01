@@ -502,6 +502,86 @@ def airport_train_for(iata: str) -> list[dict]:
     return AIRPORT_TRAINS.get(iata, [])
 
 
+# ── Ground-transfer affiliate helpers ────────────────────────────────────────
+
+GLOBAL_HUBS: frozenset[str] = frozenset({
+    # Europe
+    "LHR", "LGW", "STN", "MAN", "EDI", "GLA",
+    "CDG", "ORY",
+    "AMS",
+    "FRA", "MUC", "DUS", "HAM", "TXL", "BER",
+    "ZRH", "GVA",
+    "VIE",
+    "BRU",
+    "ARN", "CPH", "HEL", "OSL",
+    "MXP", "FCO", "VCE", "NAP",
+    "BCN", "MAD", "PMI", "AGP", "VLC",
+    "LIS", "OPO",
+    "ATH",
+    "IST", "SAW",
+    "WAW", "KRK",
+    "PRG",
+    "BUD",
+    "OTP",
+    # Middle East & Africa
+    "DXB", "AUH", "DOH", "KWI", "BAH", "RUH", "AMM",
+    "TLV",
+    "CAI",
+    "JNB", "CPT",
+    "CMN",
+    # Asia-Pacific
+    "NRT", "HND", "KIX", "CTS", "NGO",
+    "ICN", "GMP",
+    "PEK", "PKX", "PVG", "CAN", "SZX",
+    "HKG",
+    "TPE",
+    "SIN",
+    "KUL",
+    "BKK", "DMK",
+    "CGK",
+    "MNL",
+    "DEL", "BOM", "MAA", "BLR",
+    "SYD", "MEL", "BNE", "PER",
+    "AKL",
+    # Americas
+    "JFK", "EWR", "LGA", "BOS", "MIA", "MCO", "FLL",
+    "ORD", "MDW", "ATL", "DFW", "IAH", "PHX", "DEN",
+    "LAX", "SFO", "SEA", "LAS", "SLC",
+    "YYZ", "YVR", "YUL",
+    "GRU", "GIG", "BSB",
+    "SCL",
+    "BOG",
+    "LIM",
+    "MEX", "CUN",
+    "EZE",
+})
+
+_WELCOME_PICKUPS_URL = (
+    "https://tp.media/r?marker=756039.YonderWelcomePickup"
+    "&trs=557178&p=8919&u=https%3A%2F%2Fwelcomepickups.com&campaign_id=627"
+)
+_GET_TRANSFER_URL = (
+    "https://tp.media/r?marker=756039.YonderGetTransfer"
+    "&trs=557178&p=4439&u=https%3A%2F%2Fgettransfer.com&campaign_id=147"
+)
+
+
+def ground_transfer_for(iata: str) -> list[dict]:
+    """Return ground-transfer affiliate pill(s) for the given airport IATA code.
+
+    Global Hub airports → Welcome Pickups (premium service).
+    All other airports  → GetTransfer Car Hire.
+
+    Each dict has: name (str), url (str), emoji (str).
+    """
+    iata = (iata or "").strip().upper()
+    if not iata:
+        return []
+    if iata in GLOBAL_HUBS:
+        return [{"name": "Welcome Pickups", "url": _WELCOME_PICKUPS_URL, "emoji": "🚗"}]
+    return [{"name": "GetTransfer Car Hire", "url": _GET_TRANSFER_URL, "emoji": "🚗"}]
+
+
 def _dedup_sort(entries: list[dict]) -> list[dict]:
     """Deduplicate by operator name, then sort alphabetically."""
     seen: set[str] = set()
