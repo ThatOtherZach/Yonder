@@ -119,7 +119,10 @@
         {% endif %}
         {% else %}
         <span class="pb-tag">Field note</span>
-        <p class="pb-loading-msg">Writing field note…</p>
+        <div class="pb-fn-loading">
+          <div class="pb-fn-bar-track"><div class="pb-fn-bar-fill"></div></div>
+          <div class="pb-fn-promo"></div>
+        </div>
         {% endif %}
       </div>
       {% if esc_has_more or not escape_place_book %}
@@ -367,7 +370,10 @@
             {% endif %}
             {% elif it.stop_iata %}
             <span class="pb-tag">Field note</span>
-            <p class="pb-loading-msg">Writing field note…</p>
+            <div class="pb-fn-loading">
+              <div class="pb-fn-bar-track"><div class="pb-fn-bar-fill"></div></div>
+              <div class="pb-fn-promo"></div>
+            </div>
             {% else %}
             <span class="pb-tag">On the ground</span>
             <h3 style="font-size:1.15rem">{{ it.stop_city or it.stop_iata or 'Stop' }}</h3>

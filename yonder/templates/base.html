@@ -696,6 +696,42 @@
       color: var(--good, #1a7f4b);
     }
 
+    /* Field note in-card loading mini-bar */
+    .pb-fn-loading {
+      margin: 0.45rem 0 0;
+    }
+    .pb-fn-bar-track {
+      height: 3px;
+      background: var(--line);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 0.7rem;
+    }
+    .pb-fn-bar-fill {
+      height: 100%;
+      width: 38%;
+      background: var(--bp-accent, var(--sky-bright));
+      border-radius: 99px;
+      animation: pb-fn-slide 1.7s ease-in-out infinite;
+    }
+    @keyframes pb-fn-slide {
+      0%   { transform: translateX(-160%); }
+      100% { transform: translateX(380%); }
+    }
+    .pb-fn-promo {
+      font-size: 0.78rem;
+      color: var(--ink-soft);
+      line-height: 1.5;
+    }
+    .pb-fn-promo a {
+      color: var(--sky);
+      text-decoration: none;
+    }
+    .pb-fn-promo a:hover { text-decoration: underline; }
+    .pb-fn-promo .fs-promo-copy-btn {
+      font-size: 0.78rem;
+    }
+
     /* —— Boarding passes (shared: flights / adventures / saved) —— */
     .pass-stack {
       display: flex;
@@ -1347,6 +1383,18 @@
       } else {
         fallback();
       }
+    });
+    // Populate field-note in-card promo slots
+    document.addEventListener("DOMContentLoaded", function () {
+      var promo = window.FS_PROMO || null;
+      var promoCode = (promo && promo.code) ? promo.code : "YONDERCITY";
+      var vpnHref = (promo && promo.link) ? promo.link.replace(/"/g, "&quot;") : "https://protonvpn.com";
+      var html =
+        'Grab a <a href="https://tp.media/r?marker=756039.YonderSIMCards&trs=557178&p=8979&u=https%3A%2F%2Fsaily.com&campaign_id=629" target="_blank" rel="noopener sponsored">Saily eSIM</a> with ' +
+        '<button type="button" class="fs-promo-copy-btn" data-code="' + promoCode.replace(/"/g, "&quot;") + '" aria-label="Copy code ' + promoCode.replace(/"/g, "&quot;") + '">' +
+        '<code>' + promoCode + '</code><span class="fs-promo-copy-label"> tap to copy</span></button>' +
+        '<br>Need a VPN? Try <a href="' + vpnHref + '" target="_blank" rel="noopener">ProtonVPN&nbsp;&#8599;</a>';
+      document.querySelectorAll(".pb-fn-promo").forEach(function (el) { el.innerHTML = html; });
     });
   </script>
   {% block extra_head %}{% endblock %}
