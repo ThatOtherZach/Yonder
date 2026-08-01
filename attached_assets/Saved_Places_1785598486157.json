@@ -1,0 +1,637 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "geometry": {
+        "coordinates": [
+          -123.1392389,
+          49.2891847
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2026-02-07T04:08:52Z",
+        "google_maps_url": "http://maps.google.com/?cid=219042611164149276",
+        "location": {
+          "address": "1015 Denman St #200, Vancouver, BC V6G 2M4, Canada",
+          "country_code": "CA",
+          "name": "Anytime Fitness Denman"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          140.4977482,
+          35.8919622
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2025-07-19T06:49:57Z",
+        "google_maps_url": "http://maps.google.com/?cid=12470343292305683129",
+        "location": {
+          "address": "I-474-8, Katori, Chiba 287-0003, Japan",
+          "country_code": "JP",
+          "name": "Hostel Co-EDO Sawara"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2025-01-16T10:02:36Z",
+        "google_maps_url": "http://maps.google.com/?q=22+E+Cordova+St+%23210,+Vancouver,+BC+V6A+4G8&ftid=0x54867170a43b1fcd:0x85e3860dda077b08",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          33.6362633,
+          34.9133172
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2025-01-11T11:26:32Z",
+        "google_maps_url": "http://maps.google.com/?cid=9394490793777975231",
+        "location": {
+          "address": "Zinonos Kitieos 120, Street, Larnaka 6022, Cyprus",
+          "country_code": "CY",
+          "name": "Art & Wine Boutique Hotel"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          33.3599351,
+          35.1656210
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2025-01-08T14:24:47Z",
+        "google_maps_url": "http://maps.google.com/?cid=14424646711158308953",
+        "location": {
+          "address": "Mnasiadou 11-Fl 2, Nicosia, Lefkosia 1065, Cyprus",
+          "country_code": "CY",
+          "name": "Urban Habitat Capsule Beds"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          33.0396477,
+          34.6821741
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2025-01-07T10:57:24Z",
+        "google_maps_url": "http://maps.google.com/?cid=5733225832270813109",
+        "location": {
+          "address": "Leontiou Machaira 73, Limassol, Lemesos 3025, Cyprus",
+          "country_code": "CY",
+          "name": "Lemongrass Hostel"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          32.4124520,
+          34.7778210
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2025-01-04T16:57:51Z",
+        "google_maps_url": "http://maps.google.com/?cid=2885343797282532897",
+        "location": {
+          "address": "Alvertou 7, Paphos, Pafos 8046, Cyprus",
+          "country_code": "CY",
+          "name": "Panklitos Apartments"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2024-12-29T18:13:26Z",
+        "google_maps_url": "http://maps.google.com/?q=Timber+Wharf,+240+Kingsland+Rd,+London+E2+8AT,+UK&ftid=0x48761c9600891d4f:0x96503d7ee5ae16be",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.5942927,
+          45.5235046
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2021-08-02T17:15:43Z",
+        "google_maps_url": "http://maps.google.com/?cid=16483897129483811622",
+        "location": {
+          "address": "5170 Boul. Saint-Laurent, Montréal, QC H2T 1R8, Canada",
+          "country_code": "CA",
+          "name": "Guillaume"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.5860520,
+          45.5197480
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2021-08-02T12:47:03Z",
+        "google_maps_url": "http://maps.google.com/?cid=16182311594406744957",
+        "location": {
+          "address": "4448 Boul. Saint-Laurent, Montréal, QC H2W 1Z5, Canada",
+          "country_code": "CA",
+          "name": "Allô mon Coco Plateau-Mont-Royal"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.5586106,
+          45.5183731
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2021-08-02T00:24:54Z",
+        "google_maps_url": "http://maps.google.com/?cid=7413426852118077949",
+        "location": {
+          "address": "1101 Boul. de Maisonneuve E, Montréal, QC H2L 1Z6, Canada",
+          "country_code": "CA",
+          "name": "Le Blossom — Village | Sushi & Cocktails à Montréal"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.5658360,
+          45.5163640
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2021-08-01T23:27:37Z",
+        "google_maps_url": "http://maps.google.com/?cid=11598171213387190582",
+        "location": {
+          "address": "2031 R. Saint-Denis, Montréal, QC H2X 3K8, Canada",
+          "country_code": "CA",
+          "name": "Arcade MTL"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.5782465,
+          45.5163050
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2021-08-01T23:27:09Z",
+        "google_maps_url": "http://maps.google.com/?cid=13291505525219399726",
+        "location": {
+          "address": "3908 Boul. Saint-Laurent, Montréal, QC H2W 1Y2, Canada",
+          "country_code": "CA",
+          "name": "North Star Machines À Piastres"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.5834671,
+          45.5231238
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2021-08-01T03:46:15Z",
+        "google_maps_url": "http://maps.google.com/?cid=194003111667322500",
+        "location": {
+          "address": "316 Mont-Royal Ave E, Montreal, Quebec H2T 1P7, Canada",
+          "country_code": "CA",
+          "name": "Kouing Amann Bakery"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.6026129,
+          45.5270131
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2021-07-31T20:56:08Z",
+        "google_maps_url": "http://maps.google.com/?cid=18241509086275821060",
+        "location": {
+          "address": "23 Rue Bernard O, Montréal, QC H2T 2J6, Canada",
+          "country_code": "CA",
+          "name": "Bernie Beigne"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.5784600,
+          45.5213070
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2021-07-30T16:32:31Z",
+        "google_maps_url": "http://maps.google.com/?cid=16136521529244371683",
+        "location": {
+          "address": "360 Rue Rachel E, Montréal, QC H2W 1E9, Canada",
+          "country_code": "CA",
+          "name": "Ichigo Ichie Izakaya"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.5631540,
+          45.5019573
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2021-07-30T12:54:48Z",
+        "google_maps_url": "http://maps.google.com/?cid=13438558522537610654",
+        "location": {
+          "address": "Montreal, QC H2Z 1G6, Canada",
+          "country_code": "CA",
+          "name": "Square-Victoria-OACI"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2020-10-14T14:09:03Z",
+        "google_maps_url": "http://maps.google.com/?q=48.135146,11.503395",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.6027105,
+          45.5269457
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2020-08-04T13:34:28Z",
+        "google_maps_url": "http://maps.google.com/?cid=12487133661946075896",
+        "location": {
+          "address": "27 Rue Bernard O, Montréal, QC H2T 2J6, Canada",
+          "country_code": "CA",
+          "name": "Pizza St-Viateur"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.5631064,
+          45.5096894
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2020-08-02T17:57:18Z",
+        "google_maps_url": "http://maps.google.com/?cid=13183104175724154820",
+        "location": {
+          "address": "1209-1211 Boul. Saint-Laurent, Montréal, QC H2X 2S6, Canada",
+          "country_code": "CA",
+          "name": "Café Bloc | Centre d'escalade & Bouldering Gym"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2020-08-02T11:53:21Z",
+        "google_maps_url": "http://maps.google.com/?q=45.534342,-73.570134",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.5748058,
+          45.5253231
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2020-08-02T04:34:50Z",
+        "google_maps_url": "http://maps.google.com/?cid=10356172211970105105",
+        "location": {
+          "address": "994 Rue Rachel E, Montréal, QC H2J 2J3, Canada",
+          "country_code": "CA",
+          "name": "La Banquise"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.6019581,
+          45.5226914
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2020-08-02T04:34:04Z",
+        "google_maps_url": "http://maps.google.com/?cid=9474286551917863840",
+        "location": {
+          "address": "263 R. Saint Viateur Ouest, Montréal, QC H2V 1Y1, Canada",
+          "country_code": "CA",
+          "name": "St-Viateur Bagel"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -73.5973712,
+          45.5201343
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2020-08-01T22:36:48Z",
+        "google_maps_url": "http://maps.google.com/?cid=9823204479993822011",
+        "location": {
+          "address": "5178 Av. du Parc, Montréal, QC H2V 4G6, Canada",
+          "country_code": "CA",
+          "name": "Veux-tu une Bière? (Plateau Mont-Royal"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2020-07-23T16:54:59Z",
+        "google_maps_url": "http://maps.google.com/?q=48.257461,13.036699",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2020-07-02T15:57:04Z",
+        "google_maps_url": "http://maps.google.com/?q=47.756833,13.068181",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -79.3432841,
+          43.7262635
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2020-03-17T14:57:13Z",
+        "google_maps_url": "http://maps.google.com/?cid=15235779509044113679",
+        "location": {
+          "address": "896 Don Mills Rd., North York, ON M3C 2H2, Canada",
+          "country_code": "CA",
+          "name": "Oomomo"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0.2294019,
+          53.3809202
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2019-09-09T21:20:44Z",
+        "google_maps_url": "http://maps.google.com/?cid=17308004988820244166",
+        "location": {
+          "address": "Mablethorpe LN12 1NR, United Kingdom",
+          "country_code": "GB",
+          "name": "Saltfleetby-Theddlethorpe Dunes National Nature Reserve"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2019-07-07T16:19:20Z",
+        "google_maps_url": "http://maps.google.com/?q=Penistone,+Sheffield,+UK&ftid=0x48797d12d19ea585:0xba7047fb3fddd749",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2019-07-07T16:18:54Z",
+        "google_maps_url": "http://maps.google.com/?q=Cock+Alley,+Chesterfield+S44+5UY,+UK&ftid=0x48799a96cad9e539:0xb523fecfbd090069",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2019-07-07T16:18:00Z",
+        "google_maps_url": "http://maps.google.com/?q=Fingringhoe,+Colchester+CO5+7BQ,+UK&ftid=0x47d91aa10c65ee4b:0xd3f8968e820716c1",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2019-07-07T16:17:12Z",
+        "google_maps_url": "http://maps.google.com/?q=Cockermouth,+UK&ftid=0x487ccfb83a9d9873:0xf80c0507efabfbb9",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2018-06-24T17:30:31Z",
+        "google_maps_url": "http://maps.google.com/?q=39.32806,3.1463799999999997",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2014-12-25T15:37:16Z",
+        "google_maps_url": "http://maps.google.com/?q=41.07050243355453,14.316039159893991",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          -79.4070046,
+          43.6568172
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2014-11-07T22:29:30Z",
+        "google_maps_url": "http://maps.google.com/?cid=18441564337792060764",
+        "location": {
+          "address": "422 College St, Toronto, ON M5T 1T3, Canada",
+          "country_code": "CA",
+          "name": "Bistro 422"
+        }
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
+          0,
+          0
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "date": "2013-08-11T01:54:48Z",
+        "google_maps_url": "http://maps.google.com/?q=33.842823,+7.779038",
+        "Comment": "No location information is available for this saved place"
+      },
+      "type": "Feature"
+    }
+  ]
+}
