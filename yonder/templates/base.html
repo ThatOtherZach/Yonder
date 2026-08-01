@@ -1340,6 +1340,72 @@
     }
 
     {% block extra_css %}{% endblock %}
+
+    /* ── Amazon affiliate product ad widget ── */
+    .pack-ad-slot { margin: 0 0 1.25rem; }
+    .pack-ad {
+      background: var(--paper-2);
+      border: 1.5px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: var(--radius-sm);
+      padding: 0.9rem 1rem 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+    .pack-ad-body {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+    .pack-ad-emoji {
+      font-size: 1.9rem;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: 0.1rem;
+    }
+    .pack-ad-content { flex: 1; min-width: 0; }
+    .pack-ad-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.2rem;
+    }
+    .pack-ad-brand {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .pack-ad-stars {
+      font-size: 0.75rem;
+      color: var(--brass);
+      letter-spacing: 0.03em;
+    }
+    .pack-ad-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--ink);
+      margin: 0 0 0.25rem;
+      line-height: 1.3;
+    }
+    .pack-ad-review {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-style: italic;
+      line-height: 1.45;
+      margin: 0;
+    }
+    .pack-ad-actions {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+    .pack-ad-actions .btn {
+      font-size: 0.8rem;
+      padding: 0.3rem 0.75rem;
+    }
   </style>
   <link rel="stylesheet" href="/static/country_map.css?v=17" />
   <script>
@@ -1397,6 +1463,7 @@
       document.querySelectorAll(".pb-fn-promo").forEach(function (el) { el.innerHTML = html; });
     });
   </script>
+  <script>window.PACKING_PRODUCTS = {{ packing_products | tojson }};</script>
   {% block extra_head %}{% endblock %}
 </head>
 <body class="{% if vibe_theme and vibe_theme.color %}has-vibe-theme{% endif %}"{% if vibe_theme and vibe_theme.style %} style="{{ vibe_theme.style }}"{% endif %}>

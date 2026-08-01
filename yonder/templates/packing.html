@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Packing List · Yonder{% endblock %}
+{% block extra_css %}
+  .packing-page {
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 2rem 1rem 4rem;
+  }
+  .packing-page h1 {
+    font-family: var(--font-display);
+    font-size: 2.2rem;
+    color: var(--ink);
+    margin: 0 0 0.35rem;
+  }
+  .packing-page .packing-sub {
+    color: var(--muted);
+    font-size: 0.95rem;
+    margin: 0 0 1.75rem;
+  }
+  /* Department filter pills */
+  .dept-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.75rem;
+  }
+  .dept-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3em;
+    padding: 0.35rem 0.85rem;
+    border-radius: 99px;
+    border: 1.5px solid var(--line);
+    background: var(--paper-2);
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    user-select: none;
+  }
+  .dept-pill:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .dept-pill.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  /* Product grid */
+  .pack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+    gap: 1.25rem;
+  }
+  .pack-card {
+    background: var(--white);
+    border: 1.5px solid var(--line);
+    border-left: 4px solid var(--accent);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-sm);
+    padding: 1.1rem 1.1rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    transition: box-shadow 0.15s;
+  }
+  .pack-card:hover {
+    box-shadow: var(--shadow);
+  }
+  .pack-card[hidden] {
+    display: none !important;
+  }
+  .pack-card-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+  }
+  .pack-card-emoji {
+    font-size: 1.8rem;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 0.05rem;
+  }
+  .pack-card-name {
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.3;
+    margin: 0;
+  }
+  .pack-card-brand {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin: 0;
+  }
+  .pack-card-model {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin: 0;
+  }
+  .pack-card-stars {
+    font-size: 0.82rem;
+    color: var(--brass);
+    letter-spacing: 0.02em;
+  }
+  .pack-card-review {
+    font-size: 0.84rem;
+    color: var(--muted);
+    font-style: italic;
+    line-height: 1.45;
+    margin: 0.1rem 0 0;
+    flex: 1;
+  }
+  .pack-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-top: auto;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--line);
+  }
+  .pack-dept-badge {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--paper-2);
+    border-radius: 99px;
+    padding: 0.18rem 0.55rem;
+    white-space: nowrap;
+  }
+  .pack-buy-btn {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 8px;
+    white-space: nowrap;
+  }
+{% endblock %}
+{% block body %}
+<div class="packing-page">
+  <h1>📦 Packing List</h1>
+  <p class="packing-sub">57 travel picks we actually use — filterable by category.</p>
+
+  <div class="dept-filters" id="dept-filters">
+    <button type="button" class="dept-pill active" data-dept="">All</button>
+    {% for dept, emoji in departments %}
+    <button type="button" class="dept-pill" data-dept="{{ dept }}">{{ emoji }} {{ dept }}</button>
+    {% endfor %}
+  </div>
+
+  <div class="pack-grid" id="pack-grid">
+    {% for p in packing_products %}
+    <div class="pack-card" data-dept="{{ p.department }}">
+      <div class="pack-card-top">
+        <span class="pack-card-emoji" aria-hidden="true">{{ p.emoji }}</span>
+        <div>
+          <p class="pack-card-name">{{ p.name }}</p>
+          <p class="pack-card-brand">{{ p.brand }}</p>
+          <p class="pack-card-model">{{ p.model }}</p>
+          <span class="pack-card-stars" aria-label="{{ p.rating }} out of 5">
+            {% set full = p.rating | int %}
+            {% for i in range(full) %}★{% endfor %}
+            {% if (p.rating - full) >= 0.5 %}½{% endif %}
+            <span style="color:var(--muted);font-style:normal"> {{ p.rating }}</span>
+          </span>
+        </div>
+      </div>
+      <p class="pack-card-review">&ldquo;{{ p.review }}&rdquo;</p>
+      <div class="pack-card-footer">
+        <span class="pack-dept-badge">{{ p.dept_emoji }} {{ p.department }}</span>
+        <a class="btn secondary pack-buy-btn" href="{{ p.url }}" target="_blank" rel="noopener sponsored">Buy on Amazon ↗</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+<script>
+(function () {
+  var filters = document.getElementById('dept-filters');
+  var cards = document.querySelectorAll('#pack-grid .pack-card');
+  if (!filters) return;
+  filters.addEventListener('click', function (e) {
+    var pill = e.target.closest('.dept-pill');
+    if (!pill) return;
+    filters.querySelectorAll('.dept-pill').forEach(function (p) { p.classList.remove('active'); });
+    pill.classList.add('active');
+    var dept = pill.dataset.dept;
+    cards.forEach(function (card) {
+      card.hidden = dept && card.dataset.dept !== dept;
+    });
+  });
+}());
+</script>
+{% endblock %}

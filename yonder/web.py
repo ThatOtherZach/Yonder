@@ -266,6 +266,9 @@ try:
 except Exception:
     pass
 templates = Jinja2Templates(directory=str(_PKG / "templates"))
+from yonder.products import DEPARTMENTS as _PACKING_DEPTS, PACKING_PRODUCTS as _PACKING_PRODUCTS
+templates.env.globals["packing_products"] = _PACKING_PRODUCTS
+templates.env.globals["departments"] = _PACKING_DEPTS
 def _fmt_date(value: object) -> str:
     """Format a date or ISO string as 'Month DD, YYYY' (e.g. September 5, 2026)."""
     from datetime import date as _date
@@ -3691,6 +3694,19 @@ async def usage_summary() -> JSONResponse:
         "last_30d": _summarise(30),
         "all_time": _summarise(None),
     })
+
+
+@app.get("/packing", response_class=HTMLResponse)
+async def packing_page(request: Request) -> HTMLResponse:
+    """Full packing list — reached via the ad widget on Explore and Share pages."""
+    return templates.TemplateResponse(
+        request,
+        "packing.html",
+        {
+            "nav": None,
+            **_base_ctx(),
+        },
+    )
 
 
 @app.get("/settings", response_class=HTMLResponse)

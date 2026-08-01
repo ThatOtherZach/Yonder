@@ -1312,6 +1312,11 @@
     </div>
     {% endif %}
 
+    {# ——— Product ad widget (shown only after a search has results) ——— #}
+    {% if escape_result or detour_result %}
+    {% include "_product_ad.html" %}
+    {% endif %}
+
     {# ——— Escape results (card layout matches Detour boarding passes) ——— #}
     <div class="results-panel" id="escape-results" data-result-kind="escape"
       data-signal-id="{{ (ep.get('trip_meta') or {}).get('signal_id', '') if ep else '' }}"

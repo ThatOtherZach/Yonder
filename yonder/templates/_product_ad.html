@@ -1,0 +1,38 @@
+{# Rotating Amazon affiliate product ad widget.
+   Picks a random product from window.PACKING_PRODUCTS on DOMContentLoaded.
+   window.PACKING_PRODUCTS is injected by base.html from the packing_products
+   template global (see web.py + products.py). #}
+<div class="pack-ad-slot" aria-label="Packing pick"></div>
+<script>
+(function () {
+  var products = window.PACKING_PRODUCTS;
+  if (!products || !products.length) return;
+  var p = products[Math.floor(Math.random() * products.length)];
+  var stars = '';
+  var full = Math.floor(p.rating);
+  var half = (p.rating - full) >= 0.5;
+  for (var i = 0; i < full; i++) stars += '★';
+  if (half) stars += '½';
+  var html =
+    '<div class="pack-ad">' +
+      '<div class="pack-ad-body">' +
+        '<span class="pack-ad-emoji" aria-hidden="true">' + p.emoji + '</span>' +
+        '<div class="pack-ad-content">' +
+          '<div class="pack-ad-meta">' +
+            '<span class="pack-ad-brand">' + p.brand + '</span>' +
+            '<span class="pack-ad-stars" aria-label="' + p.rating + ' out of 5">' + stars + '</span>' +
+          '</div>' +
+          '<p class="pack-ad-name">' + p.name + '</p>' +
+          '<p class="pack-ad-review">&ldquo;' + p.review.slice(0, 120) + (p.review.length > 120 ? '&hellip;' : '') + '&rdquo;</p>' +
+        '</div>' +
+      '</div>' +
+      '<div class="pack-ad-actions">' +
+        '<a class="pack-ad-buy btn secondary" href="' + p.url + '" target="_blank" rel="noopener sponsored">Buy on Amazon &#8599;</a>' +
+        '<a class="pack-ad-list btn" href="/packing">&#128230; See full packing list</a>' +
+      '</div>' +
+    '</div>';
+  document.querySelectorAll('.pack-ad-slot').forEach(function (el) {
+    el.innerHTML = html;
+  });
+}());
+</script>
