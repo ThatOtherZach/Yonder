@@ -1296,6 +1296,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             _dest = _route[1] if _route else home
             if _route and not origin_pinned:
                 home = _route[0]
+            from yonder.intent import has_proximity_intent as _has_proximity
             local_req = AdventureRequest(
                 origin=home,
                 destination=_dest,
@@ -1313,6 +1314,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 visited_countries=visited,
                 trip_kind="detour" if _route else "getaway",
                 include_direct=False,
+                proximity_mode=_has_proximity(prompt),
             )
             local_ideas = seed_ideas(
                 local_req, exclude_iatas=exclude_iatas, shuffle=is_refresh

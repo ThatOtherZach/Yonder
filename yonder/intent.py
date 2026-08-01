@@ -181,6 +181,31 @@ def looks_like_escape_only(prompt: str) -> bool:
     return any(m in p for m in _ESCAPE_ONLY)
 
 
+# --- Proximity intent detection ---
+_PROXIMITY_PHRASES = (
+    "not too far",
+    "not far",
+    "nearby",
+    "close to home",
+    "close by",
+    "short flight",
+    "short trip",
+    "quick trip",
+    "easy flight",
+    "within a few hours",
+)
+
+
+def has_proximity_intent(query: str) -> bool:
+    """Return True when the query contains proximity language ("not too far", etc.).
+
+    Used to unlock the domestic seed boost and harden the Grok prompt with an
+    explicit short-haul cap, regardless of the user's XP/stamp count.
+    """
+    q = (query or "").lower()
+    return any(p in q for p in _PROXIMITY_PHRASES)
+
+
 # --- Vibe → shape prior (tie-breaker only; explicit prompt signals win) ---
 # Static lean: +1 → detour (wander: stopovers are the fun, often cheaper),
 # -1 → escape (comfort: arrive, don't connect). Adjusted over time by the

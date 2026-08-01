@@ -137,6 +137,7 @@ class AdventureRequest(BaseModel):
     # detour = A → stop → B · getaway = home → X → home (open destination)
     trip_kind: str = "detour"
     visited_countries: list[str] = Field(default_factory=list)  # ISO2 passport map
+    proximity_mode: bool = False  # True when query contains "not too far" / "nearby" etc.
 
 
 class StopoverIdea(BaseModel):
@@ -690,12 +691,13 @@ def _sort_by_comfort(
             s += round(_comfort * min(adv_overlap, 2))
         if app_overlap:
             s += round((1.0 - _comfort) * min(app_overlap, 1))
-        # Domestic boost for low-XP travellers: when the user has at least one
-        # visited country but fewer than 25 (_comfort < 0.25), same-country
-        # seeds get +3 so they rise above long-haul international options.
-        # Zero-stamp users are excluded — they haven't been anywhere yet, so
-        # "go anywhere" is the right nudge for them, not "stay close to home".
-        if req.visited_countries and _comfort < 0.25:
+        # Domestic boost: always applied when proximity_mode is set (user asked
+        # for "not too far" / "nearby" / "short flight" etc.), otherwise only
+        # for low-XP travellers (at least one stamp but fewer than 25) to nudge
+        # them toward home-country options.  Zero-stamp users without proximity
+        # intent keep the open "go anywhere" nudge.
+        _prox = getattr(req, "proximity_mode", False)
+        if _prox or (req.visited_countries and _comfort < 0.25):
             origin_country = country_for_iata(req.origin or "")
             idea_country = idea.country or ""
             if origin_country and idea_country and origin_country.upper() == idea_country.upper():

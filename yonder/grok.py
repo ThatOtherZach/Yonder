@@ -509,8 +509,16 @@ class GrokClient:
             "Chaos Pilot/Nomadic Soul → prefer off-beaten-path, emerging, or unconventional stops; "
             "Armchair Explorer/Day Tripper → prefer domestic or nearby short-haul destinations first, "
             "safe hubs, easy connections, well-touristed cities; avoid suggesting 10+ hour flights; easy connections only"
-            + language_directive(detect_lang(prompt))
         )
+        from yonder.intent import has_proximity_intent
+        _proximity_mode = has_proximity_intent(prompt)
+        if _proximity_mode:
+            system += (
+                "\n- User explicitly asked for nearby travel — prefer domestic or "
+                "short-haul destinations only; avoid suggesting any flight longer "
+                "than 4 hours from the origin."
+            )
+        system += language_directive(detect_lang(prompt))
         # Codes only in the prompt (names bloat tokens / latency for large passport maps)
         _xp = _compute_xp(visited, avoid)
         user = json.dumps(
@@ -619,6 +627,7 @@ class GrokClient:
                 visited_countries=list(visited),
                 trip_kind=trip_kind,
                 include_direct=trip_kind != "getaway",
+                proximity_mode=_proximity_mode,
             )
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(f"Invalid adventure translate: {exc}") from exc
