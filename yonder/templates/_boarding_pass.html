@@ -45,7 +45,7 @@
     {% endif %}
     <div class="bp-legs">
       <div class="bp-leg">
-        <div class="codes">{{ place(query.origin) }} → {{ place(query.destination) }}</div>
+        <div class="codes">{{ query.origin }} → {{ query.destination }}</div>
         <div class="fare">
           {% if fare_missing %}
             {% if mode == 'share' %}—{% else %}
@@ -264,7 +264,7 @@
       {% for leg in it.legs %}
       <div class="bp-leg">
         {% set leg_missing = (not leg.offer) or (leg.offer.fare_missing or false) %}
-        <div class="codes">{{ place(leg.from_iata) }} → {{ place(leg.to_iata) }}</div>
+        <div class="codes">{{ leg.from_iata }} → {{ leg.to_iata }}</div>
         <div class="fare">
           {% if leg_missing %}
             {% if mode == 'share' %}—{% else %}
