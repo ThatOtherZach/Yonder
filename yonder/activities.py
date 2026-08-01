@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import csv
 import random
+import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 CSV_PATH = Path(__file__).resolve().parent / "activities.csv"
 PROVIDERS = ("getyourguide", "viator")
@@ -99,6 +101,116 @@ _VIBE_TO_GROK = {
 
 _cache: dict[str, Any] = {"mtime": None, "by_iata": {}, "by_city": {}}
 
+# Language suffix tokens that appear at the end of GYG/Viator slugs.
+_LANG_TAGS: frozenset[str] = frozenset(
+    {"eng", "en", "ger", "de", "fra", "fr", "esp", "es", "pt", "ita", "por"}
+)
+
+# Words kept lowercase when they appear mid-phrase (not position 0).
+_PREPOSITIONS: frozenset[str] = frozenset(
+    {"of", "in", "from", "at", "by", "for", "to", "and", "or", "but", "a", "an", "the", "with", "on"}
+)
+
+# Trailing noise stripped from extracted labels (up to 2 passes).
+_TRAILING_NOISE = re.compile(
+    r"\s+(?:Tickets?|Admission|Entry|Pass(?:es)?|Tours?|"
+    r"of|in|from|at|by|for|to|and|or|but|a|an|the|with|on)$",
+    re.IGNORECASE,
+)
+
+
+def _label_from_url(url: str, city: str) -> str:
+    """Extract a clean activity label from a GYG or Viator affiliate URL.
+
+    Returns ``""`` when extraction yields fewer than 2 words so the caller
+    can fall back to ``_clean_title``.
+
+    GYG example:
+        …/amsterdam-canal-cruise-at-dusk-t12345 → "Canal Cruise at Dusk"
+    Viator example:
+        …/Amsterdam/Evening-Sunset-Canal-Cruise/d525-123456P7 → "Evening Sunset Canal Cruise"
+    """
+    try:
+        parsed = urlparse(url)
+        segments = [s for s in parsed.path.split("/") if s]
+    except Exception:
+        return ""
+
+    slug = ""
+    host = parsed.netloc.lower()
+
+    if "getyourguide" in host:
+        # Last path segment; strip trailing tour-ID like -t123456.
+        if segments:
+            raw = unquote(segments[-1])
+            slug = re.sub(r"-t\d+$", "", raw)
+    elif "viator" in host:
+        # Walk in reverse; skip the product-code segment (d\d+[-_]).
+        for seg in reversed(segments):
+            if not re.match(r"d\d+[-_]", seg, re.IGNORECASE):
+                slug = unquote(seg)
+                break
+
+    if not slug:
+        return ""
+
+    # Normalise separators → words.
+    raw_words = re.split(r"[-_\s]+", slug)
+    city_low = city.strip().lower()
+    city_words = city_low.split() if city_low else []
+
+    words: list[str] = []
+    for w in raw_words:
+        wl = w.lower()
+        if not w:
+            continue
+        if wl in _LANG_TAGS:
+            continue
+        if wl == "w":
+            words.append("with")
+            continue
+        if len(w) == 1 and wl != "i":
+            continue
+        if words and wl in _PREPOSITIONS:
+            words.append(wl)
+        else:
+            words.append(w.capitalize())
+
+    # Strip leading "From {city}" or "{city}" prefix.
+    if words and words[0].lower() == "from":
+        words = words[1:]
+    if city_words:
+        # Strip a leading city match (single word or multi-word).
+        while words and words[0].lower() == city_words[0]:
+            matched = all(
+                i < len(words) and words[i].lower() == city_words[i]
+                for i in range(len(city_words))
+            )
+            if matched:
+                words = words[len(city_words):]
+            break
+        # Strip trailing city match.
+        tail = [w.lower() for w in words[-len(city_words):]]
+        if tail == city_words:
+            words = words[: -len(city_words)]
+
+    # Cap to 5 words.
+    words = words[:5]
+
+    # Strip trailing noise up to 2 passes.
+    label = " ".join(words)
+    for _ in range(2):
+        new_label = _TRAILING_NOISE.sub("", label).strip()
+        if new_label == label:
+            break
+        label = new_label
+
+    # Ensure leading capital.
+    if label:
+        label = label[0].upper() + label[1:]
+
+    return label if len(label.split()) >= 2 else ""
+
 
 def _provider_for(url: str) -> str | None:
     low = url.lower()
@@ -162,7 +274,7 @@ def _load() -> tuple[dict[str, list[dict]], dict[str, list[dict]]]:
                     "provider_label": PROVIDER_LABELS[provider],
                     "vibe": (row.get("GROKVIBE") or "").strip().lower(),
                     "emoji": (row.get("ACTIVITYEMOJI") or "").strip(),
-                    "title": _clean_title(raw_title, city),
+                    "title": _label_from_url(url, city) or _clean_title(raw_title, city),
                 }
                 if not rec["title"] or not (rec["city"] or rec["iata"]):
                     continue
