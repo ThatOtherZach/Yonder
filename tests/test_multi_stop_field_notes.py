@@ -324,3 +324,182 @@ class TestMultiStopBoardingPassSlots:
         assert all(r == "stopover" for r in roles), (
             f"Unexpected data-role values: {roles}"
         )
+
+
+# ===========================================================================
+# Suite 3 — Saved mode: multi-stop boarding passes render correct slots
+# ===========================================================================
+
+
+def _minimal_saved(it: Any) -> Any:
+    """Build a minimal SavedItinerary compatible with the detour_card macro."""
+    import time
+    from yonder.saved import SavedItinerary
+
+    return SavedItinerary(
+        id="test-saved-001",
+        saved_at=time.time(),
+        priced_at=time.time(),
+        title=it.title,
+        kind="detour",
+        currency="USD",
+        total_price=it.total_price,
+        display_price=None,
+        stop_city=it.stop_city,
+        stop_iata=it.stop_iata,
+        stay_days=it.stay_days,
+        origin=(it.legs[0].from_iata if it.legs else None),
+        destination=((it.legs[-1].to_iata) if it.legs else None),
+        adults=1,
+        cabin="economy",
+        vibe="adventure",
+        trip_prompt=None,
+        theme_country=None,
+        theme_primary=it.theme_primary,
+        theme_accent=None,
+        theme_gradient=None,
+        theme_flag_img=None,
+        theme_label=it.theme_label,
+        google_flights_url=None,
+        kayak_url=None,
+        ground_display=None,
+        ground_compare_line=None,
+        all_in_display=None,
+        notes=[],
+        itinerary={},
+        trip_meta={},
+    )
+
+
+def _detour_html_saved(it: Any) -> str:
+    """Render the detour_card macro in mode='saved'."""
+    s = _minimal_saved(it)
+    return _render_macro(
+        "{% import '_boarding_pass.html' as bp %}"
+        "{{ bp.detour_card('saved', it, 0, det_vibe='adventure', det_text='t', s=s) }}",
+        it=it,
+        s=s,
+    )
+
+
+class TestSavedModeMultiStopSlots:
+    """detour_card in mode='saved' must emit one field-note-slot per
+    intermediate stop in a multi-stop itinerary, just like mode='explore'."""
+
+    def test_two_stop_saved_card_has_two_slots(self):
+        it = _multi_stop_itinerary(["NRT", "SIN"])
+        html = _detour_html_saved(it)
+        slots = re.findall(r'class="[^"]*field-note-slot[^"]*"', html)
+        assert len(slots) == 2, (
+            f"Expected 2 field-note-slot elements for 2-stop saved card, "
+            f"got {len(slots)}"
+        )
+
+    def test_two_stop_saved_card_slots_carry_correct_iatas(self):
+        it = _multi_stop_itinerary(["NRT", "SIN"])
+        html = _detour_html_saved(it)
+        iatas = re.findall(r'class="[^"]*field-note-slot[^"]*"[^>]*data-iata="([^"]*)"', html)
+        iatas += re.findall(r'data-iata="([^"]*)"[^>]*class="[^"]*field-note-slot[^"]*"', html)
+        assert "NRT" in iatas, f"NRT slot missing in saved mode; found: {iatas}"
+        assert "SIN" in iatas, f"SIN slot missing in saved mode; found: {iatas}"
+
+    def test_three_stop_saved_card_has_three_slots(self):
+        it = _multi_stop_itinerary(["NRT", "SIN", "DXB"])
+        html = _detour_html_saved(it)
+        slots = re.findall(r'class="[^"]*field-note-slot[^"]*"', html)
+        assert len(slots) == 3, (
+            f"Expected 3 field-note-slot elements for 3-stop saved card, "
+            f"got {len(slots)}"
+        )
+
+    def test_three_stop_saved_card_all_iatas_present(self):
+        it = _multi_stop_itinerary(["NRT", "SIN", "DXB"])
+        html = _detour_html_saved(it)
+        for iata in ("NRT", "SIN", "DXB"):
+            assert f'data-iata="{iata}"' in html, (
+                f'data-iata="{iata}" missing from multi-stop saved boarding pass'
+            )
+
+    def test_saved_slots_start_in_loading_state(self):
+        """All multi-stop slots in saved mode start as is-loading."""
+        it = _multi_stop_itinerary(["NRT", "SIN"])
+        html = _detour_html_saved(it)
+        loading_slots = re.findall(
+            r'class="[^"]*field-note-slot[^"]*is-loading[^"]*"', html
+        ) + re.findall(
+            r'class="[^"]*is-loading[^"]*field-note-slot[^"]*"', html
+        )
+        assert len(loading_slots) == 2, (
+            f"Expected 2 loading slots for 2-stop saved card, got {len(loading_slots)}"
+        )
+
+    def test_single_stop_saved_card_still_has_one_slot(self):
+        """Single-stop stopover in saved mode must still render exactly one slot."""
+        from yonder.adventure import AdventureItinerary, PricedLeg
+
+        leg = PricedLeg(
+            from_iata="YVR",
+            to_iata="TYO",
+            depart_date=date.today() + timedelta(days=30),
+            offer=_minimal_offer(),
+        )
+        it = AdventureItinerary(
+            kind="stopover",
+            title="Tokyo Stopover",
+            total_price=350.0,
+            currency="USD",
+            stop_iata="TYO",
+            stop_city="Tokyo",
+            stay_days=5,
+            legs=[leg],
+            stops=[],
+            theme_primary="#e6b450",
+            theme_label="Adventure",
+        )
+        html = _detour_html_saved(it)
+        slots = re.findall(r'class="[^"]*field-note-slot[^"]*"', html)
+        assert len(slots) == 1, (
+            f"Single-stop saved card should have exactly 1 slot, got {len(slots)}"
+        )
+        assert 'data-iata="TYO"' in html
+
+
+# ===========================================================================
+# Suite 4 — Static check: saved.html polling JS uses querySelectorAll
+# ===========================================================================
+
+
+class TestSavedHtmlPollingJs:
+    """The bootFieldNotes function in saved.html must select *all* loading
+    slots with querySelectorAll, not just the first with querySelector."""
+
+    def _read_saved_html(self) -> str:
+        import pathlib
+
+        path = pathlib.Path(__file__).parent.parent / "yonder" / "templates" / "saved.html"
+        return path.read_text(encoding="utf-8")
+
+    def test_boot_field_notes_uses_queryselectorall(self):
+        src = self._read_saved_html()
+        # The polling setup must use querySelectorAll to collect all slots
+        assert "querySelectorAll" in src, (
+            "saved.html bootFieldNotes must use querySelectorAll to find "
+            "all field-note-slot elements"
+        )
+
+    def test_boot_field_notes_does_not_use_bare_queryselector_for_slots(self):
+        """querySelector (without 'All') must not be used to collect the
+        initial slot list — that would silently drop all but the first stop."""
+        import re as _re
+
+        src = self._read_saved_html()
+        # Find any querySelector( call NOT followed by 'All' that targets
+        # the field-note-slot class in the bootFieldNotes context.
+        bare = _re.findall(
+            r'\bquerySelector\s*\(\s*["\'][^"\']*field-note-slot[^"\']*["\']',
+            src,
+        )
+        assert bare == [], (
+            "saved.html must not use querySelector (without All) to query "
+            f"field-note-slot elements; found: {bare}"
+        )
