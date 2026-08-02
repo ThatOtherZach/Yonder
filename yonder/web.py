@@ -932,6 +932,15 @@ async def explore_run(request: Request) -> HTMLResponse:
     multi_city = str(form_data.get("multi_city") or "") in ("true", "on", "1")
     return_flight = str(form_data.get("return_flight") or "") in ("true", "on", "1")
 
+    # Quest duration: 7 / 10 / 14 / 21 days; default 10 when absent or invalid.
+    _QUEST_DAYS_ALLOWED = {7, 10, 14, 21}
+    try:
+        quest_days = int(form_data.get("quest_days") or 10)
+        if quest_days not in _QUEST_DAYS_ALLOWED:
+            quest_days = 10
+    except (ValueError, TypeError):
+        quest_days = 10
+
     currency = (settings.default_currency or "USD").upper()
     if not currency.isalpha() or len(currency) != 3:
         currency = "USD"
@@ -1774,6 +1783,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             home_iata,
             depart_dt,
             settings,
+            quest_days=quest_days,
             include_mock=mock,
             avoid=avoid,
             visited=visited,

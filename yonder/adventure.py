@@ -1877,6 +1877,7 @@ async def plan_quest(
     depart_date: date,
     settings: Settings,
     *,
+    quest_days: int = 10,
     include_mock: bool = False,
     avoid: list[str] | None = None,
     visited: list[str] | None = None,
@@ -1884,8 +1885,8 @@ async def plan_quest(
     """Propose 1–3 open-jaw Quest itineraries and price both legs per idea.
 
     Each itinerary: fly one-way home→entry_iata on *depart_date*,
-    overland to exit_iata over 10 days, then fly one-way exit_iata→home
-    on *depart_date + 10 days*.  Respects passport avoid list.
+    overland to exit_iata over quest_days days, then fly one-way exit_iata→home
+    on *depart_date + quest_days*.  Respects passport avoid list.
     """
     from yonder.grok import GrokClient
     from yonder.money import format_approx
@@ -1893,7 +1894,8 @@ async def plan_quest(
     from yonder.links import google_flights_url as _gfu
 
     settings = settings or get_settings()
-    outbound_date = depart_date + timedelta(days=10)
+    days = max(1, int(quest_days or 10))
+    outbound_date = depart_date + timedelta(days=days)
     currency = (settings.default_currency or "USD").upper()
     vt = _vt(vibe)
 
@@ -1904,6 +1906,7 @@ async def plan_quest(
             vibe=vibe,
             home_iata=home_iata,
             depart_date=depart_date,
+            quest_days=days,
             avoid=avoid or [],
             visited=visited or [],
         )

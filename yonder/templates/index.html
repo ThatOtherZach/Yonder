@@ -1193,10 +1193,20 @@
               </label>
               <button type="button" id="btn-quest-mode"
                 class="toggle-switch"
-                title="Quest: fly into one city, travel overland to another, fly home — 10-day open-jaw adventure"
+                title="Quest: fly into one city, travel overland to another, fly home — open-jaw adventure"
                 style="background:none;border:1px solid var(--line,#ddd);border-radius:4px;padding:0.25rem 0.55rem;cursor:pointer;font-size:0.82rem;white-space:nowrap">
                 ⛰ Quest
               </button>
+              <label style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.78rem;font-weight:600;color:var(--text-muted,#888);white-space:nowrap;padding:0 0.35rem">
+                <select name="quest_days" id="quest-days-select"
+                  title="Quest window length"
+                  style="font-size:0.78rem;font-family:inherit;border:1px solid var(--line,#ddd);border-radius:4px;background:var(--paper,#fafafa);color:inherit;padding:0.15rem 0.25rem;cursor:pointer">
+                  <option value="7">7 days</option>
+                  <option value="10" selected>10 days</option>
+                  <option value="14">14 days</option>
+                  <option value="21">21 days</option>
+                </select>
+              </label>
             </div>
           </div>
           <div

@@ -441,6 +441,7 @@ class GrokClient:
         home_iata: str,
         depart_date: date,
         *,
+        quest_days: int = 10,
         avoid: list[str] | None = None,
         visited: list[str] | None = None,
     ) -> list[dict]:
@@ -453,7 +454,8 @@ class GrokClient:
         from datetime import timedelta
         from yonder.countries import country_for_iata
 
-        outbound_date = depart_date + timedelta(days=10)
+        days = max(1, int(quest_days or 10))
+        outbound_date = depart_date + timedelta(days=days)
         avoid_codes = [a.upper() for a in (avoid or []) if a]
         avoid_set = {a.upper() for a in avoid_codes}
 
@@ -464,7 +466,7 @@ class GrokClient:
             "- Entry and exit MUST be in DIFFERENT countries, NEITHER in avoid_countries (ISO2).\n"
             "- Name SPECIFIC real transport: actual train lines (e.g. 'Reunification Express'), "
             "ferry routes, bus companies — not generic 'bus' or 'train'.\n"
-            "- The overland journey must be genuinely feasible in the 10-day window.\n"
+            f"- The overland journey must be genuinely feasible in the {days}-day window.\n"
             "- Match the traveler's vibe: food, chaos, romance, nature, etc.\n"
             "- Vary regions across ideas; don't repeat the same pair.\n"
             "Return STRICT JSON only (no markdown):\n"
@@ -483,7 +485,7 @@ class GrokClient:
                 "home_iata": home_iata,
                 "depart_date": depart_date.isoformat(),
                 "outbound_date": outbound_date.isoformat(),
-                "window_days": 10,
+                "window_days": days,
                 "avoid_countries": avoid_codes,
                 "count": "1 to 3 ideas (prefer 2-3 diverse options)",
             },
