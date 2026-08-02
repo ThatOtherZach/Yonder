@@ -1,0 +1,216 @@
+"""End-to-end Quest flow coverage (Task 370).
+
+Submits force_mode=quest to POST /explore with a mocked Grok
+(GrokClient.plan_quest) and a mocked flight pricer (adventure._price_leg),
+then asserts the rendered HTML contains the quest cards:
+
+  - at least one .is-quest card
+  - entry_iata / exit_iata visible on the card
+  - the "two one-way tickets" stub text
+  - a "Check Fares" button when fares are missing (mock path)
+  - real fares displayed (and no Check Fares) on the priced path
+  - a bad/empty Grok payload yields 0 quest cards without a 500
+"""
+
+from __future__ import annotations
+
+import re
+from datetime import date, timedelta
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+
+import yonder.adventure as adventure_module
+import yonder.grok as grok_module
+import yonder.last_search as ls_module
+import yonder.web as web_module
+from yonder.adventure import PricedLeg
+from yonder.config import Settings
+from yonder.types import FlightOffer
+
+_FUTURE = (date.today() + timedelta(days=40)).isoformat()
+_PROMPT = "overland food adventure through southeast asia"
+
+_RAW_IDEA = {
+    "entry_iata": "HAN",
+    "exit_iata": "BKK",
+    "entry_city": "Hanoi",
+    "exit_city": "Bangkok",
+    "overland_narrative": "Ride the Reunification Express south, then cross into Thailand.",
+    "transport": ["Reunification Express", "Mekong slow boat"],
+    "highlights": ["Hội An", "Phnom Penh"],
+}
+
+
+@pytest.fixture()
+def client():
+    return TestClient(web_module.app, raise_server_exceptions=True)
+
+
+@pytest.fixture(autouse=True)
+def _clean_env(monkeypatch):
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("MOCK", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _no_disk_io(monkeypatch):
+    monkeypatch.setattr(ls_module, "save_last", lambda *a, **kw: None)
+    monkeypatch.setattr(ls_module, "load_last", lambda *a, **kw: None)
+    monkeypatch.setattr(ls_module, "load_first", lambda *a, **kw: None)
+    monkeypatch.setattr(web_module, "save_last", lambda *a, **kw: None, raising=False)
+    monkeypatch.setattr(web_module, "load_last", lambda *a, **kw: None, raising=False)
+
+
+def _wire(monkeypatch, *, priced: bool) -> None:
+    """Patch settings + Grok + pricer so /explore runs offline.
+
+    priced=False → the pricer returns mock offers (fare_missing path).
+    priced=True  → the pricer returns real live offers with display prices.
+    """
+    settings = Settings(testing=True, xai_api_key="test-key")
+    monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
+
+    # Grok: quest planning succeeds; every other AI call fails fast so the
+    # escape/detour panels bail out via their error paths.
+    async def _fake_plan_quest(self, *a: Any, **kw: Any) -> list[dict]:
+        return [dict(_RAW_IDEA)]
+
+    async def _fail_chat(self, *a: Any, **kw: Any):
+        raise RuntimeError("AI offline in test")
+
+    monkeypatch.setattr(grok_module.GrokClient, "plan_quest", _fake_plan_quest)
+    monkeypatch.setattr(grok_module.GrokClient, "_chat", _fail_chat)
+
+    # Detour panel: never hit real machinery
+    async def _fail_plan(*a: Any, **kw: Any):
+        raise RuntimeError("plan_adventure offline in test")
+
+    monkeypatch.setattr(web_module, "plan_adventure", _fail_plan)
+    monkeypatch.setattr(web_module, "detect_trip_gaps", lambda *a, **kw: [])
+
+    # Pricer: deterministic PricedLeg per leg
+    async def _fake_price_leg(origin, dest, depart, req, **kw) -> PricedLeg:
+        if priced:
+            offer = FlightOffer(
+                provider="testair",
+                price=500.0,
+                currency="USD",
+                price_kind="live",
+                display_price_base="~US$500",
+                display_price="~US$500",
+            )
+        else:
+            offer = FlightOffer(
+                provider="mock",
+                price=123.0,
+                currency="USD",
+                price_kind="mock",
+            )
+        return PricedLeg(
+            from_iata=origin,
+            to_iata=dest,
+            depart_date=depart,
+            offer=offer,
+            google_flights_url=f"https://www.google.com/travel/flights?q={origin}-{dest}",
+        )
+
+    monkeypatch.setattr(adventure_module, "_price_leg", _fake_price_leg)
+
+    async def _fake_pick(*a: Any, **kw: Any):
+        return ["mock"]
+
+    monkeypatch.setattr(adventure_module, "pick_pricing_provider", _fake_pick)
+
+
+def _post_quest(client: TestClient) -> str:
+    resp = client.post(
+        "/explore",
+        data={
+            "prompt": _PROMPT,
+            "origin": "YVR",
+            "depart": _FUTURE,
+            "vibe": "adventure",
+            "force_mode": "quest",
+        },
+    )
+    assert resp.status_code == 200
+    return resp.text
+
+
+class TestQuestCardsRender:
+    def test_quest_card_renders_with_check_fares_on_mock_path(
+        self, client, monkeypatch
+    ):
+        """Mock pricer → fare-missing legs → card shows Check Fares buttons."""
+        _wire(monkeypatch, priced=False)
+        html = _post_quest(client)
+
+        # At least one .is-quest card rendered
+        quest_cards = re.findall(r'class="boarding-pass is-adventure is-quest"', html)
+        assert len(quest_cards) >= 1, "expected at least one .is-quest card"
+
+        # entry_iata / exit_iata present on the card
+        assert 'data-quest-entry="HAN"' in html
+        assert 'data-quest-exit="BKK"' in html
+        assert "Hanoi" in html
+        assert "Bangkok" in html
+
+        # Stub text
+        assert "two one-way tickets" in html
+
+        # Mock fares are never shown — Check Fares buttons appear instead
+        quest_section = html.split('id="quest-results"', 1)[1]
+        assert "btn-check-fares" in quest_section, (
+            "Check Fares button missing on fare-missing quest legs"
+        )
+        # Both quest legs get a check-fares slot targeting the right routes
+        assert 'data-cf-origin="YVR"' in quest_section
+        assert 'data-cf-dest="HAN"' in quest_section
+        assert 'data-cf-origin="BKK"' in quest_section
+        # The invented mock price must never leak into the visible card
+        # (the JSON save-blob may carry it; the rendered fare slots must not)
+        card = quest_section.split("</article>")[0]
+        visible = re.sub(r"<script[^>]*>.*?</script>", "", card, flags=re.S)
+        assert "123" not in visible
+
+    def test_quest_card_shows_fares_on_priced_path(self, client, monkeypatch):
+        """Live-priced legs → both fares + combined total, no Check Fares."""
+        _wire(monkeypatch, priced=True)
+        html = _post_quest(client)
+
+        assert 'class="boarding-pass is-adventure is-quest"' in html
+        quest_card = html.split('id="quest-results"', 1)[1].split("</article>")[0]
+        assert "~US$500" in quest_card
+        assert "two one-way tickets" in quest_card
+        assert "btn-check-fares" not in quest_card
+        # Combined total = 500 + 500
+        assert "1,000" in quest_card or "1000" in quest_card
+
+    def test_bad_grok_payload_yields_no_quest_cards_without_crash(
+        self, client, monkeypatch
+    ):
+        """Grok returning no ideas (bad JSON path) → 0 cards, graceful error page.
+
+        With every panel empty the app deliberately renders the compose page
+        with a 400 status ("Nothing priced") — never a 500 / raw traceback.
+        """
+        _wire(monkeypatch, priced=False)
+
+        async def _empty_quest(self, *a: Any, **kw: Any) -> list[dict]:
+            return []  # what GrokClient.plan_quest returns on unparseable JSON
+
+        monkeypatch.setattr(grok_module.GrokClient, "plan_quest", _empty_quest)
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": _PROMPT,
+                "origin": "YVR",
+                "depart": _FUTURE,
+                "vibe": "adventure",
+                "force_mode": "quest",
+            },
+        )
+        assert resp.status_code == 400  # friendly error page, not a crash
+        assert "is-quest" not in resp.text
