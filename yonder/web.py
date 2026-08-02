@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import json
 from datetime import date
 from pathlib import Path
@@ -1774,7 +1775,8 @@ async def explore_run(request: Request) -> HTMLResponse:
     _recycled = None
     _recycled_esc: "UnifiedSearchResult | None" = None
     _recycled_qst: "list | None" = None
-    if not settings.testing:
+    _recycle_off = (os.environ.get("YONDER_DISABLE_RECYCLE") or "").strip().lower() in ("1", "true", "yes")
+    if not settings.testing and not _recycle_off:
         try:
             from yonder.recycle import find_recycled_result, find_recycled_escape, find_recycled_quest
 

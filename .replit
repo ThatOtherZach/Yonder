@@ -19,6 +19,7 @@ SEARCH_BUDGET_SECONDS = "30.0"
 SEARCH_MAX_SECONDS = "42.0"
 CODE_PROMO = "YONDERCITY"
 LINK_PROMO = "https://go.getproton.me/aff_c?offer_id=26&aff_id=1204"
+YONDER_DISABLE_RECYCLE = "1"
 
 [workflows]
 runButton = "Project"
