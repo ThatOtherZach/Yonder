@@ -794,8 +794,10 @@ def filter_ideas(
         if cc and cc in avoid:
             continue
         # Passport map: for getaway trips, never land somewhere already stamped visited.
-        # Detour stopovers are connection cities, not novelty destinations, so the
-        # visited-country filter does not apply.
+        # Detour and stop-off stopovers are connection cities chosen for routing
+        # rather than novelty, so the visited-country filter intentionally does
+        # not apply to them.  Only getaway (round-trip open-destination) trips
+        # should surface somewhere the traveller hasn't already been.
         if getaway and visited and cc and cc in visited:
             continue
         seen.add(code)

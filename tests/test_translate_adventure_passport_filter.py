@@ -316,6 +316,62 @@ async def test_visited_country_candidate_kept_on_detour():
 
 
 # ---------------------------------------------------------------------------
+# visited_countries filter does NOT apply to stop-off trips
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_visited_country_candidate_kept_on_stop_off():
+    """A candidate from a visited country must NOT be filtered out on a stop-off trip.
+
+    Stop-off trips (trip_kind == "stop_off") are point-A-to-point-B journeys with
+    an intentional intermediate stop — semantically identical to a detour, not a
+    getaway.  The visited-country constraint only applies to getaway trips where the
+    traveller wants somewhere new; on a stop-off the stop city is chosen for routing
+    and convenience, so a previously-visited country is entirely valid.
+
+    Grok returns JP (Tokyo / NRT) and JP is in visited_countries, but trip_kind is
+    "stop_off" — filter_ideas() must keep it in the StopoverIdea list.
+    """
+    visited_candidate = {
+        "iata": "NRT",
+        "city": "Tokyo Narita",
+        "country": "JP",   # <-- in visited_countries, but trip is a stop-off
+        "stay_days": 3,
+        "why": "Great stop on the way to Singapore",
+        "vibe_tags": ["city"],
+    }
+    other_candidate = {
+        "iata": "ICN",
+        "city": "Seoul",
+        "country": "KR",   # <-- NOT in visited_countries
+        "stay_days": 2,
+        "why": "Another option",
+        "vibe_tags": ["city"],
+    }
+    mock = _make_response(trip_kind="stop_off", candidates=[visited_candidate, other_candidate])
+
+    iatas = await _run_translate(
+        mock_response=mock,
+        form={
+            "origin": "YVR",
+            "destination": "SIN",
+            "visited_countries": ["JP"],
+            "avoid_countries": [],
+            "max_candidates": 5,
+        },
+    )
+
+    assert "NRT" in iatas, (
+        "NRT (JP) must be kept on a stop-off trip even though JP is in visited_countries; "
+        f"got candidates: {iatas}"
+    )
+    assert "ICN" in iatas, (
+        f"ICN (KR) is not in visited_countries and should also be kept; got candidates: {iatas}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # avoid_countries normalises country code case
 # ---------------------------------------------------------------------------
 
