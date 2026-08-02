@@ -347,6 +347,19 @@
     </div>
     {% endif %}
 
+    {% if mode == 'explore' and (it.no_flight_hub_url or it.no_flight_adj_url) %}
+    {# No-flight fallback: live API found no routes — show Aviasales alternatives #}
+    <div class="bp-no-flight">
+      <p class="bp-nf-note">No direct flights found from <strong>{{ it.legs[0].from_iata if it.legs else '—' }}</strong> — try alternatives:</p>
+      {% if it.no_flight_hub_url %}
+      <a href="{{ it.no_flight_hub_url }}" target="_blank" rel="noopener sponsored" class="bp-nf-btn">✈ Try {{ it.no_flight_hub_iata }}</a>
+      {% endif %}
+      {% if it.no_flight_adj_url %}
+      <a href="{{ it.no_flight_adj_url }}" target="_blank" rel="noopener sponsored" class="bp-nf-btn">📅 Adjust dates</a>
+      {% endif %}
+    </div>
+    {% endif %}
+
     {% set show_all_in = it.all_in_display and not cf.pending %}
     {% set has_col = it.ground_display or it.ground_compare_line or it.ground_budget_line or show_all_in %}
     {% if mode in ('explore', 'saved') %}

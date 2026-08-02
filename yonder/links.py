@@ -202,6 +202,59 @@ def aviasales_url(
     return f"https://www.aviasales.com/search/{path}?{qs}"
 
 
+def nearest_hub_for(destination_iata: str) -> str:
+    """Return a well-connected hub IATA near *destination_iata*.
+
+    Used for the no-flight fallback CTA: when a route has no availability the
+    user is offered "Try [hub]" as an alternative booking path.
+    """
+    from yonder.countries import country_for_iata as _cfi
+    cc = (_cfi(destination_iata) or "").upper()
+    _HUB_BY_COUNTRY: dict[str, str] = {
+        # North America
+        "CA": "ORD", "US": "ORD", "MX": "LAX",
+        # Central / Caribbean
+        "CR": "MIA", "CU": "MIA", "DO": "MIA", "PA": "MIA", "JM": "MIA",
+        # South America
+        "CO": "MIA", "VE": "MIA", "PE": "MIA", "EC": "MIA",
+        "BR": "GRU", "AR": "GRU", "CL": "SCL", "BO": "GRU",
+        # Europe
+        "GB": "LHR", "IE": "LHR", "FR": "CDG", "DE": "FRA", "ES": "MAD",
+        "IT": "FCO", "NL": "AMS", "CH": "ZRH", "AT": "VIE", "BE": "BRU",
+        "PT": "LIS", "SE": "ARN", "NO": "OSL", "DK": "CPH", "FI": "HEL",
+        "PL": "WAW", "CZ": "PRG", "HU": "BUD", "RO": "OTP", "GR": "ATH",
+        "TR": "IST", "IS": "KEF", "HR": "VIE", "RS": "VIE", "BG": "SOF",
+        # Middle East / Gulf / North Africa
+        "AE": "DXB", "QA": "DOH", "SA": "RUH", "KW": "KWI", "BH": "DOH",
+        "IL": "TLV", "EG": "CAI", "MA": "CMN", "TN": "TUN", "DZ": "ALG",
+        "JO": "AMM", "LB": "BEY",
+        # Sub-Saharan Africa
+        "ZA": "JNB", "NG": "LOS", "KE": "NBO", "ET": "ADD", "GH": "ACC",
+        "TZ": "DAR", "CI": "ABJ", "SN": "DKR", "MU": "MRU", "TZ": "DAR",
+        "ZW": "JNB", "ZM": "JNB", "MZ": "JNB", "NA": "JNB",
+        # South / Southeast Asia
+        "IN": "DEL", "PK": "KHI", "BD": "DAC", "LK": "CMB", "NP": "KTM",
+        "TH": "BKK", "VN": "SGN", "MY": "KUL", "SG": "SIN", "ID": "CGK",
+        "PH": "MNL", "MM": "RGN", "KH": "PNH", "LA": "VTE",
+        # East Asia
+        "JP": "NRT", "KR": "ICN", "CN": "PEK", "HK": "HKG", "TW": "TPE",
+        "MN": "ULN",
+        # Central Asia
+        "KZ": "ALA", "UZ": "TAS", "TM": "ASB", "KG": "FRU",
+        # Oceania
+        "AU": "SYD", "NZ": "AKL", "FJ": "NAN", "PG": "POM",
+    }
+    dest_u = destination_iata.upper()
+    hub = _HUB_BY_COUNTRY.get(cc)
+    if hub and hub != dest_u:
+        return hub
+    # Region fallbacks when country is unknown
+    for candidate in ("LHR", "CDG", "FRA", "DXB", "SIN", "NRT", "JFK", "ORD"):
+        if candidate != dest_u:
+            return candidate
+    return "LHR"
+
+
 def aviasales_fallback_url(origin: str | None = None, adults: int = 1) -> str:
     """Fallback Aviasales link when full search data is missing.
 

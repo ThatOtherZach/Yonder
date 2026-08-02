@@ -213,6 +213,10 @@ class AdventureItinerary(BaseModel):
     rescue: bool = False
     # Gap awareness: set when this result fills a saved-trip gap
     gap_label: str | None = None
+    # No-flight fallback CTAs (shown when all legs have errors — flight truly unavailable)
+    no_flight_hub_url: str | None = None   # Aviasales "Try nearest hub" affiliate link
+    no_flight_hub_iata: str | None = None  # IATA of the suggested nearby hub
+    no_flight_adj_url: str | None = None   # Aviasales "Adjust dates +3d" affiliate link
 
 
 class AdventureResult(BaseModel):
@@ -305,8 +309,41 @@ async def _price_leg(
     only: list[str] | None,
     http: httpx.AsyncClient,
     fallback_chain: list[str] | None = None,
+    bypass_fare_cache: bool = False,
 ) -> PricedLeg:
     """Price one leg; fall through fare providers if primary fails."""
+    # Check the persistent fare-estimate cache first.  A cache hit means we
+    # already have a historical range for this route/month — return a
+    # fare-missing leg immediately so the UI shows the range pill + "Check
+    # Fares" without a live API call.
+    # bypass_fare_cache=True skips this (used by reprice_itinerary so an
+    # explicit refresh always hits the live API).
+    if not bypass_fare_cache:
+        try:
+            from yonder.fare_estimates import get_estimate as _get_fare_est
+            _fare_est = _get_fare_est(origin, dest, req.currency, year_month=depart.strftime("%Y-%m"))
+            if _fare_est:
+                _gurl_cached = google_flights_url(
+                    origin, dest, depart, currency=req.currency, adults=req.adults
+                )
+                return PricedLeg(
+                    from_iata=origin,
+                    to_iata=dest,
+                    depart_date=depart,
+                    offer=FlightOffer(
+                        provider="fare_cache",
+                        price=0.0,
+                        currency=req.currency,
+                        fare_missing=True,
+                        price_kind="cached",
+                        notes=f"cached range {_fare_est['label']} — tap Check Fares for live price",
+                    ),
+                    google_flights_url=_gurl_cached,
+                    booking_url=_gurl_cached,
+                )
+        except Exception:
+            pass  # fare cache unavailable — fall through to live API
+
     from yonder.quota import FARE_PROVIDERS
 
     chain: list[str] = []
@@ -1552,6 +1589,26 @@ async def plan_adventure(
                         f"{format_place(req.destination)}"
                     )
                 )
+                # No-flight fallback: if neither leg returned an offer (genuine
+                # no-connectivity, not just a fare-missing cache hit), expose
+                # Aviasales affiliate CTAs as alternatives so the card stays useful.
+                _nf_hub_url: str | None = None
+                _nf_hub_iata: str | None = None
+                _nf_adj_url: str | None = None
+                _nf_failed = leg1 if not leg1.offer else (leg2 if not leg2.offer else None)
+                if _nf_failed and not getaway:
+                    try:
+                        from yonder.links import aviasales_url as _avia_nf, nearest_hub_for as _nhf_nf
+                        from datetime import timedelta as _td_nf
+                        _nf_dest_iata = _nf_failed.to_iata or idea.iata
+                        _nf_hub_iata = _nhf_nf(_nf_dest_iata)
+                        if _nf_hub_iata and _nf_hub_iata != req.origin:
+                            _nf_hub_url = _avia_nf(req.origin, _nf_hub_iata, req.depart_date)
+                        _nf_adj_url = _avia_nf(
+                            req.origin, _nf_dest_iata, req.depart_date + _td_nf(days=3)
+                        )
+                    except Exception:
+                        pass
                 return _apply_theme(
                     AdventureItinerary(
                         kind="getaway" if getaway else "stopover",
@@ -1569,6 +1626,9 @@ async def plan_adventure(
                         google_flights_url=multi_url,
                         booking_url=multi_url,
                         theme_country=idea.country,
+                        no_flight_hub_url=_nf_hub_url,
+                        no_flight_hub_iata=_nf_hub_iata,
+                        no_flight_adj_url=_nf_adj_url,
                         **ground_fields,
                     )
                 )
@@ -1846,6 +1906,7 @@ async def reprice_itinerary(
                 only=only,
                 http=http,
                 fallback_chain=fallback_chain,
+                bypass_fare_cache=True,  # reprice always hits the live API
             )
             if pl.offer:
                 live_n += 1

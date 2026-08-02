@@ -1772,9 +1772,11 @@ async def explore_run(request: Request) -> HTMLResponse:
     # fresh results — fare hidden until a live check on Share/Save. No match
     # → seamless fallback to the normal AI path below.
     _recycled = None
+    _recycled_esc: "UnifiedSearchResult | None" = None
+    _recycled_qst: "list | None" = None
     if not settings.testing:
         try:
-            from yonder.recycle import find_recycled_result
+            from yonder.recycle import find_recycled_result, find_recycled_escape, find_recycled_quest
 
             _recycled = find_recycled_result(
                 prompt=prompt,
@@ -1787,8 +1789,25 @@ async def explore_run(request: Request) -> HTMLResponse:
                 # (save_ban stays allowed — saved trips ARE the pool here)
                 exclude_iatas=(exclude_iatas - save_ban) if is_refresh else None,
             )
+            if not is_refresh:
+                _recycled_esc = find_recycled_escape(
+                    prompt=prompt,
+                    vibe=vibe,
+                    origin=home_iata,
+                    depart=depart,
+                    currency=currency,
+                )
+                _recycled_qst = find_recycled_quest(
+                    prompt=prompt,
+                    vibe=vibe,
+                    origin=home_iata,
+                    depart=depart,
+                    currency=currency,
+                )
         except Exception:  # noqa: BLE001
             _recycled = None
+            _recycled_esc = None
+            _recycled_qst = None
 
     try:
         if _recycled is not None:
@@ -1859,6 +1878,102 @@ async def explore_run(request: Request) -> HTMLResponse:
                 pin_first=not is_refresh,
             )
             active_mode = "detour"
+
+        # ── Escape recycle: best saved escape trip → fare-missing search result ──
+        if _recycled_esc is not None and not escape_override.get("result"):
+            try:
+                _re_q = _recycled_esc.query
+                from yonder.vibe_theme import vibe_theme as _vt_re
+                _vt_re_d = _vt_re(vibe)
+                _re_form = {
+                    "origin": _re_q.origin,
+                    "destination": _re_q.destination,
+                    "depart": _re_q.depart_date.isoformat(),
+                    "return_date": "",
+                    "adults": 1,
+                    "currency": currency,
+                    "nonstop": False,
+                    "vibe": vibe,
+                    "vibe_color": _vt_re_d["color"],
+                }
+                _re_dest_theme = _dest_theme(_re_q.destination)
+                _re_place_book = None
+                try:
+                    from yonder.countries import country_for_iata as _cfi_re
+                    from yonder.encyclopedia import cache_key as _ck_re, get_cached as _gc_re, _payload_lang_mismatch as _plm_re, _activity_links as _al_re
+                    from yonder.lang import detect_lang as _dl_re
+                    _re_bl = _dl_re(prompt)
+                    _re_cc = _cfi_re(_re_q.destination)
+                    _re_key = _ck_re(_re_q.destination, _re_cc, None, lang=_re_bl)
+                    _re_hit = _gc_re(_re_key) if _re_key else None
+                    if _re_hit and not _plm_re(_re_hit, _re_bl):
+                        _re_place_book = {
+                            **_re_hit,
+                            "iata": _re_q.destination,
+                            "country": _re_cc,
+                            "from_cache": True,
+                            "activity_links": await _al_re(
+                                settings, iata=_re_q.destination, city=None,
+                                trip_vibe=vibe, user_prompt=prompt,
+                            ),
+                        }
+                except Exception:
+                    pass
+                escape_override = {
+                    "ask": prompt,
+                    "form": _re_form,
+                    "result": _recycled_esc,
+                    "parsed": None,
+                    "analysis": None,
+                    "dest_theme": _re_dest_theme,
+                    "place_book": _re_place_book,
+                    "attribution": attr_meta,
+                    "trip_meta": {
+                        **attr_meta,
+                        "prompt": prompt,
+                        "vibe": vibe,
+                        "origin": _re_q.origin,
+                        "destination": _re_q.destination,
+                        "model_source": None,
+                    },
+                }
+                # Let detour (if it runs fresh) use the recycled escape route
+                _ro_re = _re_q.origin.upper()
+                _rd_re = _re_q.destination.upper()
+                if (
+                    len(_ro_re) == 3 and _ro_re.isalpha()
+                    and len(_rd_re) == 3 and _rd_re.isalpha()
+                    and _ro_re != _rd_re
+                ):
+                    resolved_route = (_ro_re, _rd_re)
+                save_last(
+                    "escape",
+                    {
+                        "ask": prompt,
+                        "form": _re_form,
+                        "result": _recycled_esc,
+                        "parsed": None,
+                        "analysis": None,
+                        "dest_theme": _re_dest_theme,
+                        "place_book": _re_place_book,
+                        "attribution": attr_meta,
+                    },
+                    pin_first=True,
+                )
+                active_mode = "escape"
+            except Exception:  # noqa: BLE001
+                _recycled_esc = None
+
+        # ── Quest recycle: best saved quest ideas → fare-missing QuestIdea list ──
+        if _recycled_qst is not None and not quest_override.get("result"):
+            quest_override = {
+                "ask": prompt,
+                "result": _recycled_qst,
+                "home_iata": home_iata,
+                "vibe": vibe,
+            }
+            active_mode = "quest"
+
         async def _safe(fn, name: str) -> None:
             try:
                 await fn()
@@ -1872,21 +1987,28 @@ async def explore_run(request: Request) -> HTMLResponse:
         except Exception:
             trip_gaps = []
 
+        # ── Run only panels not covered by the recycle pool ────────────────────
+        # Each recycled panel saves one Grok call + N flight-API calls.
+        # Refresh bypasses escape/quest recycle (they stay None) but detour
+        # recycle can still filter by exclude_iatas to avoid repeats.
+        _gather_tasks = []
+        if _recycled_esc is None:
+            _gather_tasks.append(_safe(_do_escape, "Escape"))
         if _recycled is None:
-            # Run all four modes in parallel; escape sets resolved_route as a
-            # side-effect that detour uses as a fallback (detect_route_iatas
-            # handles the rare case where escape hasn't set it yet).
-            await asyncio.gather(
-                _safe(_do_escape, "Escape"),
-                _safe(_do_detour, "Detour"),
-                _safe(_do_quest, "Quest"),
-            )
-        else:
-            # Recycled result already in detour_override; run escape + quest fresh.
-            await asyncio.gather(
-                _safe(_do_escape, "Escape"),
-                _safe(_do_quest, "Quest"),
-            )
+            _gather_tasks.append(_safe(_do_detour, "Detour"))
+        if _recycled_qst is None:
+            _gather_tasks.append(_safe(_do_quest, "Quest"))
+        if _gather_tasks:
+            await asyncio.gather(*_gather_tasks)
+
+        # ── Search cost accounting ───────────────────────────────────────────────
+        import logging as _sc_log
+        _rp = [p for p, r in [("escape", _recycled_esc), ("detour", _recycled), ("quest", _recycled_qst)] if r is not None]
+        _sc_log.getLogger("yonder.cost").info(
+            "search_cost grok_calls≈%d recycled_panels=[%s]",
+            3 - len(_rp),
+            ",".join(_rp) or "none",
+        )
 
         has_esc = bool(escape_override.get("result"))
         has_det = bool(detour_override.get("result"))

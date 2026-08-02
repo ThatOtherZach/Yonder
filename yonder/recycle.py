@@ -12,9 +12,9 @@ import re
 from datetime import date
 from typing import Any
 
-from yonder.adventure import AdventureItinerary, AdventureRequest, AdventureResult
+from yonder.adventure import AdventureItinerary, AdventureRequest, AdventureResult, PricedLeg, QuestIdea
 from yonder.saved import SavedItinerary, _STOP_WORDS, list_saved
-from yonder.types import CabinClass
+from yonder.types import CabinClass, FlightOffer, SearchQuery, UnifiedSearchResult
 
 # Notes that would hint the trip is an old snapshot / demo — never show these
 _NOTE_BLOCK = re.compile(
@@ -223,6 +223,252 @@ def recycled_destination_iatas(*, limit: int = 200) -> set[str]:
         return out
     except Exception:  # noqa: BLE001
         return set()
+
+
+def find_recycled_escape(
+    *,
+    prompt: str,
+    vibe: str | None = None,
+    origin: str | None = None,
+    depart: str | None = None,
+    currency: str = "USD",
+    min_score: float = 2.0,
+) -> UnifiedSearchResult | None:
+    """Best saved escape-trip match packaged as a fare-missing UnifiedSearchResult.
+
+    Returns None when no adequate match exists (caller runs the AI path).
+    The returned result has a single fare-missing offer so the card renders
+    with the range-pill / "Check Fares" CTA without a live flight-API call.
+    """
+    from datetime import date as _date
+
+    vibe_l = (vibe or "").strip().lower() or None
+    origin_u = (origin or "").strip().upper() or None
+    today = _date.today()
+    depart_d: _date | None = None
+    if depart:
+        try:
+            depart_d = _date.fromisoformat(str(depart)[:10])
+        except ValueError:
+            pass
+    tokens: set[str] = {
+        t
+        for t in re.findall(r"[a-z0-9]{3,}", (prompt or "").lower())
+        if t not in _STOP_WORDS
+    }
+    try:
+        from yonder.lang import detect_lang as _dl
+        want_lang = _dl(prompt)
+    except Exception:
+        want_lang = "en"
+
+    scored: list[tuple[float, Any]] = []
+    for s in list_saved(limit=200):
+        if _is_mock_saved(s):
+            continue
+        it_d = s.itinerary or {}
+        kind = (it_d.get("kind") or s.kind or "").lower()
+        if kind not in ("escape",):
+            continue
+        try:
+            from yonder.lang import detect_lang as _dl2
+            if _dl2(f"{s.trip_prompt or ''} {s.title or ''}") != want_lang:
+                continue
+        except Exception:
+            pass
+        dep = _first_depart(s)
+        if dep is not None and dep < today:
+            continue
+        sc = _score(s, tokens=tokens, vibe=vibe_l, origin=origin_u, depart=depart_d)
+        if sc >= min_score:
+            scored.append((sc, s))
+    if not scored:
+        return None
+
+    scored.sort(key=lambda x: (-x[0], -x[1].saved_at))
+    _, best_s = scored[0]
+    it_d = best_s.itinerary or {}
+    legs = it_d.get("legs") or []
+    if not legs:
+        return None
+    first_leg = legs[0] if isinstance(legs[0], dict) else {}
+    last_leg = legs[-1] if isinstance(legs[-1], dict) else {}
+    orig = (first_leg.get("from_iata") or best_s.origin or origin_u or "???").upper()
+    dest = (last_leg.get("to_iata") or best_s.destination or "???").upper()
+    if len(orig) != 3 or not orig.isalpha() or len(dest) != 3 or not dest.isalpha():
+        return None
+
+    try:
+        from yonder.links import google_flights_url as _gfu
+        dep_date = depart_d or _first_depart(best_s) or today
+        offer = FlightOffer(
+            provider="recycled",
+            price=0.0,
+            currency=(currency or "USD").upper(),
+            fare_missing=True,
+            price_kind="cached",
+            notes="recycled from saved trip — tap Check Fares for live price",
+            google_flights_url=_gfu(orig, dest, dep_date, currency=currency),
+            booking_url=_gfu(orig, dest, dep_date, currency=currency),
+        )
+        query = SearchQuery(
+            origin=orig,
+            destination=dest,
+            depart_date=dep_date,
+            return_date=None,
+            adults=1,
+            currency=(currency or "USD").upper(),
+        )
+        return UnifiedSearchResult(query=query, results=[], offers=[offer])
+    except Exception:
+        return None
+
+
+def find_recycled_quest(
+    *,
+    prompt: str,
+    vibe: str | None = None,
+    origin: str | None = None,
+    depart: str | None = None,
+    currency: str = "USD",
+    min_score: float = 1.5,
+    limit: int = 3,
+) -> list[QuestIdea] | None:
+    """Best saved quest matches packaged as fare-missing QuestIdea objects.
+
+    Returns None when no adequate matches exist (caller runs the AI path).
+    All inbound/outbound legs have fare_missing=True so cards render with
+    "Check Fares" CTAs; live pricing deferred until an explicit tap.
+    """
+    from datetime import date as _date, timedelta as _td
+
+    vibe_l = (vibe or "").strip().lower() or None
+    origin_u = (origin or "").strip().upper() or None
+    today = _date.today()
+    depart_d: _date | None = None
+    if depart:
+        try:
+            depart_d = _date.fromisoformat(str(depart)[:10])
+        except ValueError:
+            pass
+    tokens: set[str] = {
+        t
+        for t in re.findall(r"[a-z0-9]{3,}", (prompt or "").lower())
+        if t not in _STOP_WORDS
+    }
+    try:
+        from yonder.lang import detect_lang as _dl
+        want_lang = _dl(prompt)
+    except Exception:
+        want_lang = "en"
+
+    scored: list[tuple[float, Any]] = []
+    for s in list_saved(limit=200):
+        if _is_mock_saved(s):
+            continue
+        it_d = s.itinerary or {}
+        kind = (it_d.get("kind") or s.kind or "").lower()
+        if kind not in ("quest",):
+            continue
+        if not it_d.get("entry_iata") or not it_d.get("exit_iata"):
+            continue
+        try:
+            from yonder.lang import detect_lang as _dl2
+            if _dl2(f"{s.trip_prompt or ''} {s.title or ''}") != want_lang:
+                continue
+        except Exception:
+            pass
+        sc = _score(s, tokens=tokens, vibe=vibe_l, origin=origin_u, depart=depart_d)
+        if sc >= min_score:
+            scored.append((sc, s))
+    if not scored:
+        return None
+
+    scored.sort(key=lambda x: (-x[0], -x[1].saved_at))
+    try:
+        from yonder.links import google_flights_url as _gfu_q
+        from yonder.vibe_theme import vibe_theme as _vt_q
+    except Exception:
+        return None
+
+    vt = _vt_q(vibe_l or "adventure")
+    depart_use = depart_d or today
+    out: list[QuestIdea] = []
+    seen_pairs: set[tuple[str, str]] = set()
+
+    for _, s in scored[: limit * 3]:
+        it_d = s.itinerary or {}
+        entry = str(it_d.get("entry_iata") or "").upper()
+        exit_ = str(it_d.get("exit_iata") or "").upper()
+        if not entry or not exit_ or (entry, exit_) in seen_pairs:
+            continue
+        seen_pairs.add((entry, exit_))
+        home = (origin_u or s.origin or "YVR").upper()
+        outbound_d = depart_use + _td(days=10)
+        try:
+            ib_url = _gfu_q(home, entry, depart_use, currency=currency)
+            ob_url = _gfu_q(exit_, home, outbound_d, currency=currency)
+            inbound = PricedLeg(
+                from_iata=home,
+                to_iata=entry,
+                depart_date=depart_use,
+                offer=FlightOffer(
+                    provider="recycled",
+                    price=0.0,
+                    currency=(currency or "USD").upper(),
+                    fare_missing=True,
+                    price_kind="cached",
+                    google_flights_url=ib_url,
+                    booking_url=ib_url,
+                ),
+                google_flights_url=ib_url,
+                booking_url=ib_url,
+            )
+            outbound = PricedLeg(
+                from_iata=exit_,
+                to_iata=home,
+                depart_date=outbound_d,
+                offer=FlightOffer(
+                    provider="recycled",
+                    price=0.0,
+                    currency=(currency or "USD").upper(),
+                    fare_missing=True,
+                    price_kind="cached",
+                    google_flights_url=ob_url,
+                    booking_url=ob_url,
+                ),
+                google_flights_url=ob_url,
+                booking_url=ob_url,
+            )
+            out.append(
+                QuestIdea(
+                    entry_iata=entry,
+                    exit_iata=exit_,
+                    entry_city=str(it_d.get("entry_city") or entry),
+                    exit_city=str(it_d.get("exit_city") or exit_),
+                    overland_narrative=str(it_d.get("overland_narrative") or ""),
+                    transport=[str(t) for t in (it_d.get("transport") or [])],
+                    highlights=[str(h) for h in (it_d.get("highlights") or [])],
+                    inbound_leg=inbound,
+                    outbound_leg=outbound,
+                    currency=(currency or "USD").upper(),
+                    depart_date=depart_use,
+                    outbound_date=outbound_d,
+                    total_price=None,
+                    display_total=None,
+                    inbound_fare_missing=True,
+                    outbound_fare_missing=True,
+                    theme_primary=vt["color"],
+                    theme_accent=vt["deep"],
+                    theme_label=vt["label"],
+                )
+            )
+        except Exception:
+            continue
+        if len(out) >= limit:
+            break
+
+    return out if out else None
 
 
 def strip_revealing_notes(it: AdventureItinerary) -> AdventureItinerary:
