@@ -1179,34 +1179,7 @@
             >{{ det_text or esc_text }}</textarea>
             <div class="compose-find-group">
               <button type="submit" id="explore-submit" class="btn-vibe-go">Find ✈️</button>
-              <label class="toggle-switch" title="Search for multi-city stopovers">
-                <input type="checkbox" name="multi_city" value="true" id="explore-multi-city"
-                  {% if form is not defined or form.get('multi_city', True) %}checked{% endif %} />
-                <span class="toggle-track"></span>
-                Multi-City
-              </label>
-              <label class="toggle-switch" title="Include a return flight in fare estimates">
-                <input type="checkbox" name="return_flight" value="true" id="explore-return-flight"
-                  {% if form is not defined or form.get('return_flight', True) %}checked{% endif %} />
-                <span class="toggle-track"></span>
-                Return
-              </label>
-              <button type="button" id="btn-quest-mode"
-                class="toggle-switch"
-                title="Quest: fly into one city, travel overland to another, fly home — open-jaw adventure"
-                style="background:none;border:1px solid var(--line,#ddd);border-radius:4px;padding:0.25rem 0.55rem;cursor:pointer;font-size:0.82rem;white-space:nowrap">
-                ⛰ Quest
-              </button>
-              <label style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.78rem;font-weight:600;color:var(--text-muted,#888);white-space:nowrap;padding:0 0.35rem">
-                <select name="quest_days" id="quest-days-select"
-                  title="Quest window length"
-                  style="font-size:0.78rem;font-family:inherit;border:1px solid var(--line,#ddd);border-radius:4px;background:var(--paper,#fafafa);color:inherit;padding:0.15rem 0.25rem;cursor:pointer">
-                  <option value="7">7 days</option>
-                  <option value="10" selected>10 days</option>
-                  <option value="14">14 days</option>
-                  <option value="21">21 days</option>
-                </select>
-              </label>
+              <input type="hidden" name="quest_days" value="10" />
             </div>
           </div>
           <div
@@ -1338,6 +1311,7 @@
       <div class="results-filter mode-tabs" id="results-filter" role="tablist" aria-label="Filter results">
         <button type="button" class="active" data-filter="all" role="tab" aria-selected="true">All</button>
         <button type="button" data-filter="escape" role="tab" aria-selected="false"{% if not has_escape %} disabled{% endif %}>Escape</button>
+        <button type="button" data-filter="vibe-base" role="tab" aria-selected="false"{% if not (vibe_base is defined and vibe_base) %} disabled{% endif %}>{% if vibe_base is defined and vibe_base %}{{ vibe_base.vibe_emoji }} {{ vibe_base.vibe_label }}{% else %}Vibe{% endif %}</button>
         <button type="button" data-filter="detour" role="tab" aria-selected="false"{% if not has_detour %} disabled{% endif %}>Detour</button>
         <button type="button" data-filter="quest" role="tab" aria-selected="false"{% if not has_quest %} disabled{% endif %}>⛰ Quest</button>
         <button type="button" data-filter="clear" role="tab" aria-selected="false" title="Clear results and return to compose">Clear</button>
@@ -1439,6 +1413,22 @@
         {% else %}
           <p class="muted">No offers. Try different dates or another wording.</p>
         {% endif %}
+      </div>
+    {% endif %}
+    </div>
+
+    {# ——— Vibe Base results (cheapest return to the escape destination) ——— #}
+    <div class="results-panel" id="vibe-base-results" data-result-kind="vibe-base">
+    {% if vibe_base is defined and vibe_base and has_escape %}
+      <div class="card" id="vibe-base-results-card">
+        <h2>{{ vibe_base.vibe_emoji }} {{ vibe_base.vibe_label }}</h2>
+        <p class="sub">
+          Cheapest simple return · {{ route(vibe_base.origin, vibe_base.destination) }}
+          · economy · <a href="/saved">Saved</a>
+        </p>
+        <div class="pass-stack">
+          {{ bp.vibe_base_card('explore', vibe_base) }}
+        </div>
       </div>
     {% endif %}
     </div>
@@ -1584,6 +1574,7 @@
 
       function applyResultFilter(filter) {
         var esc = document.getElementById("escape-results");
+        var vbr = document.getElementById("vibe-base-results");
         var det = document.getElementById("detour-results");
         var qst = document.getElementById("quest-results");
         var f = filter || "all";
@@ -1596,6 +1587,12 @@
           if (f === "all") esc.hidden = !hasEsc;
           else if (f === "escape") esc.hidden = !hasEsc;
           else esc.hidden = true;
+        }
+        if (vbr) {
+          var hasVbr = vbr.querySelector(".boarding-pass, .card");
+          if (f === "all") vbr.hidden = !hasVbr;
+          else if (f === "vibe-base") vbr.hidden = !hasVbr;
+          else vbr.hidden = true;
         }
         if (det) {
           var hasDet = det.querySelector(".boarding-pass, .card");
@@ -1618,7 +1615,7 @@
 
       function clearResultsBoard() {
         // Drop result panels + filter from the page
-        ["results-toolbar", "results-filter", "escape-results", "detour-results", "quest-results", "escape-parsed"].forEach(
+        ["results-toolbar", "results-filter", "escape-results", "vibe-base-results", "detour-results", "quest-results", "escape-parsed"].forEach(
           function (id) {
             var el = document.getElementById(id);
             if (el && el.parentNode) el.parentNode.removeChild(el);
@@ -2768,7 +2765,6 @@
         bootThumbVotes();
         bootResultsFilter();
         bootCriteriaRefresh();
-        bootQuestButton();
         bindFieldNoteToggles(document);
         bootFieldNotes();
         document.title = "Yonder";

@@ -926,11 +926,8 @@ async def explore_run(request: Request) -> HTMLResponse:
     # hidden (fare_missing) and replaced by real cached range pills in the UI.
     mock = not settings.configured_providers()
 
-    # Explicit trip-shape toggles from the search form.  Both default to True
-    # (checkbox present = on; absent = off — HTML checkboxes send nothing when
-    # unchecked, so absence means False here and the template defaults to checked).
-    multi_city = str(form_data.get("multi_city") or "") in ("true", "on", "1")
-    return_flight = str(form_data.get("return_flight") or "") in ("true", "on", "1")
+    # Unified search always includes a return fare signal for the Vibe Base panel.
+    return_flight = True
 
     # Quest duration: 7 / 10 / 14 / 21 days; default 10 when absent or invalid.
     _QUEST_DAYS_ALLOWED = {7, 10, 14, 21}
@@ -1053,8 +1050,6 @@ async def explore_run(request: Request) -> HTMLResponse:
         "currency": currency,
         "nonstop": False,
         "vibe": vibe,
-        "multi_city": multi_city,
-        "return_flight": return_flight,
     }
     det_form = {
         **defaults,
@@ -1063,8 +1058,6 @@ async def explore_run(request: Request) -> HTMLResponse:
         "currency": currency,
         "vibe": vibe,
         "origin": home_iata,
-        "multi_city": multi_city,
-        "return_flight": return_flight,
     }
 
     if not prompt:
@@ -1081,25 +1074,6 @@ async def explore_run(request: Request) -> HTMLResponse:
         )
 
     decision = decide_shape(prompt, force=force, vibe=vibe)
-
-    # Toggle overrides beat text-based intent detection.
-    # multi_city=False → escape only (never produce multi-stop results).
-    # multi_city=True  → ensure the detour path always runs (upgrade escape→mix).
-    if not multi_city:
-        from yonder.intent import IntentDecision as _IntentDecision
-        decision = _IntentDecision(
-            shape="escape",
-            confidence=1.0,
-            rationale="toggle:multi-city-off",
-            forced=True,
-        )
-    elif decision.shape == "escape" and not decision.forced:
-        from yonder.intent import IntentDecision as _IntentDecision
-        decision = _IntentDecision(
-            shape="mix",
-            confidence=0.8,
-            rationale=f"toggle:multi-city-on+{decision.rationale}",
-        )
 
     # Confidence-gated AI fallback: when decide_shape returns a low-confidence
     # "mix" and the prompt is non-trivial (≥ 6 words), fire a cheap secondary
@@ -1299,8 +1273,6 @@ async def explore_run(request: Request) -> HTMLResponse:
             "nonstop": query.nonstop_only,
             "vibe": vibe,
             "vibe_color": vibe_theme(vibe)["color"],
-            "multi_city": multi_city,
-            "return_flight": return_flight,
         }
         dest_theme = _dest_theme(query.destination)
         place_book = None
@@ -1720,8 +1692,6 @@ async def explore_run(request: Request) -> HTMLResponse:
             "vibe_color": vt["color"],
             "min_stop_days": min_stop,
             "max_stop_days": max_stop,
-            "multi_city": multi_city,
-            "return_flight": return_flight,
         }
         # Field notes: cache always; live Grok only if user didn't Skip
         place_books: dict = {}
@@ -1761,8 +1731,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             },
             pin_first=not is_refresh,
         )
-        if decision.shape != "mix":
-            active_mode = "detour"
+        active_mode = "detour"
 
     async def _do_quest() -> None:
         nonlocal quest_override, active_mode
@@ -1888,26 +1857,61 @@ async def explore_run(request: Request) -> HTMLResponse:
                 pin_first=not is_refresh,
             )
             active_mode = "detour"
-        if force == "quest":
+        async def _safe(fn, name: str) -> None:
             try:
-                await _do_quest()
+                await fn()
             except Exception as exc:  # noqa: BLE001
-                errors.append(f"Quest: {exc}")
+                errors.append(f"{name}: {exc}")
+
+        if _recycled is None:
+            # Run all four modes in parallel; escape sets resolved_route as a
+            # side-effect that detour uses as a fallback (detect_route_iatas
+            # handles the rare case where escape hasn't set it yet).
+            await asyncio.gather(
+                _safe(_do_escape, "Escape"),
+                _safe(_do_detour, "Detour"),
+                _safe(_do_quest, "Quest"),
+            )
         else:
-            if _recycled is None and decision.shape in ("escape", "mix"):
-                try:
-                    await _do_escape()
-                except Exception as exc:  # noqa: BLE001
-                    errors.append(f"Escape: {exc}")
-            if _recycled is None and decision.shape in ("detour", "mix"):
-                try:
-                    await _do_detour()
-                except Exception as exc:  # noqa: BLE001
-                    errors.append(f"Detour: {exc}")
+            # Recycled result already in detour_override; run escape + quest fresh.
+            await asyncio.gather(
+                _safe(_do_escape, "Escape"),
+                _safe(_do_quest, "Quest"),
+            )
 
         has_esc = bool(escape_override.get("result"))
         has_det = bool(detour_override.get("result"))
         has_quest = bool(quest_override.get("result"))
+
+        # ── Vibe Base: cheapest return to the escape destination ─────────────
+        # Reuses direct_price from the detour result (computed as baseline there).
+        # Falls back to a Check Fares slot when direct_price is None (common).
+        vibe_base: dict | None = None
+        if has_esc:
+            _esc_res = escape_override.get("result")
+            _esc_q = getattr(_esc_res, "query", None) if _esc_res else None
+            if _esc_q:
+                from datetime import timedelta as _vtd
+                _vbt = vibe_theme(vibe)
+                _vb_depart = getattr(_esc_q, "depart_date", None)
+                _vb_return = (_vb_depart + _vtd(days=7)) if _vb_depart else None
+                _det_direct: float | None = None
+                if has_det:
+                    _det_res = detour_override.get("result")
+                    if _det_res:
+                        _det_direct = getattr(_det_res, "direct_price", None)
+                vibe_base = {
+                    "origin": str(getattr(_esc_q, "origin", "") or ""),
+                    "destination": str(getattr(_esc_q, "destination", "") or ""),
+                    "depart_date": _vb_depart.isoformat() if _vb_depart else "",
+                    "return_date": _vb_return.isoformat() if _vb_return else "",
+                    "currency": str(getattr(_esc_q, "currency", currency) or currency),
+                    "adults": int(getattr(_esc_q, "adults", 1) or 1),
+                    "direct_price": _det_direct,
+                    "vibe_label": _vbt["label"],
+                    "vibe_emoji": VIBE_EMOJI.get(_vbt["id"], ""),
+                    "vibe_color": _vbt["color"],
+                }
 
         # Vibe-learning: tier-1 "searched" signal per destination that came back.
         # IDs are generated up front and returned in data-signal-* attributes so
@@ -2084,6 +2088,8 @@ async def explore_run(request: Request) -> HTMLResponse:
         if has_quest:
             ctx["quest_panel"] = quest_override
             ctx["mode"] = "quest"
+        if vibe_base:
+            ctx["vibe_base"] = vibe_base
         ctx["intent_shape"] = decision.shape
         ctx["intent_rationale"] = decision.rationale
         ctx["result_filter"] = "all"
