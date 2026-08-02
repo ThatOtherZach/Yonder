@@ -134,6 +134,33 @@
       opacity: 0.65;
       cursor: not-allowed;
     }
+    /* Group: Find button + Multi-City / Return toggles (right of textarea) */
+    .compose-find-group {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      border-left: 1px solid var(--line);
+    }
+    .compose-find-group button.btn-vibe-go {
+      border-left: none;
+      flex: 1 1 auto;
+    }
+    .compose-find-group .toggle-switch {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.28rem 0.65rem;
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: var(--text-muted, #888);
+      border-top: 1px solid var(--line);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .compose-find-group .toggle-track {
+      flex-shrink: 0;
+    }
     /* Phones (below the grid's sm breakpoint): stack submit below textarea */
     @media (max-width: 575.98px) {
       .compose-text-row {
@@ -143,6 +170,27 @@
         min-height: 5rem;
         font-size: 1rem;
         padding: 0.65rem 0.75rem;
+      }
+      .compose-find-group {
+        flex-direction: row;
+        flex-wrap: wrap;
+        border-left: none;
+        border-top: 1px solid var(--line);
+      }
+      .compose-find-group button.btn-vibe-go {
+        flex: 1 1 100%;
+        border-top: none;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        font-size: 1rem;
+        font-weight: 700;
+        padding: 0.75rem 1rem;
+        border-radius: 0;
+      }
+      .compose-find-group .toggle-switch {
+        flex: 1 1 auto;
+        justify-content: center;
       }
       button.btn-vibe-go {
         width: 100%;
@@ -1129,7 +1177,21 @@
               maxlength="280"
               placeholder="Cheap to Japan in September… or get me out of town, somewhere new, good food…"
             >{{ det_text or esc_text }}</textarea>
-            <button type="submit" id="explore-submit" class="btn-vibe-go">Find ✈️</button>
+            <div class="compose-find-group">
+              <button type="submit" id="explore-submit" class="btn-vibe-go">Find ✈️</button>
+              <label class="toggle-switch" title="Search for multi-city stopovers">
+                <input type="checkbox" name="multi_city" value="true" id="explore-multi-city"
+                  {% if form is not defined or form.get('multi_city', True) %}checked{% endif %} />
+                <span class="toggle-track"></span>
+                Multi-City
+              </label>
+              <label class="toggle-switch" title="Include a return flight in fare estimates">
+                <input type="checkbox" name="return_flight" value="true" id="explore-return-flight"
+                  {% if form is not defined or form.get('return_flight', True) %}checked{% endif %} />
+                <span class="toggle-track"></span>
+                Return
+              </label>
+            </div>
           </div>
           <div
             data-vibe-slider

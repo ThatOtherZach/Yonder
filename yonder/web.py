@@ -915,6 +915,12 @@ async def explore_run(request: Request) -> HTMLResponse:
     # the Test Data checkbox.
     mock_forced = mock
 
+    # Explicit trip-shape toggles from the search form.  Both default to True
+    # (checkbox present = on; absent = off — HTML checkboxes send nothing when
+    # unchecked, so absence means False here and the template defaults to checked).
+    multi_city = str(form_data.get("multi_city") or "") in ("true", "on", "1")
+    return_flight = str(form_data.get("return_flight") or "") in ("true", "on", "1")
+
     currency = (settings.default_currency or "USD").upper()
     if not currency.isalpha() or len(currency) != 3:
         currency = "USD"
@@ -1028,6 +1034,8 @@ async def explore_run(request: Request) -> HTMLResponse:
         "nonstop": False,
         "mock": mock,
         "vibe": vibe,
+        "multi_city": multi_city,
+        "return_flight": return_flight,
     }
     det_form = {
         **defaults,
@@ -1037,6 +1045,8 @@ async def explore_run(request: Request) -> HTMLResponse:
         "vibe": vibe,
         "mock": mock,
         "origin": home_iata,
+        "multi_city": multi_city,
+        "return_flight": return_flight,
     }
 
     if not prompt:
@@ -1053,6 +1063,25 @@ async def explore_run(request: Request) -> HTMLResponse:
         )
 
     decision = decide_shape(prompt, force=force, vibe=vibe, demo=bool(mock))
+
+    # Toggle overrides beat text-based intent detection.
+    # multi_city=False → escape only (never produce multi-stop results).
+    # multi_city=True  → ensure the detour path always runs (upgrade escape→mix).
+    if not multi_city:
+        from yonder.intent import IntentDecision as _IntentDecision
+        decision = _IntentDecision(
+            shape="escape",
+            confidence=1.0,
+            rationale="toggle:multi-city-off",
+            forced=True,
+        )
+    elif decision.shape == "escape" and not decision.forced:
+        from yonder.intent import IntentDecision as _IntentDecision
+        decision = _IntentDecision(
+            shape="mix",
+            confidence=0.8,
+            rationale=f"toggle:multi-city-on+{decision.rationale}",
+        )
 
     # Confidence-gated AI fallback: when decide_shape returns a low-confidence
     # "mix" and the prompt is non-trivial (≥ 6 words), fire a cheap secondary
@@ -1207,6 +1236,16 @@ async def explore_run(request: Request) -> HTMLResponse:
             query = query.model_copy(
                 update={"currency": currency, "adults": 1, "cabin": CabinClass.ECONOMY}
             )
+            # Apply Return toggle: strip return_date when one-way requested;
+            # add a sensible default when round-trip is requested but Grok
+            # didn't parse an explicit return date from the prompt.
+            from datetime import timedelta as _td_rt
+            if not return_flight:
+                query = query.model_copy(update={"return_date": None})
+            elif query.return_date is None:
+                query = query.model_copy(
+                    update={"return_date": query.depart_date + _td_rt(days=7)}
+                )
             # Remember the parsed route for the Detour half — the parse
             # understood the prompt (any language); text re-detection may not.
             _ro = (query.origin or "").upper()
@@ -1242,6 +1281,8 @@ async def explore_run(request: Request) -> HTMLResponse:
             "mock": mock,
             "vibe": vibe,
             "vibe_color": vibe_theme(vibe)["color"],
+            "multi_city": multi_city,
+            "return_flight": return_flight,
         }
         dest_theme = _dest_theme(query.destination)
         place_book = None
@@ -1665,6 +1706,8 @@ async def explore_run(request: Request) -> HTMLResponse:
             "mock": mock,
             "min_stop_days": min_stop,
             "max_stop_days": max_stop,
+            "multi_city": multi_city,
+            "return_flight": return_flight,
         }
         # Field notes: cache always; live Grok only if user didn't Skip
         place_books: dict = {}
