@@ -1730,19 +1730,35 @@ async def plan_adventure(
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"Multi-stop chain pricing error: {exc}")
 
-        # At most five ideas priced per search — sequential so Skip can stop mid-list
-        ideas = ideas[: max(2, min(5, req.max_candidates))]
-        for idea in ideas:
-            if cancel_id and is_cancelled(cancel_id):
-                errors.append("Skipped early — showing options priced so far")
-                break
-            try:
-                it = await price_stopover(idea)
-            except Exception as exc:  # noqa: BLE001
-                errors.append(f"Stopover pricing error: {exc}")
-                continue
-            if it is not None:
-                itineraries.append(it)
+        # Price only the top-ranked idea; fall through to the next only when it
+        # produces no live fares. Stop at the first successfully priced result.
+        # If all ideas have missing fares, keep the last attempted card so the
+        # UI can still render "No direct flights" CTAs (rescue fires separately).
+        # Skip entirely when a multi-stop chain already produced a result.
+        _multi_stop_succeeded = bool(
+            named_stop_chain and len(named_stop_chain) >= 2 and itineraries
+        )
+        if not _multi_stop_succeeded:
+            _last_fare_missing: AdventureItinerary | None = None
+            for idea in ideas:
+                if cancel_id and is_cancelled(cancel_id):
+                    errors.append("Skipped early — showing options priced so far")
+                    break
+                try:
+                    it = await price_stopover(idea)
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"Stopover pricing error: {exc}")
+                    continue
+                if it is not None:
+                    if it.total_price is not None:
+                        itineraries.append(it)
+                        break  # priced result — stop; rescue won't fire
+                    else:
+                        _last_fare_missing = it  # no live fares; try next idea
+            # If no idea was priced, surface the last fare-missing card so the
+            # panel isn't blank — the user can still see "Check Fares" CTAs.
+            if not itineraries and _last_fare_missing is not None:
+                itineraries.append(_last_fare_missing)
         if (
             not (cancel_id and is_cancelled(cancel_id))
             and _time.monotonic() > soft_deadline
@@ -1767,7 +1783,7 @@ async def plan_adventure(
         )
         priced_so_far = [i for i in itineraries if i.total_price is not None]
         if (
-            not priced_so_far
+            not itineraries  # rescue only when no card at all; fare-missing shows No Fares CTAs
             and not _is_getaway(req)
             and not (cancel_id and is_cancelled(cancel_id))
             and req.origin.upper() != req.destination.upper()
@@ -1798,6 +1814,10 @@ async def plan_adventure(
             for i in complete
             if (i.stop_iata or "").upper() not in ban
         ]
+    # When no priced card exists, surface the last fare-missing itinerary so the
+    # panel renders its "No direct flights" fallback CTAs rather than going blank.
+    if not complete and itineraries:
+        complete = [itineraries[-1]]
     # Rank cheapest → most expensive; one package per destination city.
     # Multi-stop and rescue cards use their title as the dedup key since
     # they may share stop_iata with single-stop alternatives.
@@ -2202,5 +2222,20 @@ async def plan_quest(
                 theme_label=vt["label"],
             )
 
-        results = list(await asyncio.gather(*[_price_idea(r) for r in raw_ideas]))
+        # Price only one idea: prefer the 3rd (most surprising/wildcard pick),
+        # fall back to the 2nd then 1st if that idea has no live fares.
+        # This cuts live API calls from 3×2=6 to 2 in the normal case.
+        ordered = list(reversed(raw_ideas[:3]))  # [idea3, idea2, idea1]
+        chosen: QuestIdea | None = None
+        last_result: QuestIdea | None = None
+        for row in ordered:
+            last_result = await _price_idea(row)
+            if last_result.total_price is not None:
+                chosen = last_result
+                break
+        if chosen is None:
+            # All tried ideas had missing fares; return the last attempted so the
+            # UI can still render the card with "Check Fares" CTAs.
+            chosen = last_result
+        results = [chosen] if chosen is not None else []
     return results

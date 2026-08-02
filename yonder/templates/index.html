@@ -1452,7 +1452,7 @@
           {% if detour_result.direct_price is not none %}
             Direct-ish baseline <strong style="color:var(--good)">{{ detour_result.request.currency }} {{ '%.0f'|format(detour_result.direct_price) }}</strong>
           {% else %}No direct baseline{% endif %}
-          · {{ detour_result.itineraries|length }} of {{ detour_result.ideas|length }} cities · cheapest first
+          · {{ detour_result.itineraries|length }} of {{ detour_result.ideas|length }} ideas priced
           · <a href="/saved">Saved</a>
         </p>
         {% if ai_usage_display %}
