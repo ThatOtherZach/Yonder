@@ -173,7 +173,7 @@
     {# promo moved to loading overlay (progress.js) #}
     <div class="bp-actions">
       {% if o.google_flights_url %}
-      <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Book {{ query.origin }} → {{ query.destination }} ↗</a>
+      <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">Aviasales ↗</a>
       {% endif %}
       {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
       <a class="btn secondary" href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
@@ -506,11 +506,11 @@
       </form>
       {% endif %}
       {% if it.google_flights_url %}
-      <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Book full trip ↗</a>
+      <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Aviasales ↗</a>
       {% endif %}
       {% for leg in (it.legs or []) %}
       {% if leg.google_flights_url %}
-      <a class="btn secondary" href="{{ leg.google_flights_url }}" target="_blank" rel="noopener">Book {{ leg.from_iata }} → {{ leg.to_iata }} ↗</a>
+      <a class="btn secondary" href="{{ leg.google_flights_url }}" target="_blank" rel="noopener">Aviasales ↗</a>
       {% endif %}
       {% endfor %}
       {% if mode == 'explore' and it.kayak_url %}

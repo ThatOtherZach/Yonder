@@ -382,6 +382,7 @@ def _no_disk_io(monkeypatch):
 def _clear_env(monkeypatch):
     monkeypatch.delenv("XAI_API_KEY", raising=False)
     monkeypatch.delenv("MOCK", raising=False)
+    monkeypatch.delenv("YONDER_DISABLE_RECYCLE", raising=False)
 
 
 class TestExploreRecycleIntegration:

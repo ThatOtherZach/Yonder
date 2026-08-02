@@ -144,9 +144,9 @@ class TestSharedTripWithCachedBrief:
 
         assert resp.status_code == 200
         html = resp.text
-        # 'class="place-book"' only appears in rendered elements, not in CSS rules.
-        assert 'class="place-book"' in html, (
-            "Expected 'place-book' element in HTML when brief is cached"
+        # 'class="place-book field-note-inset"' only appears in rendered elements, not in CSS rules.
+        assert 'class="place-book field-note-inset"' in html, (
+            "Expected 'place-book field-note-inset' element in HTML when brief is cached"
         )
         assert "Field note" in html, (
             "Expected 'Field note' label in HTML when brief is cached"
@@ -178,9 +178,9 @@ class TestSharedTripWithoutCachedBrief:
 
         assert resp.status_code == 200
         html = resp.text
-        # CSS defines the rule class but never the attribute 'rel="noopener sponsored"'.
-        # That attribute is only present on rendered pill <a> elements.
-        assert 'rel="noopener sponsored"' not in html, (
+        # 'class="pb-fact pb-fact-link"' only appears on rendered pill <a> elements,
+        # not in inline JS strings.
+        assert 'class="pb-fact pb-fact-link"' not in html, (
             "Expected no pill anchor elements when destination has no cached brief"
         )
 

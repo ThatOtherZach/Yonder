@@ -261,9 +261,10 @@ def test_model_source_property_from_meta():
 
 
 def _via_only_in_css(html: str) -> bool:
-    """Return True if the only 'via' occurrences are inside <style> blocks."""
+    """Return True if the only 'via' occurrences are inside <style> or <script> blocks."""
     import re
 
-    # Strip style blocks, then check
+    # Strip style and script blocks (product JSON / promo JS may contain "via")
     stripped = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE)
+    stripped = re.sub(r"<script[^>]*>.*?</script>", "", stripped, flags=re.DOTALL | re.IGNORECASE)
     return "via " not in stripped.lower()

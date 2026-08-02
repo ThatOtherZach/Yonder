@@ -44,7 +44,7 @@ def test_label_byom_wins_over_xai():
 
 
 def test_label_nothing_configured():
-    s = _settings()
+    s = _settings(xai_api_key="")
     assert s.model_source_label() == ""
 
 

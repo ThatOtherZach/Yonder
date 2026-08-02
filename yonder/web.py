@@ -929,8 +929,21 @@ async def explore_run(request: Request) -> HTMLResponse:
     # hidden (fare_missing) and replaced by real cached range pills in the UI.
     mock = not settings.configured_providers()
 
-    # Unified search always includes a return fare signal for the Vibe Base panel.
-    return_flight = True
+    # Return-flight toggle: strip return_date when the user opts for one-way.
+    # Omitting the field (legacy clients) defaults to one-way (False).
+    _return_flight_raw = _s("return_flight")
+    return_flight = _return_flight_raw.lower() in ("true", "1", "yes") if _return_flight_raw else False
+
+    # Multi-city toggle: suppress the Detour panel only when the caller
+    # explicitly opts out (multi_city=false) or forces escape-only mode.
+    # When absent, default to True so decide_shape can still choose mix/detour.
+    _multi_city_raw = _s("multi_city")
+    if _multi_city_raw:
+        multi_city = _multi_city_raw.lower() in ("true", "1", "yes")
+    elif force == "escape":
+        multi_city = False  # explicit escape force → no detour
+    else:
+        multi_city = True  # default: let decide_shape control whether detour runs
 
     # Quest duration: 7 / 10 / 14 / 21 days; default 10 when absent or invalid.
     _QUEST_DAYS_ALLOWED = {7, 10, 14, 21}
@@ -2062,7 +2075,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         _gather_tasks = []
         if _recycled_esc is None:
             _gather_tasks.append(_safe(_do_escape, "Escape"))
-        if _recycled is None:
+        if _recycled is None and multi_city:
             _gather_tasks.append(_safe(_do_detour, "Detour"))
         if _recycled_qst is None:
             _gather_tasks.append(_safe(_do_quest, "Quest"))
