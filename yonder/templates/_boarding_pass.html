@@ -12,7 +12,8 @@
 {% macro escape_card(mode, o, query, idx,
                      esc_theme=none, esc_vibe=none, escape_parsed=none,
                      escape_place_book=none, share=none,
-                     esc_text='', ask='', share_vibe=none, train_links=[]) %}
+                     esc_text='', ask='', share_vibe=none, train_links=[],
+                     gap_label=none) %}
 {% set esc_theme = esc_theme or {} %}
 {% set fare = o.display_price_base or o.display_price or (('~' ~ (o.currency or '') ~ ' ' ~ '%.0f'|format(o.price)) if o.price is defined and o.price is not none else '—') %}
 {% set fare_missing = (o.fare_missing or false) or (o.price is not defined) or (o.price is none) %}
@@ -22,6 +23,9 @@
   {% if esc_theme.primary %} style="--bp-accent: {{ esc_theme.primary }}; border-color: color-mix(in srgb, {{ esc_theme.primary }} 35%, var(--line));"{% endif %}
 >
   <div class="bp-main">
+    {% if gap_label and mode == 'explore' %}
+    <div class="bp-gap-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">✦ {{ gap_label }}</div>
+    {% endif %}
     <div class="bp-top">
       <span class="bp-label">Direct Escape</span>
       {% if mode == 'share' and share_vibe %}
@@ -236,6 +240,9 @@
 {% endfor %}
 <article class="boarding-pass is-adventure" data-stop-iata="{{ it.stop_iata or '' }}"{% if accent %} style="--bp-accent: {{ accent }}; border-color: color-mix(in srgb, {{ accent }} 35%, var(--line));"{% endif %}>
   <div class="bp-main">
+    {% if it.gap_label is defined and it.gap_label and mode == 'explore' %}
+    <div class="bp-gap-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">✦ {{ it.gap_label }}</div>
+    {% endif %}
     <div class="bp-top">
       {% if mode == 'saved' %}
       <span class="bp-label">{% if s.kind == 'escape' %}Direct Escape{% elif s.kind == 'getaway' %}Getaway{% else %}Detour{% endif %}</span>
@@ -580,6 +587,9 @@
   {% if vb.vibe_color %} style="--bp-accent: {{ vb.vibe_color }}; border-color: color-mix(in srgb, {{ vb.vibe_color }} 35%, var(--line));"{% endif %}
 >
   <div class="bp-main">
+    {% if vb.gap_label is defined and vb.gap_label %}
+    <div class="bp-gap-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">✦ {{ vb.gap_label }}</div>
+    {% endif %}
     <div class="bp-top">
       <span class="bp-label">Return</span>
       <span class="bp-badge soft"{% if vb.vibe_color %} style="background:{{ vb.vibe_color }};color:#fff;border:none"{% endif %}>
@@ -661,6 +671,9 @@
   style="--bp-accent: {{ accent }}; border-color: color-mix(in srgb, {{ accent }} 35%, var(--line));"
 >
   <div class="bp-main">
+    {% if idea.gap_label is defined and idea.gap_label and mode == 'explore' %}
+    <div class="bp-gap-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">✦ {{ idea.gap_label }}</div>
+    {% endif %}
     <div class="bp-top">
       <span class="bp-label">{% if mode == 'share' %}Quest{% elif mode == 'saved' %}Quest{% else %}Quest{% endif %}</span>
       <span class="bp-badge soft" style="background:{{ accent }};color:#fff;border:none">

@@ -460,6 +460,14 @@ def delete(saved_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def clear_all_saves() -> int:
+    """Delete every saved itinerary. Returns the number of rows deleted."""
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM saved_itineraries")
+        conn.commit()
+        return cur.rowcount
+
+
 _EXPORT_COLUMNS = (
     "id", "saved_at", "priced_at", "title", "kind", "currency", "total_price",
     "display_price", "stop_city", "stop_iata", "stay_days", "origin", "destination",

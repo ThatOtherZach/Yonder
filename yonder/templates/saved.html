@@ -89,9 +89,14 @@
     {% else %}
       <div class="list-head d-flex flex-wrap align-items-baseline justify-content-between">
         <h2>{{ cards|length }} pass{{ 'es' if cards|length != 1 else '' }}</h2>
-        <p class="muted" style="margin:0">
-          Vibes, not tickets · <a href="/?mode=detour#compose-card">Plan a detour</a>
-        </p>
+        <div class="d-flex flex-wrap align-items-center" style="gap:0.75rem;margin:0">
+          <p class="muted" style="margin:0">
+            Vibes, not tickets · <a href="/?mode=detour#compose-card">Plan a detour</a>
+          </p>
+          <form method="post" action="/api/clear-saves" class="js-delete-form" style="margin:0">
+            <button type="button" class="danger js-remove-confirm" style="font-size:0.82rem;padding:0.3rem 0.75rem">Remove All</button>
+          </form>
+        </div>
       </div>
 
       <div class="pass-stack" id="saved-results">

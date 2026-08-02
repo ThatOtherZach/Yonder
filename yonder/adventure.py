@@ -211,6 +211,8 @@ class AdventureItinerary(BaseModel):
     stops: list[dict] = Field(default_factory=list)
     # True when this card is the rescue fallback chain
     rescue: bool = False
+    # Gap awareness: set when this result fills a saved-trip gap
+    gap_label: str | None = None
 
 
 class AdventureResult(BaseModel):
@@ -247,6 +249,8 @@ class QuestIdea(BaseModel):
     theme_primary: str = "#e6b450"
     theme_accent: str = "#f0c96a"
     theme_label: str = "Quest"
+    # Gap awareness: set when this result fills a saved-trip gap
+    gap_label: str | None = None
 
 
 def _cheapest(offers: list[FlightOffer]) -> FlightOffer | None:
@@ -1083,6 +1087,137 @@ def _sort_by_comfort(
     else:
         ideas = sorted(ideas, key=_score, reverse=True)
     return ideas
+
+
+def detect_trip_gaps(*, last_n: int = 5) -> "list[Any]":
+    """Read the last N saves and return structural TripGap objects.
+
+    Returns an empty list when the user has no saves or saves have no
+    detectable gaps.  Never raises — all exceptions are caught internally so
+    a bad save row never crashes the search path.
+    """
+    from yonder.saved import list_saved
+    from yonder.types import TripGap
+
+    try:
+        saves = list_saved(limit=last_n)
+    except Exception:
+        return []
+
+    gaps: list[TripGap] = []
+    seen_routes: set[tuple[str, str]] = set()  # deduplicate identical gaps
+
+    for s in saves:
+        kind = (s.kind or "").lower()
+        it = s.itinerary or {}
+        try:
+            if kind == "quest":
+                entry_iata = (it.get("entry_iata") or "").upper()
+                exit_iata = (it.get("exit_iata") or "").upper()
+                entry_city = it.get("entry_city") or entry_iata
+                exit_city = it.get("exit_city") or exit_iata
+                home = (
+                    s.origin
+                    or (s.trip_meta or {}).get("origin")
+                    or ""
+                ).upper()
+                if not entry_iata or not exit_iata or not home:
+                    continue
+
+                # Inbound gap: home → entry_iata (fare missing / no offer)
+                inbound = it.get("inbound_leg") or {}
+                inbound_offer = inbound.get("offer") if isinstance(inbound, dict) else None
+                has_inbound_fare = bool(
+                    inbound_offer
+                    and not inbound_offer.get("fare_missing")
+                    and inbound_offer.get("price") is not None
+                )
+                route_ib = (home, entry_iata)
+                if not has_inbound_fare and route_ib not in seen_routes:
+                    seen_routes.add(route_ib)
+                    gaps.append(
+                        TripGap(
+                            kind="quest_inbound",
+                            from_iata=home,
+                            to_iata=entry_iata,
+                            context_label=f"Picks up your Quest leg → {entry_city}",
+                        )
+                    )
+
+                # Outbound gap: exit_iata → home (fare missing / no offer)
+                outbound = it.get("outbound_leg") or {}
+                outbound_offer = outbound.get("offer") if isinstance(outbound, dict) else None
+                has_outbound_fare = bool(
+                    outbound_offer
+                    and not outbound_offer.get("fare_missing")
+                    and outbound_offer.get("price") is not None
+                )
+                route_ob = (exit_iata, home)
+                if not has_outbound_fare and route_ob not in seen_routes:
+                    seen_routes.add(route_ob)
+                    gaps.append(
+                        TripGap(
+                            kind="quest_outbound",
+                            from_iata=exit_iata,
+                            to_iata=home,
+                            context_label=f"Completes your Quest from {exit_city}",
+                        )
+                    )
+
+            elif kind in ("escape", "stopover", "detour", "getaway"):
+                legs = it.get("legs") or []
+                if legs:
+                    first_leg = legs[0] if isinstance(legs[0], dict) else {}
+                    last_leg = legs[-1] if isinstance(legs[-1], dict) else {}
+                    origin = (
+                        first_leg.get("from_iata")
+                        or first_leg.get("from")
+                        or s.origin
+                        or ""
+                    ).upper()
+                    dest = (
+                        last_leg.get("to_iata")
+                        or last_leg.get("to")
+                        or s.destination
+                        or ""
+                    ).upper()
+                else:
+                    origin = (s.origin or "").upper()
+                    dest = (s.destination or "").upper()
+
+                if not origin or not dest or origin == dest:
+                    continue
+
+                # Detect one-way: no return leg (dest → origin) in the saved legs
+                has_return = any(
+                    isinstance(leg, dict)
+                    and (leg.get("from_iata") or leg.get("from") or "").upper() == dest
+                    and (leg.get("to_iata") or leg.get("to") or "").upper() == origin
+                    for leg in legs
+                )
+                if not has_return:
+                    route_ret = (dest, origin)
+                    if route_ret not in seen_routes:
+                        seen_routes.add(route_ret)
+                        try:
+                            from yonder.countries import city_for_iata as _city_for
+
+                            dest_city = _city_for(dest) or dest
+                        except Exception:
+                            dest_city = dest
+                        kind_label = "Escape" if kind == "escape" else "Detour"
+                        gaps.append(
+                            TripGap(
+                                kind="missing_return",
+                                from_iata=dest,
+                                to_iata=origin,
+                                context_label=f"Return leg from your {dest_city} {kind_label}",
+                            )
+                        )
+        except Exception:
+            continue  # never let a bad save row crash the search
+
+    return gaps
 
 
 def seed_ideas(

@@ -105,3 +105,14 @@ class UnifiedSearchResult(BaseModel):
     @property
     def providers_failed(self) -> list[str]:
         return [r.provider for r in self.results if not r.ok]
+
+
+class TripGap(BaseModel):
+    """A structural gap detected in a saved trip — the next search may fill it."""
+
+    # "quest_inbound" | "quest_outbound" | "missing_return"
+    kind: str
+    from_iata: str | None = None
+    to_iata: str | None = None
+    on_or_after_date: date | None = None
+    context_label: str = ""

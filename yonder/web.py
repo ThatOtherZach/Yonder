@@ -16,6 +16,7 @@ from yonder.adventure import (
     AdventureItinerary,
     AdventureRequest,
     QuestIdea,
+    detect_trip_gaps,
     plan_adventure,
     plan_quest,
     reprice_itinerary,
@@ -46,6 +47,7 @@ from yonder.last_search import (
 from yonder.links import airline_display_name, airline_site_label
 from yonder.quota import budgets_snapshot, choose_providers, get_registry
 from yonder.saved import (
+    clear_all_saves,
     count_saved,
     delete as delete_saved,
     get as get_saved,
@@ -1863,6 +1865,13 @@ async def explore_run(request: Request) -> HTMLResponse:
             except Exception as exc:  # noqa: BLE001
                 errors.append(f"{name}: {exc}")
 
+        # ── Trip-gap awareness: read saved-trip gaps before launching panels ────
+        # Fast sync DB read — never blocks meaningful work.
+        try:
+            trip_gaps = detect_trip_gaps(last_n=5)
+        except Exception:
+            trip_gaps = []
+
         if _recycled is None:
             # Run all four modes in parallel; escape sets resolved_route as a
             # side-effect that detour uses as a fallback (detect_route_iatas
@@ -1882,6 +1891,105 @@ async def explore_run(request: Request) -> HTMLResponse:
         has_esc = bool(escape_override.get("result"))
         has_det = bool(detour_override.get("result"))
         has_quest = bool(quest_override.get("result"))
+
+        # ── Apply gap labels to results that fill a known saved-trip gap ──────
+        # Soft constraints only — normal results still appear if nothing matches.
+        if trip_gaps:
+            try:
+                # Escape: label if the search route matches any gap
+                if has_esc and escape_override.get("result"):
+                    _esc_q2 = getattr(escape_override["result"], "query", None)
+                    if _esc_q2:
+                        _eq_from = (getattr(_esc_q2, "origin", "") or "").upper()
+                        _eq_to = (getattr(_esc_q2, "destination", "") or "").upper()
+                        for _g in trip_gaps:
+                            if (
+                                (_g.from_iata or "").upper() == _eq_from
+                                and (_g.to_iata or "").upper() == _eq_to
+                            ):
+                                escape_override["escape_gap_label"] = _g.context_label
+                                break
+
+                # Detour: float gap-filling itinerary to position 0
+                if has_det and detour_override.get("result"):
+                    _det_res2 = detour_override["result"]
+                    _its2 = list(getattr(_det_res2, "itineraries", None) or [])
+                    _gap_idx2: int | None = None
+                    _gap_lbl2: str | None = None
+                    for _i2, _it2 in enumerate(_its2):
+                        _it_legs = getattr(_it2, "legs", None) or []
+                        _it_from = (
+                            (_it_legs[0].from_iata if _it_legs else "")
+                            or getattr(_it2, "origin", "")
+                            or ""
+                        ).upper()
+                        _it_to = (
+                            (_it_legs[-1].to_iata if _it_legs else "")
+                            or getattr(_it2, "destination", "")
+                            or ""
+                        ).upper()
+                        for _g2 in trip_gaps:
+                            if (
+                                (_g2.from_iata or "").upper() == _it_from
+                                and (_g2.to_iata or "").upper() == _it_to
+                            ):
+                                _gap_idx2 = _i2
+                                _gap_lbl2 = _g2.context_label
+                                break
+                        if _gap_idx2 is not None:
+                            break
+                    if _gap_idx2 is not None and _gap_lbl2:
+                        _labelled_it = _its2[_gap_idx2].model_copy(
+                            update={"gap_label": _gap_lbl2}
+                        )
+                        _new_its = [_labelled_it] + [
+                            x for j2, x in enumerate(_its2) if j2 != _gap_idx2
+                        ]
+                        detour_override["result"] = _det_res2.model_copy(
+                            update={"itineraries": _new_its}
+                        )
+
+                # Quest: float gap-filling idea to position 0
+                if has_quest and quest_override.get("result"):
+                    _q_ideas = list(quest_override["result"])
+                    _q_gap_idx: int | None = None
+                    _q_gap_lbl: str | None = None
+                    _home_u = home_iata.upper() if home_iata else ""
+                    for _qi, _idea in enumerate(_q_ideas):
+                        _idea_entry = (getattr(_idea, "entry_iata", "") or "").upper()
+                        _idea_exit = (getattr(_idea, "exit_iata", "") or "").upper()
+                        for _g3 in trip_gaps:
+                            _g3_from = (_g3.from_iata or "").upper()
+                            _g3_to = (_g3.to_iata or "").upper()
+                            # quest_inbound: home → entry_iata
+                            if (
+                                _g3.kind == "quest_inbound"
+                                and _g3_from == _home_u
+                                and _g3_to == _idea_entry
+                            ):
+                                _q_gap_idx = _qi
+                                _q_gap_lbl = _g3.context_label
+                                break
+                            # quest_outbound: exit_iata → home
+                            elif (
+                                _g3.kind == "quest_outbound"
+                                and _g3_from == _idea_exit
+                                and _g3_to == _home_u
+                            ):
+                                _q_gap_idx = _qi
+                                _q_gap_lbl = _g3.context_label
+                                break
+                        if _q_gap_idx is not None:
+                            break
+                    if _q_gap_idx is not None and _q_gap_lbl:
+                        _labelled_idea = _q_ideas[_q_gap_idx].model_copy(
+                            update={"gap_label": _q_gap_lbl}
+                        )
+                        quest_override["result"] = [_labelled_idea] + [
+                            x for j3, x in enumerate(_q_ideas) if j3 != _q_gap_idx
+                        ]
+            except Exception:
+                pass  # gap labelling is best-effort — never crash the search
 
         # ── Vibe Base: cheapest return to the escape destination ─────────────
         # Reuses direct_price from the detour result (computed as baseline there).
@@ -1921,6 +2029,20 @@ async def explore_run(request: Request) -> HTMLResponse:
                     "vibe_emoji": VIBE_EMOJI.get(_vbt["id"], ""),
                     "vibe_color": _vbt["color"],
                 }
+                # Apply gap label to vibe_base if its return leg fills a gap
+                if trip_gaps:
+                    try:
+                        _vb_dest = vibe_base["destination"].upper()
+                        _vb_orig = vibe_base["origin"].upper()
+                        for _gvb in trip_gaps:
+                            if (
+                                (_gvb.from_iata or "").upper() == _vb_dest
+                                and (_gvb.to_iata or "").upper() == _vb_orig
+                            ):
+                                vibe_base["gap_label"] = _gvb.context_label
+                                break
+                    except Exception:
+                        pass
 
         # Vibe-learning: tier-1 "searched" signal per destination that came back.
         # IDs are generated up front and returned in data-signal-* attributes so
@@ -2875,7 +2997,20 @@ async def saved_delete(request: Request, saved_id: str) -> HTMLResponse:
         url="/saved?err=" + quote("Not found"), status_code=302
     )
 
-
+@app.post("/api/clear-saves", response_class=HTMLResponse)
+async def api_clear_saves(request: Request) -> HTMLResponse:
+    """Delete all saved itineraries for the current user — Remove All action."""
+    try:
+        count = clear_all_saves()
+        msg = "Fresh start — all trips cleared" if count > 0 else "Nothing to clear"
+        return RedirectResponse(
+            url="/saved?flash=" + quote(msg), status_code=302
+        )
+    except Exception as exc:  # noqa: BLE001
+        return RedirectResponse(
+            url="/saved?err=" + quote(f"Could not clear saves: {exc}"),
+            status_code=302,
+        )
 @app.post("/api/results-clear")
 async def api_results_clear() -> JSONResponse:
     """Clear last Escape + Detour result snapshots (UI Clear filter)."""
