@@ -307,6 +307,54 @@
       border-color: var(--brass);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--brass) 20%, transparent);
     }
+    label.origin-field {
+      display: inline-flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 0.4rem;
+      margin: 0;
+      padding: 0 0.35rem 0 0.65rem;
+      height: 2.75rem;
+      border-radius: 999px;
+      border: 1.5px solid var(--line);
+      background: var(--paper);
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: inherit;
+      font-weight: 500;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    label.origin-field > span {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    label.origin-field input[type="text"] {
+      width: 3.2rem;
+      height: 2.5rem !important;
+      min-height: 2.5rem !important;
+      margin: 0;
+      padding: 0 0.1rem 0 0.1rem !important;
+      border: none !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    label.origin-field:focus-within {
+      border-color: var(--sky-bright);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--sky-bright) 18%, transparent);
+    }
+    .compose-field-top .origin-field {
+      height: 2.35rem;
+      background: var(--white);
+    }
     .examples-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.55rem; }
     .examples-row .examples { flex: 1 1 auto; flex-wrap: wrap; margin-top: 0; }
     .examples-row .toggle-switch { flex-shrink: 0; margin-left: auto; }
@@ -1169,6 +1217,12 @@
 
         <div class="compose-field has-vibe">
           <div class="compose-field-top" id="depart-strip">
+            <label class="origin-field" title="Your departure airport (3-letter IATA code)">
+              <span>From</span>
+              <input id="origin-display" type="text" maxlength="3" placeholder="YVR"
+                     autocomplete="off" spellcheck="false"
+                     oninput="var v=this.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3);this.value=v;document.getElementById('explore-origin').value=v;" />
+            </label>
             <label class="date-field" title="Depart date (used for getaways / stopovers)">
               <span>Depart</span>
               <input name="depart" id="explore-depart" type="date" value="{{ det_depart or '' }}" />
@@ -2077,13 +2131,16 @@
             }
           }
           if (clickIdEl && !clickIdEl.value) clickIdEl.value = newClickId();
-          // Depart field is the single origin source: mirror its current value
-          // into the form on every submit path (never a stale hidden value).
+          // Origin source priority: visible depart-strip field → criteria panel → blank.
+          // Mirror whichever has a valid 3-letter IATA into explore-origin on every submit.
+          var originDisplayField = document.getElementById("origin-display");
           var originField = document.getElementById("criteria-origin");
           var hidOriginSync = document.getElementById("explore-origin");
           if (hidOriginSync) {
-            var ov = originField ? String(originField.value || "").toUpperCase().trim() : "";
-            hidOriginSync.value = /^[A-Z]{3}$/.test(ov) ? ov : "";
+            var ovDisplay = originDisplayField ? String(originDisplayField.value || "").toUpperCase().trim() : "";
+            var ovCriteria = originField ? String(originField.value || "").toUpperCase().trim() : "";
+            var ov = /^[A-Z]{3}$/.test(ovDisplay) ? ovDisplay : (/^[A-Z]{3}$/.test(ovCriteria) ? ovCriteria : "");
+            hidOriginSync.value = ov;
           }
           if (askMirror) askMirror.value = text;
           form.action = "/explore";
@@ -2134,6 +2191,8 @@
                   if (!(data && data.ok && data.iata)) return;
                   if ((originEl2.value || "").trim()) return; // user typed meanwhile
                   originEl2.value = data.iata;
+                  var dispEl = document.getElementById("origin-display");
+                  if (dispEl && !(dispEl.value || "").trim()) dispEl.value = data.iata;
                   showGpsNotice(data.iata);
                 })
                 .catch(function () {});
@@ -2775,6 +2834,12 @@
         bootThumbVotes();
         bootResultsFilter();
         bootCriteriaRefresh();
+        // Pre-fill visible origin field from hidden explore-origin (set by GPS/settings)
+        (function () {
+          var hid = document.getElementById("explore-origin");
+          var disp = document.getElementById("origin-display");
+          if (hid && disp && !disp.value && hid.value) disp.value = hid.value;
+        })();
         bindFieldNoteToggles(document);
         bootFieldNotes();
         document.title = "Yonder";
