@@ -7,4 +7,5 @@
 - [Reply-language matching](reply-language-matching.md) — new model prose calls need `language_directive(detect_lang(prompt))` and lang-partitioned cache keys; fallback text stays English.
 - [Affiliate activity pills](activity-pills.md) — any place_book built straight from the brief cache must attach `activity_links` itself, or partner pills silently vanish on that page.
 - [Provider quota stale state](provider-quota-stale-state.md) — after a key swap the quota registry keeps "exhausted" up to its TTL; empty panels with HTTP 200 → read last-search snapshot provider errors.
+- [Learning-layer knowledge graph](knowledge-layer.md) — route negative cache only from live "no offers" (never errors/timeouts); per-source attribute rows never collapsed; raw interpretation log is append-only forever.
 - [Git push workaround](git-push-workaround.md) — Replit's GitHub credential is broken here; push with the GITHUB_PERSONAL_ACCESS_TOKEN secret (needs workflow scope), mask token in output.

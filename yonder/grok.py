@@ -71,6 +71,18 @@ def _parse_cache_put(key: str, payload: dict) -> None:
     _PARSE_CACHE[key] = (time.time(), payload)
 
 
+def _learned_seed_candidates(*, vibe: str | None, origin: str | None) -> list[dict]:
+    """Knowledge-assisted candidates for prompt seeding, or [] on cold start.
+
+    Never raises; never blocks meaningfully (local SQLite reads only)."""
+    try:
+        from yonder.knowledge import seed_candidates
+
+        return seed_candidates(vibe=vibe, origin=origin, limit=8)
+    except Exception:
+        return []
+
+
 def _filter_quest_rows(raw: list, home_iata: str, avoid_set: set[str]) -> list[dict]:
     """Validate raw open-jaw quest rows: IATA shape, avoid list, distinct countries."""
     from yonder.countries import country_for_iata
@@ -409,6 +421,27 @@ class GrokClient:
 
         if use_cache:
             _parse_cache_put(cache_k, trip.model_dump(mode="json"))
+        # Learning layer: archive the AI's escape interpretation (fire-and-forget)
+        try:
+            from yonder.knowledge import capture_interpretations_async
+
+            capture_interpretations_async(
+                [
+                    {
+                        "dest_iata": trip.destination,
+                        "interpretation": trip.intent_summary
+                        or "; ".join(trip.assumptions or []),
+                        "tags": [],
+                    }
+                ],
+                vibe=None,
+                raw_query=prompt,
+                origin=trip.origin,
+                trip_shape="escape",
+                model_source=self.model_source_label() or None,
+            )
+        except Exception:
+            pass
         return trip
 
     async def place_brief(
@@ -550,7 +583,42 @@ class GrokClient:
         else:
             raw = payload.get("ideas") or []
 
-        return _filter_quest_rows(raw, home_iata, avoid_set)
+        rows = _filter_quest_rows(raw, home_iata, avoid_set)
+        self._capture_quest_interpretations(
+            rows, vibe=vibe, prompt=prompt, home_iata=home_iata
+        )
+        return rows
+
+    def _capture_quest_interpretations(
+        self, rows: list[dict], *, vibe: str, prompt: str, home_iata: str
+    ) -> None:
+        """Archive quest proposals in the knowledge layer (fire-and-forget)."""
+        try:
+            from yonder.knowledge import capture_interpretations_async
+
+            proposals = []
+            for r in rows:
+                narrative = str(r.get("overland_narrative") or "")
+                tags = [str(h) for h in (r.get("highlights") or [])]
+                for key in ("entry_iata", "exit_iata"):
+                    if r.get(key):
+                        proposals.append(
+                            {
+                                "dest_iata": r[key],
+                                "interpretation": narrative,
+                                "tags": tags,
+                            }
+                        )
+            capture_interpretations_async(
+                proposals,
+                vibe=vibe,
+                raw_query=prompt,
+                origin=home_iata,
+                trip_shape="quest",
+                model_source=self.model_source_label() or None,
+            )
+        except Exception:
+            pass
 
     def to_search_query(self, trip: ParsedTrip, max_results: int = 5) -> SearchQuery:
         return SearchQuery(
@@ -645,6 +713,18 @@ class GrokClient:
                 "short-haul destinations only; avoid suggesting any flight longer "
                 "than 4 hours from the origin."
             )
+        # Knowledge-assisted seeding: learned candidates the AI may confirm,
+        # reorder, or override — the AI stays the decision-maker.
+        learned = _learned_seed_candidates(
+            vibe=str(form.get("vibe") or ""), origin=str(form.get("origin") or "")
+        )
+        if learned:
+            system += (
+                "\n- learned_candidates are destinations this traveler's past "
+                "searches and feedback matched to this vibe (routes already "
+                "verified rank first). They are OPTIONAL suggestions: confirm, "
+                "reorder, or override them freely — still apply every rule above."
+            )
         system += language_directive(detect_lang(prompt))
         # Codes only in the prompt (names bloat tokens / latency for large passport maps)
         _xp = _compute_xp(visited, avoid)
@@ -679,6 +759,7 @@ class GrokClient:
                     "origin=destination=home. candidates are NEW destinations outside "
                     "visited_countries and avoid_countries — lean cheap food + safe hubs."
                 ),
+                **({"learned_candidates": learned} if learned else {}),
             },
             default=str,
         )
@@ -818,7 +899,31 @@ class GrokClient:
                 )
             except (TypeError, ValueError):
                 continue
-        return req, ideas[: req.max_candidates]
+        ideas = ideas[: req.max_candidates]
+
+        # Learning layer: archive every AI destination proposal (raw query +
+        # verbatim reasoning + tags). Fire-and-forget — never delays rendering.
+        try:
+            from yonder.knowledge import capture_interpretations_async
+
+            capture_interpretations_async(
+                [
+                    {
+                        "dest_iata": i.iata,
+                        "interpretation": i.why,
+                        "tags": list(i.vibe_tags or []),
+                    }
+                    for i in ideas
+                ],
+                vibe=req.vibe,
+                raw_query=prompt,
+                origin=req.origin,
+                trip_shape=req.trip_kind,
+                model_source=self.model_source_label() or None,
+            )
+        except Exception:
+            pass
+        return req, ideas
 
     async def parse_adventure_prompt(
         self,
@@ -953,6 +1058,16 @@ class GrokClient:
                 "\n- User explicitly asked for nearby travel — prefer domestic or "
                 "short-haul destinations; avoid flights longer than 4 hours from origin."
             )
+        # Knowledge-assisted seeding — optional learned suggestions; AI decides.
+        learned = _learned_seed_candidates(vibe=vibe, origin=home)
+        if learned:
+            system += (
+                "\n- learned_candidates are destinations this traveler's past "
+                "searches and feedback matched to this vibe (routes already "
+                "verified rank first). They are OPTIONAL suggestions for the "
+                "detour/quest sections: confirm, reorder, or override them "
+                "freely — still apply every rule above."
+            )
         system += language_directive(detect_lang(prompt))
 
         user = json.dumps(
@@ -973,6 +1088,7 @@ class GrokClient:
                 "traveler_comfort": _xp["rank"],
                 "visited_country_count": len(visited_codes),
                 "user_prompt": prompt.strip()[:400],
+                **({"learned_candidates": learned} if learned else {}),
             },
             default=str,
         )
@@ -1047,6 +1163,33 @@ class GrokClient:
         else:
             rows = []
         out["quest_pairs"] = _filter_quest_rows(rows, home, avoid_set)
+        # Learning layer: archive the unified escape + quest proposals too
+        # (detour candidates were captured inside _adventure_from_payload).
+        try:
+            from yonder.knowledge import capture_interpretations_async
+
+            if out["escape"] is not None:
+                trip = out["escape"]
+                capture_interpretations_async(
+                    [
+                        {
+                            "dest_iata": trip.destination,
+                            "interpretation": trip.intent_summary
+                            or "; ".join(trip.assumptions or []),
+                            "tags": [],
+                        }
+                    ],
+                    vibe=vibe,
+                    raw_query=prompt,
+                    origin=trip.origin,
+                    trip_shape="escape",
+                    model_source=self.model_source_label() or None,
+                )
+        except Exception:
+            pass
+        self._capture_quest_interpretations(
+            out["quest_pairs"], vibe=vibe, prompt=prompt, home_iata=home
+        )
         return out
 
     async def estimate_daily_costs_batch(

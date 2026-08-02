@@ -344,6 +344,26 @@ async def _price_leg(
         except Exception:
             pass  # fare cache unavailable — fall through to live API
 
+    # Route knowledge: a fresh-failed route skips the live API entirely and
+    # surfaces the existing no-flight treatment instantly (negative cache).
+    try:
+        from yonder.knowledge import route_status as _route_status
+
+        if _route_status(origin, dest) == "failed":
+            _gurl_nf = google_flights_url(
+                origin, dest, depart, currency=req.currency, adults=req.adults
+            )
+            return PricedLeg(
+                from_iata=origin,
+                to_iata=dest,
+                depart_date=depart,
+                error="no flights found recently on this route",
+                google_flights_url=_gurl_nf,
+                booking_url=_gurl_nf,
+            )
+    except Exception:
+        pass
+
     from yonder.quota import FARE_PROVIDERS
 
     chain: list[str] = []
@@ -364,6 +384,7 @@ async def _price_leg(
         )
 
     errors: list[str] = []
+    live_no_offers = False  # a live provider answered with an empty result set
     # Only try primary + mock — long fallback chains blow the 30s budget
     short_chain = chain[:1]
     if include_mock and "mock" not in short_chain:
@@ -392,6 +413,16 @@ async def _price_leg(
                 smart_route=False,
             )
             offer = _cheapest(result.offers)
+            if offer is None and provider_name != "mock":
+                # Negative-cache criterion: only a live provider that answered
+                # OK with an empty offer set confirms "no flights". Provider
+                # errors (auth/quota/timeout) say nothing about the route.
+                if any(
+                    r.ok and not r.error
+                    for r in (result.results or [])
+                    if (r.provider or "").lower() != "mock"
+                ):
+                    live_no_offers = True
             if offer:
                 if offer.currency.upper() != req.currency.upper():
                     offer = await convert_offer(http, offer, req.currency)
@@ -438,6 +469,21 @@ async def _price_leg(
                     )
                 except Exception:
                     pass
+                # Route knowledge: record every live success (never mock/demo)
+                if (offer.price_kind or "live") not in ("mock", "sandbox", "cached"):
+                    try:
+                        from yonder.knowledge import record_route_outcome
+
+                        record_route_outcome(
+                            origin=origin,
+                            dest=dest,
+                            success=True,
+                            provider=offer.provider,
+                            price=offer.price,
+                            currency=offer.currency,
+                        )
+                    except Exception:
+                        pass
                 gurl = offer.google_flights_url or google_flights_url(
                     origin, dest, depart, currency=req.currency, adults=req.adults
                 )
@@ -459,6 +505,22 @@ async def _price_leg(
     gurl = google_flights_url(
         origin, dest, depart, currency=req.currency, adults=req.adults
     )
+    # Route knowledge: a live provider confirmed "no flights" — negative-cache
+    # it so the next search skips the API call for this route (expires after
+    # FAILED_ROUTE_TTL_DAYS so routes can recover). Provider errors/timeouts
+    # are NOT recorded — they say nothing about whether the route exists.
+    if live_no_offers:
+        try:
+            from yonder.knowledge import record_route_outcome
+
+            record_route_outcome(
+                origin=origin,
+                dest=dest,
+                success=False,
+                provider=(short_chain[0] if short_chain else None),
+            )
+        except Exception:
+            pass
     return PricedLeg(
         from_iata=origin,
         to_iata=dest,
@@ -1384,6 +1446,20 @@ async def plan_adventure(
     # Apply comfort-fit reranking — same scoring pass as seeds — so
     # Grok-sourced candidates are ordered by comfort fit before pricing.
     ideas = _sort_by_comfort(ideas, req)
+    # Route knowledge: candidates whose route from the origin recently failed
+    # move to the back of the line — viable candidates get priced first, the
+    # fresh-failed ones surface the no-flight treatment instantly without an
+    # API call (see _price_leg's negative-cache check).
+    try:
+        from yonder.knowledge import route_status as _rk_status
+
+        _origin_for_routes = req.origin
+        viable = [i for i in ideas if _rk_status(_origin_for_routes, i.iata) != "failed"]
+        dead = [i for i in ideas if i not in viable]
+        if dead:
+            ideas = viable + dead
+    except Exception:
+        pass
     errors: list[str] = []
     itineraries: list[AdventureItinerary] = []
     direct_price: float | None = None

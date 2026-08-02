@@ -3567,6 +3567,21 @@ async def api_result_feedback(request: Request) -> JSONResponse:
     if row_id == "":
         return _resp({"ok": True, "direction": direction, "deduped": True})
 
+    # Learning layer: shift attribute weights (dest_attributes /
+    # vibe_attributes, source='user_behavior') alongside the flat vibe score.
+    if dest and row_id:
+        from yonder.knowledge import reinforce_from_feedback
+
+        await asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: reinforce_from_feedback(
+                vibe=vibe,
+                dest_iata=dest,
+                direction=direction,
+                feedback_id=row_id,
+            ),
+        )
+
     if direction == "up" and dest:
         # Reinforce the vibe+destination match in the signal store
         await asyncio.get_running_loop().run_in_executor(
