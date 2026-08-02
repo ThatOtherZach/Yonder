@@ -121,18 +121,6 @@ class TestSignalEvent:
             ).fetchone()
         assert row["signal_strength"] == 3
 
-    def test_mock_flag_skips_write(self, client):
-        """When the payload carries mock=true, no DB row is written."""
-        resp = client.post(
-            "/api/signal-event",
-            json={"dest_iata": "NRT", "vibe": "adventure", "strength": 3, "mock": True},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["ok"] is True
-        assert data.get("mock_skipped") is True
-        assert data.get("signal_id") is None
-
     def test_non_json_body_rejected(self, client):
         resp = client.post(
             "/api/signal-event",
@@ -310,33 +298,3 @@ class TestSavedPage:
         # Only one REVIEWED signal for CDG regardless of how many times /saved is visited
         assert len(rows) == 1
 
-    def test_mock_trips_do_not_get_tier2_signal(self, client):
-        """Saved trips with trip_meta.mock=True must be skipped."""
-        from yonder.saved import save_itinerary
-
-        save_itinerary(
-            {
-                "title": "Demo Trip",
-                "kind": "escape",
-                "currency": "USD",
-                "total_price": 0.0,
-                "display_price": "$0",
-                "stop_iata": "LHR",
-                "stop_city": "London",
-                "stay_days": 3,
-                "vibe": "culture",
-            },
-            trip_meta={"mock": True, "origin": "YVR", "destination": "LHR"},  # <-- demo / mock flag
-        )
-
-        client.get("/saved", follow_redirects=True)
-
-        import time as _time
-        _time.sleep(0.1)
-
-        with vs._connect() as conn:
-            rows = conn.execute(
-                "SELECT id FROM search_signals WHERE dest_iata = 'LHR'"
-            ).fetchall()
-
-        assert len(rows) == 0

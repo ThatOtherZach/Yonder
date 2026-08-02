@@ -205,13 +205,13 @@ def _dest_theme(destination: str) -> dict:
         t["flag_img"] = flag_img_url(t["country"], width=80) or ""
     return t
 
-def _mark_missing_fares_result(result, *, forced: bool):
-    """Flag demo offers as fare-missing when mock data was forced (no providers).
+def _mark_missing_fares_result(result, *, forced: bool = True):
+    """Flag ALL mock offers as fare-missing — demo prices are never shown.
 
-    Only applies when the user did NOT ask for demo data — the route stays,
-    but the UI shows a per-leg "Check Fares" button instead of a fake price.
+    The route skeleton stays, but the UI shows a per-leg "Check Fares" button
+    plus a cached real-price range pill instead of an invented price.
     """
-    if not forced or result is None:
+    if result is None:
         return result
     try:
         offers = [
@@ -225,9 +225,9 @@ def _mark_missing_fares_result(result, *, forced: bool):
         return result
 
 
-def _mark_missing_fares_adventure(result, *, forced: bool):
+def _mark_missing_fares_adventure(result, *, forced: bool = True):
     """Same as _mark_missing_fares_result but for Detour itineraries' legs."""
-    if not forced or result is None:
+    if result is None:
         return result
     try:
         its = []
@@ -399,7 +399,6 @@ def _empty_escape_form(settings) -> dict:
         "adults": 1,
         "currency": settings.default_currency,
         "nonstop": False,
-        "mock": bool(settings.testing) and not bool(settings.configured_providers()),
         "vibe": "",
     }
 
@@ -567,10 +566,11 @@ async def search_page(
     adults: int = Query(1, ge=1, le=9),
     currency: str = "USD",
     nonstop: bool = False,
-    mock: bool = False,
     use_grok: bool = True,
 ) -> HTMLResponse:
     settings = get_settings()
+    # Mock is internal-only: route skeletons when no fare providers configured.
+    mock = not settings.configured_providers()
     form = {
         "origin": origin.upper(),
         "destination": destination.upper(),
@@ -579,7 +579,6 @@ async def search_page(
         "adults": adults,
         "currency": currency.upper(),
         "nonstop": nonstop,
-        "mock": mock,
         "use_grok": use_grok,
     }
     try:
@@ -594,11 +593,8 @@ async def search_page(
             max_results=25,
             nonstop_only=nonstop,
         )
-        include_mock = mock or not settings.configured_providers()
-        result = await search_flights(query, settings=settings, include_mock=include_mock)
-        result = _mark_missing_fares_result(
-            result, forced=not mock and not settings.configured_providers()
-        )
+        result = await search_flights(query, settings=settings, include_mock=mock)
+        result = _mark_missing_fares_result(result)
 
         return templates.TemplateResponse(
             request,
@@ -645,12 +641,10 @@ async def ask_grok(request: Request) -> HTMLResponse:
 
     if request.method == "GET":
         ask = str(request.query_params.get("ask") or "").strip()[:280]
-        mock = str(request.query_params.get("mock") or "") in ("true", "on", "1")
         vibe = str(request.query_params.get("vibe") or "").strip().lower()
     else:
         form_data = await request.form()
         ask = str(form_data.get("ask") or "").strip()[:280]
-        mock = str(form_data.get("mock") or "") in ("true", "on", "1")
         vibe = str(form_data.get("vibe") or "").strip().lower()
 
     # Display currency always from Settings (default USD)
@@ -660,16 +654,10 @@ async def ask_grok(request: Request) -> HTMLResponse:
     if not vibe or len(vibe) > 32 or not vibe.replace("-", "").replace("_", "").isalnum():
         vibe = "adventure"
 
-    # Test Data (mock) only when TESTING=true; always allow mock if no live keys
-    mock_requested = mock and settings.testing
-    if not settings.testing:
-        mock = False
-    if not settings.configured_providers():
-        mock = True
-    # Always inject demo fares when mock=True and real search returns nothing —
-    # whether mock was forced by missing providers or explicitly requested via
-    # the Test Data checkbox.
-    mock_forced = mock
+    # Mock is purely an internal fallback: only when no fare providers are
+    # configured.  Mock offers carry route skeletons; their prices are always
+    # hidden (fare_missing) and replaced by real cached range pills in the UI.
+    mock = not settings.configured_providers()
 
     empty_form = {
         "origin": "YVR",
@@ -679,7 +667,6 @@ async def ask_grok(request: Request) -> HTMLResponse:
         "adults": 1,
         "currency": currency_pref,
         "nonstop": False,
-        "mock": mock,
         "vibe": vibe,
     }
     # Vibe is mandatory — always fold into Grok prompt
@@ -760,7 +747,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
 
         # Soft aim only — no hard kill (Skip is on the unified /explore path)
         trip, query, result = await _escape_run()
-        result = _mark_missing_fares_result(result, forced=mock_forced)
+        result = _mark_missing_fares_result(result)
 
         analysis = None
         # Place notes: cache only (no live Grok on the hot path)
@@ -802,7 +789,6 @@ async def ask_grok(request: Request) -> HTMLResponse:
             "adults": query.adults,
             "currency": currency_pref,
             "nonstop": query.nonstop_only,
-            "mock": mock,
             "vibe": vibe,
         }
         dest_theme = _dest_theme(query.destination)
@@ -869,8 +855,6 @@ def _adventure_form_defaults(settings) -> dict:
         "max_candidates": max_cand,
         "currency": settings.default_currency or "USD",
         "vibe": "adventure",
-        "mock": bool(settings.testing)
-        and not bool(settings.configured_providers()),
         "use_grok": True,
     }
 
@@ -904,16 +888,10 @@ async def explore_run(request: Request) -> HTMLResponse:
         pass
     else:
         force = None
-    mock = str(form_data.get("mock") or "") in ("true", "on", "1")
-    mock_requested = mock and settings.testing
-    if not settings.testing:
-        mock = False
-    if not settings.configured_providers():
-        mock = True
-    # Always inject demo fares when mock=True and real search returns nothing —
-    # whether mock was forced by missing providers or explicitly requested via
-    # the Test Data checkbox.
-    mock_forced = mock
+    # Mock is purely an internal fallback: only when no fare providers are
+    # configured.  Mock offers carry route skeletons; their prices are always
+    # hidden (fare_missing) and replaced by real cached range pills in the UI.
+    mock = not settings.configured_providers()
 
     # Explicit trip-shape toggles from the search form.  Both default to True
     # (checkbox present = on; absent = off — HTML checkboxes send nothing when
@@ -1032,7 +1010,6 @@ async def explore_run(request: Request) -> HTMLResponse:
         "adults": 1,
         "currency": currency,
         "nonstop": False,
-        "mock": mock,
         "vibe": vibe,
         "multi_city": multi_city,
         "return_flight": return_flight,
@@ -1043,7 +1020,6 @@ async def explore_run(request: Request) -> HTMLResponse:
         "depart": depart,
         "currency": currency,
         "vibe": vibe,
-        "mock": mock,
         "origin": home_iata,
         "multi_city": multi_city,
         "return_flight": return_flight,
@@ -1062,7 +1038,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             status_code=400,
         )
 
-    decision = decide_shape(prompt, force=force, vibe=vibe, demo=bool(mock))
+    decision = decide_shape(prompt, force=force, vibe=vibe)
 
     # Toggle overrides beat text-based intent detection.
     # multi_city=False → escape only (never produce multi-stop results).
@@ -1093,7 +1069,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         and not decision.forced
     ):
         try:
-            _ai_override = await _ai_shape_override(prompt, settings, demo=bool(mock))
+            _ai_override = await _ai_shape_override(prompt, settings)
             if _ai_override and _ai_override != decision.shape:
                 from yonder.intent import IntentDecision as _IntentDecision
 
@@ -1151,7 +1127,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             errors.append("Escape skipped — user hit Skip")
             return
         if not settings.grok_ready() and not mock:
-            errors.append("Escape skipped — add XAI_API_KEY, configure BYOM, or enable Turbo")
+            errors.append("Escape skipped — add XAI_API_KEY or configure a BYOM endpoint in Settings")
             return
         remaining = _soft_remaining()
         if remaining <= 0 and search_id and is_cancelled(search_id):
@@ -1264,7 +1240,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 timeout=fare_timeout,
                 max_providers=1,
             )
-            result = _mark_missing_fares_result(result, forced=mock_forced)
+            result = _mark_missing_fares_result(result)
             _route_usage.append(grok.accumulated_usage)
         # When mixing, keep up to 3 cheapest; pure escape stays 1 from engine
         if decision.shape == "mix" and result.offers:
@@ -1278,7 +1254,6 @@ async def explore_run(request: Request) -> HTMLResponse:
             "adults": 1,
             "currency": currency,
             "nonstop": query.nonstop_only,
-            "mock": mock,
             "vibe": vibe,
             "vibe_color": vibe_theme(vibe)["color"],
             "multi_city": multi_city,
@@ -1348,7 +1323,6 @@ async def explore_run(request: Request) -> HTMLResponse:
                 "vibe": vibe,
                 "origin": query.origin,
                 "destination": query.destination,
-                "mock": mock,
                 "model_source": settings.model_source_label(),
             },
         }
@@ -1376,7 +1350,6 @@ async def explore_run(request: Request) -> HTMLResponse:
                             **attr_meta,
                             "prompt": prompt,
                             "vibe": vibe,
-                            "mock": mock,
                         },
                     }
                     active_mode = "escape"
@@ -1639,7 +1612,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             cancel_id=search_id or None,
             exclude_iatas=exclude_iatas,
         )
-        result = _mark_missing_fares_adventure(result, forced=mock_forced)
+        result = _mark_missing_fares_adventure(result)
         # Refresh found nothing new → restore first result set
         if is_refresh and not (result.itineraries or []):
             first_snap = load_first("detour")
@@ -1691,7 +1664,6 @@ async def explore_run(request: Request) -> HTMLResponse:
             "avoid": avoid,
             "intent": decision.shape,
             "intent_rationale": decision.rationale,
-            "mock": mock,
             "model_source": settings.model_source_label(),
             **attr_meta,
         }
@@ -1703,7 +1675,6 @@ async def explore_run(request: Request) -> HTMLResponse:
             "depart": depart,
             "vibe": vibe,
             "vibe_color": vt["color"],
-            "mock": mock,
             "min_stop_days": min_stop,
             "max_stop_days": max_stop,
             "multi_city": multi_city,
@@ -1755,8 +1726,6 @@ async def explore_run(request: Request) -> HTMLResponse:
     # fresh results — fare hidden until a live check on Share/Save. No match
     # → seamless fallback to the normal AI path below.
     _recycled = None
-    # Applies whenever TESTING is off — even when mock was forced by missing
-    # fare providers, since recycled cards defer pricing to Share/Save time.
     if not settings.testing:
         try:
             from yonder.recycle import find_recycled_result
@@ -1777,8 +1746,6 @@ async def explore_run(request: Request) -> HTMLResponse:
 
     try:
         if _recycled is not None:
-            # Real saved data — never treated as mock, so tier-1 search
-            # signals below record exactly like a fresh search.
             mock = False
             result = _recycled
             vt = vibe_theme(vibe)
@@ -1806,11 +1773,6 @@ async def explore_run(request: Request) -> HTMLResponse:
                 "visited": visited,
                 "avoid": avoid,
                 "intent": decision.shape,
-                # Recycled trips are real saved data — feedback signals must
-                # flow exactly as they would for fresh results.
-                "mock": False,
-                # Internal-only flag: the frontend fetches a live fare before
-                # Share/Save completes. Never rendered as visible copy.
                 "price_pending": True,
                 **attr_meta,
             }
@@ -1822,7 +1784,6 @@ async def explore_run(request: Request) -> HTMLResponse:
                 "depart": depart,
                 "vibe": vibe,
                 "vibe_color": vt["color"],
-                "mock": False,
             }
             place_books: dict = {}
             try:
@@ -2091,9 +2052,8 @@ async def adventure_run(request: Request) -> HTMLResponse:
     vibe = _s("vibe", "adventure").lower()
     if not vibe or len(vibe) > 32 or not vibe.replace("-", "").replace("_", "").isalnum():
         vibe = "adventure"
-    mock = str(form_data.get("mock") or "") in ("true", "on", "1")
-    if not settings.testing:
-        mock = False
+    # Mock is internal-only: route skeletons when no fare providers configured.
+    mock = not settings.configured_providers()
     use_grok = True  # always invent with Grok when key is present
     avoid = settings.avoid_country_list()
     visited = settings.visited_country_list()
@@ -2110,13 +2070,8 @@ async def adventure_run(request: Request) -> HTMLResponse:
         "max_candidates": max_cand,
         "currency": currency,
         "vibe": vibe,
-        "mock": mock,
         "use_grok": use_grok,
     }
-
-    if not settings.configured_providers():
-        mock = True
-        form["mock"] = True
 
     try:
         if not prompt:
@@ -2560,10 +2515,6 @@ async def saved_list_page(
             dest = str(s.stop_iata or s.destination or "").upper()
             if len(dest) != 3 or not dest.isalpha():
                 continue
-            # Skip reviewed signals for items originally saved from mock searches
-            item_meta = s.trip_meta if isinstance(s.trip_meta, dict) else {}
-            if item_meta.get("mock"):
-                continue
             key = (sess, dest)
             if key in _REVIEWED_SEEN:
                 continue
@@ -2633,7 +2584,6 @@ async def api_save_itinerary(request: Request):
         "chip_id",
         "chip_source",
         "search_id",
-        "mock",
         "model_source",
     ):
         if k in body and k not in trip_meta:
@@ -2683,30 +2633,27 @@ async def api_save_itinerary(request: Request):
     except Exception:
         pass
     # Vibe-learning: ★ Save is the tier-4 signal (upgrade the search's row).
-    # Skipped when the result came from a mock/demo search so fake fares
-    # never earn a saved-tier signal.
-    if not trip_meta.get("mock"):
-        try:
-            from yonder.vibe_signals import SAVED, upsert_signal
+    try:
+        from yonder.vibe_signals import SAVED, upsert_signal
 
-            _dest4 = str(saved.stop_iata or saved.destination or "").upper() or None
-            _sig4 = str(trip_meta.get("signal_id") or "").strip() or None
-            sig_map4 = trip_meta.get("signal_ids")
-            if isinstance(sig_map4, dict) and _dest4 and sig_map4.get(_dest4):
-                _sig4 = str(sig_map4[_dest4])
-            asyncio.get_running_loop().run_in_executor(
-                None,
-                lambda: upsert_signal(
-                    signal_id=_sig4,
-                    dest_iata=_dest4,
-                    vibe=str(trip_meta.get("vibe") or "") or None,
-                    origin=str(trip_meta.get("origin") or saved.origin or "") or None,
-                    signal_strength=SAVED,
-                    search_type="save",
-                ),
-            )
-        except Exception:
-            pass
+        _dest4 = str(saved.stop_iata or saved.destination or "").upper() or None
+        _sig4 = str(trip_meta.get("signal_id") or "").strip() or None
+        sig_map4 = trip_meta.get("signal_ids")
+        if isinstance(sig_map4, dict) and _dest4 and sig_map4.get(_dest4):
+            _sig4 = str(sig_map4[_dest4])
+        asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: upsert_signal(
+                signal_id=_sig4,
+                dest_iata=_dest4,
+                vibe=str(trip_meta.get("vibe") or "") or None,
+                origin=str(trip_meta.get("origin") or saved.origin or "") or None,
+                signal_strength=SAVED,
+                search_type="save",
+            ),
+        )
+    except Exception:
+        pass
     return JSONResponse(
         {
             "ok": True,
@@ -2728,11 +2675,8 @@ async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
         )
 
     form_data = await request.form()
-    mock = str(form_data.get("mock") or "") in ("true", "on", "1")
-    if not settings.testing:
-        mock = False
-    if not settings.configured_providers():
-        mock = True
+    # Mock is internal-only: route skeletons when no fare providers configured.
+    mock = not settings.configured_providers()
 
     try:
         it = AdventureItinerary.model_validate(item.itinerary)
@@ -3056,9 +3000,6 @@ async def api_signal_event(request: Request) -> JSONResponse:
         body = {}
     if not isinstance(body, dict):
         return JSONResponse({"ok": False, "error": "invalid JSON"}, status_code=400)
-    # Skip signal writes for mock/demo-data results so test fares never rank pills.
-    if body.get("mock"):
-        return JSONResponse({"ok": True, "signal_id": None, "mock_skipped": True})
     event_type = str(body.get("event_type") or "engaged").strip()[:16] or "engaged"
     try:
         strength = int(body.get("strength") or 3)
@@ -3108,9 +3049,6 @@ async def api_result_feedback(request: Request) -> JSONResponse:
         body = {}
     if not isinstance(body, dict):
         return JSONResponse({"ok": False, "error": "invalid JSON"}, status_code=400)
-
-    if body.get("mock"):
-        return JSONResponse({"ok": True, "skipped": "mock"})
 
     direction = str(body.get("direction") or "").strip().lower()
     if direction not in ("up", "down"):
@@ -3273,27 +3211,19 @@ async def api_vibe_stats(
     vibe: str = Query(""),
     limit: int = Query(10, ge=1, le=100),
     group: str = Query(""),
-    mock: bool = Query(False),
 ) -> JSONResponse:
-    """Top destinations per vibe from accumulated usage signals.
-
-    In dev (TESTING=true) with the demo switch on (?mock=true), learned
-    scores are bypassed entirely — the response is empty and flagged.
-    """
+    """Top destinations per vibe from accumulated usage signals."""
     from yonder.vibe_signals import top_for_vibe
 
-    settings = get_settings()
-    demo = bool(mock) and bool(settings.testing)
     v = (vibe or "").strip().lower() or "adventure"
     by_country = (group or "").strip().lower() in ("country", "cc", "1", "true")
-    top = top_for_vibe(v, limit=limit, group_by_country=by_country, demo=demo)
+    top = top_for_vibe(v, limit=limit, group_by_country=by_country)
     return JSONResponse(
         {
             "ok": True,
             "vibe": v,
             "grouped_by_country": by_country,
             "top": top,
-            "signals_bypassed": demo,
         }
     )
 
@@ -3410,7 +3340,6 @@ async def api_nearest_airport(lat: float, lon: float) -> JSONResponse:
 async def api_suggest(
     vibe: str = Query(""),
     origin: str | None = None,
-    mock: bool = Query(False),
 ) -> JSONResponse:
     """Dataset-completion chip ranking from ★ Saves (vibe + map context).
 
@@ -3421,15 +3350,11 @@ async def api_suggest(
 
     settings = reload_settings()
     home = (origin or "").strip().upper() or settings.resolve_home_iata()
-    # Dev demo switch: learned signal scores are bypassed so chip ranking
-    # behaves as if the signal store were empty (★ Saves still apply).
-    demo = bool(mock) and bool(settings.testing)
     rank = ranking_from_saves(
         vibe=(vibe or "").strip().lower() or None,
         origin=home,
         visited=settings.visited_country_list(),
         avoid=settings.avoid_country_list(),
-        demo=demo,
     )
     return JSONResponse(
         {
@@ -3945,8 +3870,11 @@ async def api_search(
         max_results=max_results,
         nonstop_only=nonstop,
     )
-    include_mock = mock or not settings.configured_providers()
+    # Mock is internal-only (route skeletons when no providers); user-supplied
+    # mock params are ignored and invented prices never leave the API.
+    include_mock = not settings.configured_providers()
     result = await search_flights(query, settings=settings, include_mock=include_mock)
+    result = _mark_missing_fares_result(result)
     out = result.model_dump(mode="json")
     out["analysis"] = None
     return out
@@ -3957,13 +3885,12 @@ async def api_ask(request: Request) -> dict:
     settings = get_settings()
     body = await request.json()
     ask = str(body.get("ask") or "").strip()
-    mock = bool(body.get("mock", False))
     if not ask:
         return {"ok": False, "error": "ask is required"}
     if not settings.grok_ready():
         return {"ok": False, "error": "No AI model configured — add XAI_API_KEY or set a BYOM endpoint in Settings."}
-    if not settings.configured_providers():
-        mock = True
+    # Mock is internal-only: route skeletons when no fare providers configured.
+    mock = not settings.configured_providers()
 
     async with GrokClient(settings) as grok:
         trip = await grok.parse_natural_language(

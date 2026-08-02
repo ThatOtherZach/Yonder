@@ -560,7 +560,7 @@
           <div class="row g-3">
             <div class="col-12 col-sm-6">
             <label for="TESTING">Testing mode
-              <span class="help">When on, Escape/Detour show a <strong>Turbo</strong> checkbox (fake demo fares).</span>
+              <span class="help">When on, developer tools and provider diagnostics are visible.</span>
               <select id="TESTING" name="TESTING">
                 <option value="false" {% if not view.testing %}selected{% endif %}>false (live only)</option>
                 <option value="true" {% if view.testing %}selected{% endif %}>true (allow Turbo)</option>
@@ -712,8 +712,8 @@
           <div class="section-title">Duffel</div>
           <div class="field-grid">
             <p class="muted" style="margin:0 0 0.5rem;font-size:0.85rem">
-              Tokens starting with <code>duffel_test_</code> are <strong>sandbox</strong> — demo fares only.
-              Use a <strong>live</strong> token for real prices. Until then we prefer SerpAPI (Google Flights snapshots).
+              Tokens starting with <code>duffel_test_</code> are <strong>sandbox</strong> — use a <strong>live</strong> token for real prices.
+              Until then we prefer SerpAPI (Google Flights snapshots).
             </p>
             {% for f in view.fields if f.key == 'DUFFEL_ACCESS_TOKEN' %}
             <div class="field-row">

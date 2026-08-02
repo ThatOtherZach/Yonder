@@ -3,7 +3,7 @@
 - [Bootstrap grid shell](bootstrap-grid-shell.md) — pages lay out on vendored grid-only Bootstrap (container/row/col, sm/md/lg); no full Bootstrap, app overrides win by source order.
 - [Feedback vote dedup](feedback-vote-dedup.md) — dedup via DB unique index + server-trusted yv_sess/IP+UA session; "" means duplicate, None means error/MOCK.
 - [Static JS cache versioning](static-cache-versioning.md) — templates use manual ?v=N cache busters; bump on every static-file edit or users see stale code.
-- [Mock flag forced by missing providers](mock-forcing-gate.md) — /explore forces mock=True when no fare providers configured; don't gate real-data features on `not mock`.
+- [Mock fares are internal-only skeletons](mock-forcing-gate.md) — demo prices never shown; user mock params ignored, all mock offers fare_missing, UI shows Check Fares + range pill.
 - [Reply-language matching](reply-language-matching.md) — new model prose calls need `language_directive(detect_lang(prompt))` and lang-partitioned cache keys; fallback text stays English.
 - [Affiliate activity pills](activity-pills.md) — any place_book built straight from the brief cache must attach `activity_links` itself, or partner pills silently vanish on that page.
 - [Git push workaround](git-push-workaround.md) — Replit's GitHub credential is broken here; push with the GITHUB_PERSONAL_ACCESS_TOKEN secret (needs workflow scope), mask token in output.

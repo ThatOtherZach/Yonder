@@ -112,6 +112,7 @@ class TestDetourReusesEscapeResolvedRoute:
                 "origin": "JFK",  # home field must not hijack the route
                 "depart": _DEPART,
                 "force_mode": "mix",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -136,6 +137,7 @@ class TestDetourReusesEscapeResolvedRoute:
                 "origin": "JFK",
                 "depart": _DEPART,
                 "force_mode": "mix",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -160,6 +162,7 @@ class TestDetourReusesEscapeResolvedRoute:
                 "origin": "JFK",
                 "depart": _DEPART,
                 "force_mode": "mix",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )

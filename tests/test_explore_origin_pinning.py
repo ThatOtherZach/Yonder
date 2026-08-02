@@ -346,6 +346,7 @@ class TestDetourRefreshOriginPinned:
                 "depart": _DEPART,
                 "refresh": "1",
                 "force_mode": "detour",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -367,6 +368,7 @@ class TestDetourRefreshOriginPinned:
                 "origin": "YVR",
                 "depart": _DEPART,
                 "force_mode": "detour",
+                "multi_city": "true",
                 "vibe": "adventure",
                 # NO refresh flag
             },
@@ -414,6 +416,7 @@ class TestDetourLocalGetawayFallback:
                 "depart": _DEPART,
                 "refresh": "1",
                 "force_mode": "detour",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -433,6 +436,7 @@ class TestDetourLocalGetawayFallback:
                 "depart": _DEPART,
                 "refresh": "1",
                 "force_mode": "detour",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -461,6 +465,7 @@ class TestDetourLocalGetawayFallback:
                 # origin intentionally omitted — tests the blank-field path
                 "depart": _DEPART,
                 "force_mode": "detour",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -485,6 +490,7 @@ class TestDetourLocalGetawayFallback:
                 "depart": _DEPART,
                 "refresh": "1",
                 "force_mode": "detour",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -759,6 +765,7 @@ class TestMixShapeRefreshOriginPinned:
                 "depart": _DEPART,
                 "refresh": "1",
                 "force_mode": "mix",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -795,6 +802,7 @@ class TestMixShapeRefreshOriginPinned:
                 "depart": _DEPART,
                 "refresh": "1",
                 "force_mode": "mix",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -825,6 +833,7 @@ class TestMixShapeRefreshOriginPinned:
                 "depart": _DEPART,
                 # NO refresh flag
                 "force_mode": "mix",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -975,6 +984,7 @@ class TestMixShapePartialErrorResilience:
                 "depart": _DEPART,
                 "refresh": "1",
                 "force_mode": "mix",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -1012,6 +1022,7 @@ class TestMixShapePartialErrorResilience:
                 "depart": _DEPART,
                 "refresh": "1",
                 "force_mode": "mix",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -1038,6 +1049,7 @@ class TestMixShapePartialErrorResilience:
                 "depart": _DEPART,
                 "refresh": "1",
                 "force_mode": "mix",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )
@@ -1075,6 +1087,7 @@ class TestMixShapePartialErrorResilience:
                 "depart": _DEPART,
                 "refresh": "1",
                 "force_mode": "mix",
+                "multi_city": "true",
                 "vibe": "adventure",
             },
         )

@@ -1205,13 +1205,6 @@
           <div class="examples examples-set" id="explore-examples" aria-live="polite" title="Pills complete missing search details (vibe + map + timing). Saves re-rank what surfaces.">
             {# Dataset-completion chips; Save metrics only re-order #}
           </div>
-          {% if testing %}
-          <label class="toggle-switch" title="Fake demo fares">
-            <input type="checkbox" name="mock" value="true" id="explore-mock" {% if form is defined and form.mock %}checked{% endif %} />
-            <span class="toggle-track"></span>
-            Turbo
-          </label>
-          {% endif %}
         </div>
 
 
@@ -1383,8 +1376,7 @@
     <div class="results-panel" id="escape-results" data-result-kind="escape"
       data-signal-id="{{ (ep.get('trip_meta') or {}).get('signal_id', '') if ep else '' }}"
       data-signal-dest="{{ (ep.get('trip_meta') or {}).get('destination', '') if ep else '' }}"
-      data-signal-vibe="{{ (ep.get('trip_meta') or {}).get('vibe', '') if ep else '' }}"
-      data-mock="{{ 'true' if (ep.get('trip_meta') or {}).get('mock') else '' }}">
+      data-signal-vibe="{{ (ep.get('trip_meta') or {}).get('vibe', '') if ep else '' }}">
     {% if escape_result and escape_result.offers %}
       <div class="card" id="escape-results-card">
         <h2>Direct Escape{% if escape_result.offers and escape_result.offers|length != 1 %}s{% endif %}</h2>
@@ -1411,11 +1403,6 @@
             <span class="pill" style="opacity:0.7">{{ ai_usage_display }}</span>
           {% endif %}
         </div>
-        {% endif %}
-        {% if escape_result.offers and escape_result.offers[0].notes == "AI planner unavailable — showing offline picks" %}
-        <p class="sub" style="color:var(--muted,#888);font-style:italic;margin-bottom:0.7rem">
-          ⚠ AI planner unavailable — showing offline picks
-        </p>
         {% endif %}
         {% if escape_result.offers %}
         <div class="pass-stack">
@@ -1811,19 +1798,14 @@
 
         function fetchRanking(vibe) {
           var v = (vibe || "adventure").toLowerCase();
-          // Demo switch on → learned signal scores are bypassed server-side;
-          // cache demo/live rankings separately so toggling stays correct.
-          var mockEl = document.getElementById("explore-mock");
-          var demoOn = !!(mockEl && mockEl.checked);
-          var key = v + (demoOn ? "|demo" : "");
+          var key = v;
           if (rankingCache[key]) return Promise.resolve(rankingCache[key]);
           if (rankingInflight[key]) return rankingInflight[key];
           var home = (window.FS_TRAVEL && FS_TRAVEL.home_iata) || "";
           var url =
             "/api/suggest?vibe=" +
             encodeURIComponent(v) +
-            (home ? "&origin=" + encodeURIComponent(home) : "") +
-            (demoOn ? "&mock=true" : "");
+            (home ? "&origin=" + encodeURIComponent(home) : "");
           rankingInflight[key] = fetch(url, {
             credentials: "same-origin",
             headers: { Accept: "application/json" },
@@ -2020,7 +2002,7 @@
             return;
           }
           if (!grokReady) {
-            showError("Add XAI_API_KEY in Settings (or enable Turbo).");
+            showError("Add XAI_API_KEY in Settings to enable AI trip planning.");
             return;
           }
           if (!window.YonderProgress) {
@@ -2247,7 +2229,6 @@
               } catch (e) { if (shareUrl) window.location.href = shareUrl; return; }
               var ask = b.getAttribute("data-ask") || (ta && ta.value) || "";
               var escPanel2 = document.getElementById("escape-results");
-              var escapeMock = !!(escPanel2 && escPanel2.getAttribute("data-mock") === "true");
               postSaveAndShare({
                 kind: "escape",
                 ask: ask,
@@ -2263,7 +2244,6 @@
                   chip_id: attr.chip_id,
                   chip_source: attr.chip_source,
                   search_id: attr.search_id,
-                  mock: escapeMock,
                 },
               }, b, shareUrl);
             }
@@ -2302,11 +2282,6 @@
         try {
           var ctx = signalContext(el);
           if (!ctx.signal_id && !ctx.dest) return; // nothing to attribute
-          // Skip engagement signals for mock/demo-data results
-          var escPanel = document.getElementById("escape-results");
-          var isMock = (escPanel && escPanel.getAttribute("data-mock") === "true") ||
-                       !!(pageAttribution().tripMeta || {}).mock;
-          if (isMock) return;
           fetch("/api/signal-event", {
             method: "POST",
             credentials: "same-origin",
@@ -2356,7 +2331,6 @@
           var vibe      = container.dataset.vibe  || "";
           var dest      = container.dataset.dest  || "";
           var query     = container.dataset.query || "";
-          var isMock    = container.dataset.mock  === "true";
 
           // Visual feedback immediately
           var upBtn   = container.querySelector(".thumb-up");
@@ -2367,8 +2341,6 @@
           upBtn.disabled   = true;
           downBtn.disabled = true;
 
-          if (isMock) return; // don't write signals for demo fares
-
           fetch("/api/result-feedback", {
             method: "POST",
             credentials: "same-origin",
@@ -2378,7 +2350,6 @@
               vibe:         vibe,
               dest_iata:    dest,
               query:        query,
-              mock:         isMock,
             }),
           }).catch(function () {});
         }, true);
