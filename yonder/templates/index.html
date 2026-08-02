@@ -1487,7 +1487,8 @@
         {% endif %}
         <div class="pass-stack">
           {% for idea in _qp.result %}
-          {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe) }}
+          {% set share = share_quest(request, idea, q_home) %}
+          {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe, share=share) }}
           {% endfor %}
         </div>
       </div>
@@ -2238,7 +2239,32 @@
             var itIdx = b.getAttribute("data-it-idx");
             var offerIdx = b.getAttribute("data-offer-idx");
 
-            if (itIdx !== null) {
+            var questIdx = b.getAttribute("data-quest-idx");
+            var homeIata = b.getAttribute("data-home-iata") || "";
+
+            if (questIdx !== null) {
+              // Quest card
+              var qjEl = document.getElementById("quest-json-" + questIdx);
+              if (!qjEl) { if (shareUrl) window.location.href = shareUrl; return; }
+              var questData;
+              try { questData = JSON.parse(qjEl.textContent); } catch (e) { if (shareUrl) window.location.href = shareUrl; return; }
+              questData.kind = "quest";
+              if (!questData.title) {
+                questData.title = (questData.entry_city || questData.entry_iata || "?") + " → overland → " + (questData.exit_city || questData.exit_iata || "?");
+              }
+              var qMeta = Object.assign({}, tripMeta, {
+                prompt: tripMeta.prompt || (ta && ta.value) || "",
+                trip_prompt: tripMeta.trip_prompt || tripMeta.prompt || (ta && ta.value) || "",
+                vibe: tripMeta.vibe || vibe,
+                origin: homeIata,
+                destination: questData.entry_iata || "",
+                click_id: tripMeta.click_id || attr.click_id,
+                chip_id: tripMeta.chip_id || attr.chip_id,
+                chip_source: tripMeta.chip_source || attr.chip_source,
+                search_id: tripMeta.search_id || attr.search_id,
+              });
+              postSaveAndShare({ itinerary: questData, trip_meta: qMeta }, b, shareUrl);
+            } else if (itIdx !== null) {
               // Detour card
               var el = document.getElementById("it-json-" + itIdx);
               if (!el) { if (shareUrl) window.location.href = shareUrl; return; }

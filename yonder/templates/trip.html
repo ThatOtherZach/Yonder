@@ -169,6 +169,11 @@
       {% set it = p.itinerary or {} %}
       {% set train_links = train_options(it.legs[0].from_iata, (it.legs|last).to_iata) if it.legs else [] %}
       {{ bp.detour_card('share', it, 0, share_vibe=share_vibe, fallback_title=share.title, train_links=train_links) }}
+    {% elif share.kind == 'quest' %}
+      {% set idea = p.idea or {} %}
+      {% set q_home = p.home_iata or '' %}
+      {% set q_vibe = (p.trip_meta or {}).get('vibe') or '' %}
+      {{ bp.quest_card('share', idea, 0, home_iata=q_home, quest_vibe=q_vibe) }}
     {% else %}
       <div class="card">
         <p class="muted">Unknown share type.</p>
@@ -179,8 +184,53 @@
 
     {# ——— Field notes — same HTML structure as _boarding_pass.html field-note-inset ——— #}
     {% if place_books %}
+      {# Quest: field notes for entry + exit city #}
+      {% if share.kind == 'quest' %}
+        {% set idea = (share.payload or {}).get('idea') or {} %}
+        {% set q_accent = idea.theme_primary or '#e6b450' %}
+        {% for iata in [idea.entry_iata, idea.exit_iata] if iata %}
+          {% set code = iata | upper %}
+          {% set pb = place_books.get(code) %}
+          {% if pb %}
+          {% set _tagline = pb.tagline or pb.era_note or pb.vibe %}
+          <div class="card" style="padding:1rem;overflow:hidden;">
+            <div class="place-book field-note-inset" style="--bp-accent: {{ q_accent }}">
+              <div class="pb-story-body">
+                <span class="pb-tag">Field note · {{ iata }}</span>
+                <div class="pb-title-line">
+                  <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+                  {% if _tagline %}<p class="pb-closer">{{ _tagline }}</p>{% endif %}
+                </div>
+                {% if pb.subtitle and _tagline %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
+                {% set pb_acts = pb.activity_links or [] %}
+                {% set pb_airport_trains = airport_train_for(iata) if iata else [] %}
+                {% if pb.facts or pb_acts or pb_airport_trains %}
+                <div class="pb-fast-facts" aria-label="Fast facts">
+                  {% for f in (pb.facts or [])[:2 if pb_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
+                  {% for l in pb_acts %}<a class="pb-fact pb-fact-link" href="{{ l.url }}" target="_blank" rel="noopener sponsored">{{ l.emoji }} {{ l.title }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+                  {% for t in pb_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+                </div>
+                {% endif %}
+              </div>
+              {% if pb.culture or pb.food or pb.caution %}
+              <button type="button" class="pb-toggle" aria-expanded="false">
+                <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
+                <span class="pb-chevron" aria-hidden="true">▾</span>
+              </button>
+              <div class="pb-details" hidden>
+                <div class="pb-grid pb-mesh-grid">
+                  {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
+                  {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
+                  {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
+                </div>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+        {% endfor %}
       {# Escape: one note for the destination #}
-      {% if share.kind == 'escape' %}
+      {% elif share.kind == 'escape' %}
         {% set q = (share.payload or {}).get('query') or {} %}
         {% set pb = place_books.get((q.destination or '').upper()) %}
         {% if pb %}
@@ -274,7 +324,7 @@
     {% endif %}
     <p class="muted" style="margin-top:1.25rem;font-size:0.85rem">
       <a href="/">← Back to Yonder</a>
-      {% if share.kind == 'detour' %} · <a href="/saved">Saved</a>{% endif %}
+      {% if share.kind in ('detour', 'quest') %} · <a href="/saved">Saved</a>{% endif %}
     </p>
   </main>
   <script>

@@ -196,6 +196,36 @@ def _share_detour(request: Request, itinerary, trip_meta: dict | None = None) ->
         return None
 
 
+def _share_quest(
+    request: Request,
+    idea,
+    home_iata: str,
+    trip_meta: dict | None = None,
+) -> dict | None:
+    """Create a shareable link for a Quest open-jaw idea."""
+    try:
+        idea_dict = dump_obj(idea)
+        if isinstance(idea_dict, dict):
+            idea_dict.pop("model_source", None)
+        entry_city = str((idea_dict or {}).get("entry_city") or (idea_dict or {}).get("entry_iata") or "?")
+        exit_city = str((idea_dict or {}).get("exit_city") or (idea_dict or {}).get("exit_iata") or "?")
+        title = f"{entry_city} → overland → {exit_city}"
+        meta = dict(trip_meta or {})
+        meta.pop("model_source", None)
+        return _share_pack(
+            request,
+            kind="quest",
+            title=title,
+            payload={
+                "idea": idea_dict,
+                "home_iata": str(home_iata or ""),
+                "trip_meta": meta,
+            },
+        )
+    except Exception:
+        return None
+
+
 def _dest_theme(destination: str) -> dict:
     t = theme_for_iata(destination, kind="stopover")
     t["theme_style"] = theme_css_vars(t)
@@ -324,6 +354,7 @@ def _promo_offers() -> dict | None:
 templates.env.globals["promo_offers"] = _promo_offers
 templates.env.globals["share_escape"] = _share_escape
 templates.env.globals["share_detour"] = _share_detour
+templates.env.globals["share_quest"] = _share_quest
 _vj_boot, _vv_boot = _vibes_data()
 templates.env.globals["vibes_json"] = _vj_boot
 templates.env.globals["vibes_v"] = _vv_boot
@@ -2382,19 +2413,26 @@ async def adventure_run(request: Request) -> HTMLResponse:
 
 
 def _saved_cards(items: list) -> list[dict]:
-    """Hydrate saved rows into AdventureItinerary so the UI matches Adventure 1:1."""
-    from yonder.adventure import AdventureItinerary, _apply_theme
+    """Hydrate saved rows into AdventureItinerary (or QuestIdea for quest kind)."""
+    from yonder.adventure import AdventureItinerary, QuestIdea, _apply_theme
 
     cards: list[dict] = []
     for s in items:
         it = None
-        try:
-            it = AdventureItinerary.model_validate(s.itinerary or {})
-            if not it.theme_style or not it.theme_primary:
-                it = _apply_theme(it)
-        except Exception:
-            it = None
-        cards.append({"saved": s, "it": it})
+        quest_idea = None
+        if s.kind == "quest":
+            try:
+                quest_idea = QuestIdea.model_validate(s.itinerary or {})
+            except Exception:
+                quest_idea = None
+        else:
+            try:
+                it = AdventureItinerary.model_validate(s.itinerary or {})
+                if not it.theme_style or not it.theme_primary:
+                    it = _apply_theme(it)
+            except Exception:
+                it = None
+        cards.append({"saved": s, "it": it, "quest_idea": quest_idea})
     return cards
 
 
@@ -2422,6 +2460,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
     kind_label = {
         "escape": "Escape",
         "detour": "Detour",
+        "quest": "Quest",
     }.get(share.kind, share.kind.title())
 
     # Gather cached field notes (never calls Grok — share page must be instant).
@@ -2446,6 +2485,8 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
         raw_vibe = (p.get("trip_meta") or {}).get("vibe") or next(
             iter(it.get("vibe_tags") or []), None
         )
+    elif share.kind == "quest":
+        raw_vibe = (p.get("trip_meta") or {}).get("vibe")
     if raw_vibe:
         rv = resolve_vibe(str(raw_vibe))
         key = str(raw_vibe).strip().lower()
@@ -2471,6 +2512,18 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
         for iata in filter(None, [it.get("stop_iata"), *[
             leg.get("to_iata") for leg in (it.get("legs") or [])
         ]]):
+            code = iata.upper()
+            if code not in place_books:
+                brief = get_any_cached_for_iata(code, lang=_share_lang)
+                if brief:
+                    brief = dict(brief)
+                    brief["activity_links"] = await activity_links_for(
+                        settings, iata=code, vibe=_vibe_id
+                    )
+                    place_books[code] = brief
+    elif share.kind == "quest":
+        idea = p.get("idea") or {}
+        for iata in filter(None, [idea.get("entry_iata"), idea.get("exit_iata")]):
             code = iata.upper()
             if code not in place_books:
                 brief = get_any_cached_for_iata(code, lang=_share_lang)
@@ -2528,20 +2581,29 @@ async def saved_list_page(
     for card in cards:
         s = card.get("saved")
         it = card.get("it")
+        qi = card.get("quest_idea")
         if not s:
             continue
         try:
-            payload = {
-                "itinerary": dump_obj(it) if it is not None else (s.itinerary or {}),
-                "trip_meta": s.trip_meta or {},
-                "saved_id": s.id,
-            }
-            card["share"] = _share_pack(
-                request,
-                kind="detour",
-                title=s.title or "Saved trip",
-                payload=payload,
-            )
+            if s.kind == "quest" and qi is not None:
+                card["share"] = _share_quest(
+                    request,
+                    qi,
+                    s.origin or "",
+                    {**(s.trip_meta or {}), "saved_id": s.id},
+                )
+            else:
+                payload = {
+                    "itinerary": dump_obj(it) if it is not None else (s.itinerary or {}),
+                    "trip_meta": s.trip_meta or {},
+                    "saved_id": s.id,
+                }
+                card["share"] = _share_pack(
+                    request,
+                    kind="detour",
+                    title=s.title or "Saved trip",
+                    payload=payload,
+                )
         except Exception:
             card["share"] = None
 

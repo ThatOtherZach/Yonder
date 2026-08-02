@@ -564,11 +564,13 @@
 {% endmacro %}
 
 
-{% macro quest_card(mode, idea, idx, home_iata='', quest_vibe='') %}
+{% macro quest_card(mode, idea, idx, home_iata='', quest_vibe='', share=none, s=none) %}
 {# ── Quest: open-jaw overland adventure card ──────────────────────────────────
-   idea: QuestIdea Pydantic model (serialized to dict by Jinja2)
+   idea: QuestIdea Pydantic model or dict
    home_iata: the traveler's home airport IATA
    quest_vibe: active vibe string for the badge
+   share: share pack (url, qr_src, qr_svg) — explore and saved modes
+   s: SavedItinerary — saved mode only
 #}
 {% set accent = idea.theme_primary or '#e6b450' %}
 {% set ib_leg = idea.inbound_leg %}
@@ -584,7 +586,7 @@
 >
   <div class="bp-main">
     <div class="bp-top">
-      <span class="bp-label">Quest</span>
+      <span class="bp-label">{% if mode == 'share' %}Quest{% elif mode == 'saved' %}Quest{% else %}Quest{% endif %}</span>
       <span class="bp-badge soft" style="background:{{ accent }};color:#fff;border:none">
         {% if quest_vibe %}{{ quest_vibe | vibe_emoji }} {% endif %}{{ idea.theme_label or 'Quest' }}
       </span>
@@ -621,6 +623,23 @@
     </div>
     {% endif %}
 
+    {# Saved-mode metadata #}
+    {% if mode == 'saved' and s %}
+    <div class="bp-fields" style="margin-bottom:0.65rem">
+      <div class="bp-field">
+        <span class="k">Fares age</span>
+        <span class="v">{{ s.price_stale_label }}</span>
+      </div>
+      <div class="bp-field">
+        <span class="k">Saved</span>
+        <span class="v" style="font-size:0.82rem">{{ s.saved_at_iso }}</span>
+      </div>
+    </div>
+    {% if s.model_source %}
+    <p class="bp-note" style="font-size:0.78rem;margin:0.15rem 0 0.5rem;color:var(--muted)">via {{ s.model_source }}</p>
+    {% endif %}
+    {% endif %}
+
     {# Two priced legs #}
     <div class="bp-legs">
       {# Inbound: home → entry city #}
@@ -628,16 +647,18 @@
         <div class="codes">{{ home_iata }} → {{ idea.entry_iata }}</div>
         <div class="fare">
           {% if ib_missing %}
-          <span class="cf-slot"
-                data-cf-origin="{{ home_iata }}"
-                data-cf-dest="{{ idea.entry_iata }}"
-                data-cf-depart="{{ idea.depart_date or '' }}"
-                data-cf-return=""
-                data-cf-adults="1"
-                data-cf-currency="{{ idea.currency or '' }}">
-            <button type="button" class="btn-check-fares">Check Fares</button>
-            <span class="cf-error" hidden></span>
-          </span>
+            {% if mode == 'share' %}—{% else %}
+            <span class="cf-slot"
+                  data-cf-origin="{{ home_iata }}"
+                  data-cf-dest="{{ idea.entry_iata }}"
+                  data-cf-depart="{{ idea.depart_date or '' }}"
+                  data-cf-return=""
+                  data-cf-adults="1"
+                  data-cf-currency="{{ idea.currency or '' }}">
+              <button type="button" class="btn-check-fares">Check Fares</button>
+              <span class="cf-error" hidden></span>
+            </span>
+            {% endif %}
           {% elif ib_leg and ib_leg.offer %}
             {{ ib_leg.offer.display_price_base or ib_leg.offer.display_price or ('~' ~ idea.currency ~ ' ' ~ '%.0f'|format(ib_leg.offer.price)) }}
           {% else %}—{% endif %}
@@ -657,16 +678,18 @@
         <div class="codes">{{ idea.exit_iata }} → {{ home_iata }}</div>
         <div class="fare">
           {% if ob_missing %}
-          <span class="cf-slot"
-                data-cf-origin="{{ idea.exit_iata }}"
-                data-cf-dest="{{ home_iata }}"
-                data-cf-depart="{{ idea.outbound_date or '' }}"
-                data-cf-return=""
-                data-cf-adults="1"
-                data-cf-currency="{{ idea.currency or '' }}">
-            <button type="button" class="btn-check-fares">Check Fares</button>
-            <span class="cf-error" hidden></span>
-          </span>
+            {% if mode == 'share' %}—{% else %}
+            <span class="cf-slot"
+                  data-cf-origin="{{ idea.exit_iata }}"
+                  data-cf-dest="{{ home_iata }}"
+                  data-cf-depart="{{ idea.outbound_date or '' }}"
+                  data-cf-return=""
+                  data-cf-adults="1"
+                  data-cf-currency="{{ idea.currency or '' }}">
+              <button type="button" class="btn-check-fares">Check Fares</button>
+              <span class="cf-error" hidden></span>
+            </span>
+            {% endif %}
           {% elif ob_leg and ob_leg.offer %}
             {{ ob_leg.offer.display_price_base or ob_leg.offer.display_price or ('~' ~ idea.currency ~ ' ' ~ '%.0f'|format(ob_leg.offer.price)) }}
           {% else %}—{% endif %}
@@ -682,15 +705,30 @@
       </div>
     </div>
 
-    {# Booking links #}
+    {# Booking links + saved actions #}
     <div class="bp-actions">
+      {% if mode == 'saved' and s %}
+      <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form">
+        <button type="submit" class="refresh-btn">Refresh fares</button>
+      </form>
+      {% endif %}
       {% if ib_leg and ib_leg.google_flights_url %}
       <a class="btn secondary" href="{{ ib_leg.google_flights_url }}" target="_blank" rel="noopener">Book {{ home_iata }} → {{ idea.entry_iata }} ↗</a>
       {% endif %}
       {% if ob_leg and ob_leg.google_flights_url %}
       <a class="btn secondary" href="{{ ob_leg.google_flights_url }}" target="_blank" rel="noopener">Book {{ idea.exit_iata }} → {{ home_iata }} ↗</a>
       {% endif %}
+      {% if mode == 'saved' and s %}
+      <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form" style="margin-left: auto;">
+        <button type="button" class="danger js-remove-confirm">Remove</button>
+      </form>
+      {% endif %}
     </div>
+
+    {# JSON blob for JS save handler (explore mode only) #}
+    {% if mode == 'explore' %}
+    <script type="application/json" id="quest-json-{{ idx }}">{{ idea.model_dump_json() | safe }}</script>
+    {% endif %}
   </div>
 
   <div class="bp-stub">
@@ -707,7 +745,41 @@
       </div>
       <div style="font-size:0.76rem;color:var(--muted);margin-top:0.25rem">two one-way tickets</div>
     </div>
+    {% if mode == 'explore' and share and share.qr_src %}
+    <div class="bp-stub-qr">
+      <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">
+        <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
+      </a>
+      <button type="button" class="bp-stub-share btn-save-and-share"
+              data-share-url="{{ share.url }}"
+              data-quest-idx="{{ idx }}"
+              data-home-iata="{{ home_iata }}">★ Save</button>
+    </div>
+    {% elif mode == 'explore' and share %}
+    <div class="bp-stub-qr">
+      <a class="bp-qr" href="{{ share.url }}" target="_blank" rel="noopener" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
+      <button type="button" class="bp-stub-share btn-save-and-share"
+              data-share-url="{{ share.url }}"
+              data-quest-idx="{{ idx }}"
+              data-home-iata="{{ home_iata }}">★ Save</button>
+    </div>
+    {% elif mode == 'saved' and share and share.qr_src %}
+    <div class="bp-stub-qr">
+      <a class="bp-qr" href="{{ share.url }}" title="{{ share.url }}">
+        <img src="{{ share.qr_src }}" alt="QR code — open trip" width="120" height="120" decoding="async" />
+      </a>
+      <a href="{{ share.url }}" class="bp-stub-share btn-save-and-share">Share ➤</a>
+    </div>
+    {% elif mode == 'saved' and share %}
+    <div class="bp-stub-qr">
+      <a class="bp-qr" href="{{ share.url }}" title="{{ share.url }}">{{ share.qr_svg | safe }}</a>
+      <a href="{{ share.url }}" class="bp-stub-share btn-save-and-share">Share ➤</a>
+    </div>
+    {% elif mode == 'share' %}
+    <div class="bp-stub-meta">open-jaw quest</div>
+    {% else %}
     <div class="bp-barcode" aria-hidden="true"></div>
+    {% endif %}
   </div>
 </article>
 {% endmacro %}
