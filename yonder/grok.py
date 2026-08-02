@@ -71,6 +71,52 @@ def _parse_cache_put(key: str, payload: dict) -> None:
     _PARSE_CACHE[key] = (time.time(), payload)
 
 
+def _filter_quest_rows(raw: list, home_iata: str, avoid_set: set[str]) -> list[dict]:
+    """Validate raw open-jaw quest rows: IATA shape, avoid list, distinct countries."""
+    from yonder.countries import country_for_iata
+
+    results: list[dict] = []
+    for row in (raw or [])[:3]:
+        try:
+            entry = str(row.get("entry_iata") or "").upper()
+            exit_ = str(row.get("exit_iata") or "").upper()
+            if (
+                len(entry) != 3
+                or not entry.isalpha()
+                or len(exit_) != 3
+                or not exit_.isalpha()
+            ):
+                continue
+            home_up = home_iata.upper()
+            if entry == exit_ or entry == home_up or exit_ == home_up:
+                continue
+            # Respect avoid list
+            entry_cc = (country_for_iata(entry) or "").upper()
+            exit_cc = (country_for_iata(exit_) or "").upper()
+            if entry_cc and entry_cc in avoid_set:
+                continue
+            if exit_cc and exit_cc in avoid_set:
+                continue
+            # Entry and exit must be in different countries
+            if entry_cc and exit_cc and entry_cc == exit_cc:
+                continue
+            results.append(
+                {
+                    "entry_iata": entry,
+                    "exit_iata": exit_,
+                    "entry_city": str(row.get("entry_city") or entry),
+                    "exit_city": str(row.get("exit_city") or exit_),
+                    "overland_narrative": str(row.get("overland_narrative") or ""),
+                    "transport": [str(t) for t in (row.get("transport") or [])],
+                    "highlights": [str(h) for h in (row.get("highlights") or [])],
+                }
+            )
+        except (TypeError, ValueError):
+            continue
+
+    return results
+
+
 class ParsedTrip(BaseModel):
     origin: str = Field(..., min_length=3, max_length=3)
     destination: str = Field(..., min_length=3, max_length=3)
@@ -504,46 +550,7 @@ class GrokClient:
         else:
             raw = payload.get("ideas") or []
 
-        results: list[dict] = []
-        for row in raw[:3]:
-            try:
-                entry = str(row.get("entry_iata") or "").upper()
-                exit_ = str(row.get("exit_iata") or "").upper()
-                if (
-                    len(entry) != 3
-                    or not entry.isalpha()
-                    or len(exit_) != 3
-                    or not exit_.isalpha()
-                ):
-                    continue
-                home_up = home_iata.upper()
-                if entry == exit_ or entry == home_up or exit_ == home_up:
-                    continue
-                # Respect avoid list
-                entry_cc = (country_for_iata(entry) or "").upper()
-                exit_cc = (country_for_iata(exit_) or "").upper()
-                if entry_cc and entry_cc in avoid_set:
-                    continue
-                if exit_cc and exit_cc in avoid_set:
-                    continue
-                # Entry and exit must be in different countries
-                if entry_cc and exit_cc and entry_cc == exit_cc:
-                    continue
-                results.append(
-                    {
-                        "entry_iata": entry,
-                        "exit_iata": exit_,
-                        "entry_city": str(row.get("entry_city") or entry),
-                        "exit_city": str(row.get("exit_city") or exit_),
-                        "overland_narrative": str(row.get("overland_narrative") or ""),
-                        "transport": [str(t) for t in (row.get("transport") or [])],
-                        "highlights": [str(h) for h in (row.get("highlights") or [])],
-                    }
-                )
-            except (TypeError, ValueError):
-                continue
-
-        return results
+        return _filter_quest_rows(raw, home_iata, avoid_set)
 
     def to_search_query(self, trip: ParsedTrip, max_results: int = 5) -> SearchQuery:
         return SearchQuery(
@@ -677,7 +684,28 @@ class GrokClient:
         )
         text = await self._chat(system, user, temperature=0.45)
         payload = _extract_json(text)
+        return self._adventure_from_payload(
+            payload,
+            form=form,
+            prompt=prompt,
+            default_currency=default_currency,
+            avoid=avoid,
+            visited=visited,
+            proximity_mode=_proximity_mode,
+        )
 
+    def _adventure_from_payload(
+        self,
+        payload: dict,
+        *,
+        form: dict[str, Any],
+        prompt: str,
+        default_currency: str,
+        avoid: list[str],
+        visited: list[str],
+        proximity_mode: bool,
+    ) -> tuple[AdventureRequest, list[StopoverIdea]]:
+        """Validate a translate-adventure payload into (AdventureRequest, ideas)."""
         currency = str(
             payload.get("currency") or form.get("currency") or default_currency
         ).upper()
@@ -747,7 +775,7 @@ class GrokClient:
                 visited_countries=list(visited),
                 trip_kind=trip_kind,
                 include_direct=trip_kind != "getaway",
-                proximity_mode=_proximity_mode,
+                proximity_mode=proximity_mode,
             )
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(f"Invalid adventure translate: {exc}") from exc
@@ -828,6 +856,198 @@ class GrokClient:
             default_currency=req.currency,
         )
         return ideas
+
+    async def plan_unified(
+        self,
+        prompt: str,
+        vibe: str,
+        origin: str,
+        *,
+        depart_date: date,
+        currency: str = "USD",
+        min_stop_days: int = 2,
+        max_stop_days: int = 5,
+        max_candidates: int = 5,
+        quest_days: int = 10,
+        avoid: list[str] | None = None,
+        visited: list[str] | None = None,
+        exclude_iatas: list[str] | set[str] | None = None,
+        today: date | None = None,
+    ) -> dict:
+        """ONE Grok call covering all three Find panels on a cold start.
+
+        Replaces separate escape-parse + detour-invent + quest-pairs calls.
+        Returns a typed dict:
+          {"escape": ParsedTrip | None,
+           "detour_cities": (AdventureRequest, list[StopoverIdea]) | None,
+           "quest_pairs": list[dict]}
+        Any section that comes back missing or invalid is None / [] — the
+        caller falls back to the individual per-panel call for that section.
+        """
+        from datetime import timedelta
+        from yonder.countries import country_for_iata
+        from yonder.intent import has_proximity_intent
+
+        today = today or date.today()
+        avoid_codes = [str(a).upper() for a in (avoid or []) if a]
+        visited_codes = [str(v).upper() for v in (visited or []) if v]
+        avoid_set = set(avoid_codes)
+        visited_set = set(visited_codes)
+        home = (origin or "").strip().upper()
+        if len(home) != 3 or not home.isalpha():
+            home = "YVR"
+        days = max(1, int(quest_days or 10))
+        outbound_date = depart_date + timedelta(days=days)
+        excl = sorted({str(x).upper() for x in (exclude_iatas or []) if x})
+        proximity_mode = has_proximity_intent(prompt)
+
+        _xp = _compute_xp(visited_codes, avoid_codes)
+        system = (
+            "You are the planning engine for a vibe-first travel app. From ONE traveler "
+            "prompt, produce THREE independent sections in a single reply. "
+            "Return STRICT JSON only (no markdown fences) with exactly this shape:\n"
+            "{"
+            '"escape":{'
+            f'"origin":"{home}","destination":"NRT","depart_date":"YYYY-MM-DD",'
+            '"return_date":"YYYY-MM-DD"|null,"currency":"USD","nonstop_only":false,'
+            '"intent_summary":"one line","assumptions":["..."]},'
+            '"detour":{'
+            '"trip_kind":"detour|getaway","origin":"YVR","destination":"YVR",'
+            '"depart_date":"YYYY-MM-DD","arrive_by":null,"currency":"USD",'
+            '"min_stop_days":3,"max_stop_days":5,"vibe":"adventure",'
+            '"intent_summary":"one line",'
+            '"candidates":[{"iata":"PDX","city":"Portland","country":"US",'
+            '"stay_days":3,"why":"...","vibe_tags":["city","cheap"]}]},'
+            '"quest":{"ideas":['
+            '{"entry_iata":"HAN","exit_iata":"BKK","entry_city":"Hanoi","exit_city":"Bangkok",'
+            '"overland_narrative":"...","transport":["Reunification Express"],'
+            '"highlights":["Hội An"]}]}'
+            "}\n"
+            "SECTION escape — parse the prompt as a point-to-point flight search. "
+            "IATA codes only; prefer major commercial airports; resolve relative dates from today. "
+            "If the user omits a from-city, origin MUST be default_origin. "
+            "Open-ended / vibe-only prompts still need a concrete destination IATA.\n"
+            "SECTION detour — trip_kind rules: getaway ONLY when the user names NO second city "
+            "(origin=destination=home IATA; candidates are round-trip DESTINATIONS). "
+            "detour when the user names two different cities (candidates are mid-route stops; "
+            "a 'stop over in X' city is a candidate stop, NEVER the destination). "
+            "Exactly max_candidates creative but bookable places; never use home as a candidate; "
+            "country = ISO2 for each candidate. traveler_comfort rank guides boldness: "
+            "Chaos Pilot/Nomadic Soul → off-beaten-path; Armchair Explorer/Day Tripper → "
+            "nearby safe hubs and easy connections.\n"
+            "SECTION quest — 1-3 open-jaw itineraries: fly INTO entry_iata, travel OVERLAND to "
+            "exit_iata, fly out from there. Entry and exit MUST be in DIFFERENT countries, "
+            "neither equal to home. Name SPECIFIC real transport (actual train lines, ferry "
+            "routes, bus companies). The overland journey must be feasible in window_days. "
+            "Vary regions across ideas.\n"
+            "PASSPORT RULES (hard constraints for ALL sections — ground truth is the ISO2 lists):\n"
+            "- NEVER use a destination/candidate/entry/exit in avoid_countries.\n"
+            "- When the user wants somewhere new / not been: NEVER pick visited_countries "
+            "(escape destination and getaway candidates). Detour mid-route stops are exempt.\n"
+            "- excluded_iatas are already shown or saved — do not reuse them as destinations "
+            "or candidates.\n"
+            "Match the traveler's vibe in every section. Always single traveler, economy."
+        )
+        if proximity_mode:
+            system += (
+                "\n- User explicitly asked for nearby travel — prefer domestic or "
+                "short-haul destinations; avoid flights longer than 4 hours from origin."
+            )
+        system += language_directive(detect_lang(prompt))
+
+        user = json.dumps(
+            {
+                "today": today.isoformat(),
+                "default_origin": home,
+                "default_currency": currency.upper(),
+                "depart_date": depart_date.isoformat(),
+                "quest_outbound_date": outbound_date.isoformat(),
+                "window_days": days,
+                "min_stop_days": min_stop_days,
+                "max_stop_days": max_stop_days,
+                "max_candidates": max_candidates,
+                "vibe": vibe,
+                "avoid_countries": avoid_codes,
+                "visited_countries": visited_codes,
+                "excluded_iatas": excl[:24],
+                "traveler_comfort": _xp["rank"],
+                "visited_country_count": len(visited_codes),
+                "user_prompt": prompt.strip()[:400],
+            },
+            default=str,
+        )
+
+        text = await self._chat(system, user, temperature=0.45)
+        payload = _extract_json(text)
+        out: dict = {"escape": None, "detour_cities": None, "quest_pairs": []}
+        if not isinstance(payload, dict):
+            return out
+
+        # ── escape section ───────────────────────────────────────────────────
+        esc_raw = payload.get("escape")
+        if isinstance(esc_raw, dict):
+            try:
+                trip = ParsedTrip.model_validate(esc_raw)
+                trip.origin = trip.origin.upper()
+                trip.destination = trip.destination.upper()
+                if len(trip.origin) != 3 or not trip.origin.isalpha():
+                    trip = trip.model_copy(update={"origin": home})
+                trip = trip.model_copy(
+                    update={
+                        "adults": 1,
+                        "cabin": CabinClass.ECONOMY,
+                        "currency": (trip.currency or currency).upper(),
+                    }
+                )
+                cc = (country_for_iata(trip.destination) or "").upper()
+                # Quality guard: passport-map or exclusion violation → drop the
+                # section so the per-panel fallback (with its retry) handles it.
+                if cc and (cc in avoid_set or cc in visited_set):
+                    trip = None
+                elif trip.destination in excl:
+                    trip = None
+                out["escape"] = trip
+            except ValidationError:
+                pass
+
+        # ── detour section ───────────────────────────────────────────────────
+        det_raw = payload.get("detour")
+        if isinstance(det_raw, dict):
+            try:
+                req, ideas = self._adventure_from_payload(
+                    det_raw,
+                    form={
+                        "origin": home,
+                        "destination": "",
+                        "depart": depart_date.isoformat(),
+                        "arrive_by": "",
+                        "min_stop_days": min_stop_days,
+                        "max_stop_days": max_stop_days,
+                        "max_candidates": max_candidates,
+                        "currency": currency,
+                        "vibe": vibe,
+                    },
+                    prompt=prompt,
+                    default_currency=currency,
+                    avoid=avoid_codes,
+                    visited=visited_codes,
+                    proximity_mode=proximity_mode,
+                )
+                if ideas:
+                    out["detour_cities"] = (req, ideas)
+            except Exception:  # noqa: BLE001 — incomplete section → fallback
+                pass
+
+        # ── quest section ────────────────────────────────────────────────────
+        q_raw = payload.get("quest")
+        if isinstance(q_raw, list):
+            rows = q_raw
+        elif isinstance(q_raw, dict):
+            rows = q_raw.get("ideas") or []
+        else:
+            rows = []
+        out["quest_pairs"] = _filter_quest_rows(rows, home, avoid_set)
+        return out
 
     async def estimate_daily_costs_batch(
         self,

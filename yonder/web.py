@@ -1155,22 +1155,26 @@ async def explore_run(request: Request) -> HTMLResponse:
             return
         ask_for_grok = f"{prompt}\n\nTrip vibe: {vibe}."
         async with GrokClient(settings) as grok:
-            ask_esc = ask_for_grok
-            if is_refresh and exclude_iatas:
-                ask_esc = (
-                    f"{ask_for_grok}\n\n"
-                    f"Do NOT use these destinations (already shown): "
-                    f"{', '.join(sorted(exclude_iatas))}. Pick a different city."
+            if _uni_trip is not None:
+                # Unified cold-start call already parsed this section — no extra Grok call
+                trip = _uni_trip
+            else:
+                ask_esc = ask_for_grok
+                if is_refresh and exclude_iatas:
+                    ask_esc = (
+                        f"{ask_for_grok}\n\n"
+                        f"Do NOT use these destinations (already shown): "
+                        f"{', '.join(sorted(exclude_iatas))}. Pick a different city."
+                    )
+                trip = await grok.parse_natural_language(
+                    ask_esc,
+                    default_currency=currency,
+                    default_origin=home_iata,
+                    avoid_countries=avoid,
+                    visited_countries=visited,
+                    # Refresh wants novelty — a cached repeat defeats the point
+                    use_cache=not is_refresh,
                 )
-            trip = await grok.parse_natural_language(
-                ask_esc,
-                default_currency=currency,
-                default_origin=home_iata,
-                avoid_countries=avoid,
-                visited_countries=visited,
-                # Refresh wants novelty — a cached repeat defeats the point
-                use_cache=not is_refresh,
-            )
             if search_id and is_cancelled(search_id):
                 errors.append("Escape skipped mid-parse — user hit Skip")
                 return
@@ -1470,28 +1474,32 @@ async def explore_run(request: Request) -> HTMLResponse:
                         f"(already saved or shown): "
                         f"{', '.join(sorted(exclude_iatas)[:24])}. Pick different cities."
                     )
-                async with GrokClient(settings) as grok:
-                    req, ideas = await asyncio.wait_for(
-                        grok.translate_adventure(
-                            prompt=invent_prompt,
-                            form={
-                                "origin": home_iata,
-                                "destination": "",
-                                "depart": depart,
-                                "arrive_by": "",
-                                "min_stop_days": min_stop,
-                                "max_stop_days": max_stop,
-                                "max_candidates": max_cand,
-                                "currency": currency,
-                                "vibe": vibe,
-                                "avoid_countries": avoid,
-                                "visited_countries": visited,
-                            },
-                            default_currency=currency,
-                        ),
-                        timeout=invent_timeout,
-                    )
-                    _route_usage.append(grok.accumulated_usage)
+                if _uni_adventure is not None:
+                    # Unified cold-start call already invented cities — no extra Grok call
+                    req, ideas = _uni_adventure
+                else:
+                    async with GrokClient(settings) as grok:
+                        req, ideas = await asyncio.wait_for(
+                            grok.translate_adventure(
+                                prompt=invent_prompt,
+                                form={
+                                    "origin": home_iata,
+                                    "destination": "",
+                                    "depart": depart,
+                                    "arrive_by": "",
+                                    "min_stop_days": min_stop,
+                                    "max_stop_days": max_stop,
+                                    "max_candidates": max_cand,
+                                    "currency": currency,
+                                    "vibe": vibe,
+                                    "avoid_countries": avoid,
+                                    "visited_countries": visited,
+                                },
+                                default_currency=currency,
+                            ),
+                            timeout=invent_timeout,
+                        )
+                        _route_usage.append(grok.accumulated_usage)
                 if search_id and is_cancelled(search_id):
                     errors.append("Detour invent finished after Skip — packaging what we can")
                 trip_kind = (req.trip_kind or "detour").lower()
@@ -1759,6 +1767,8 @@ async def explore_run(request: Request) -> HTMLResponse:
             include_mock=mock,
             avoid=avoid,
             visited=visited,
+            # Unified cold-start call already proposed pairs — skip the Grok call
+            raw_ideas=_uni_quest if _uni_quest else None,
         )
         quest_override = {
             "ask": prompt,
@@ -1989,6 +1999,62 @@ async def explore_run(request: Request) -> HTMLResponse:
         except Exception:
             trip_gaps = []
 
+        # ── Unified cold-start plan: 3 Grok calls → 1 ──────────────────────────
+        # When NO panel is recycled (cold-start Find), one combined structured
+        # call covers escape-parse + detour-invent + quest-pairs. Sections that
+        # come back incomplete stay None and fall back to per-panel calls.
+        _uni_trip = None        # ParsedTrip | None → _do_escape
+        _uni_adventure = None   # (AdventureRequest, ideas) | None → _do_detour
+        _uni_quest = None       # list[dict] | None → _do_quest
+        _unified_used = False
+        _chip_fast_seeds = (
+            bool(chip_seeds)
+            and not is_refresh
+            and chip_source in ("chip", "template", "dataset")
+        )
+        if (
+            _recycled_esc is None
+            and _recycled is None
+            and _recycled_qst is None
+            and settings.grok_ready()
+            and not is_refresh
+            and not _chip_fast_seeds
+            and not (search_id and is_cancelled(search_id))
+        ):
+            try:
+                import httpx as _uni_httpx
+
+                async with _uni_httpx.AsyncClient(
+                    timeout=_uni_httpx.Timeout(
+                        connect=8.0, read=32.0, write=10.0, pool=8.0
+                    )
+                ) as _uni_http:
+                    _ugrok = GrokClient(settings, client=_uni_http)
+                    _uni = await asyncio.wait_for(
+                        _ugrok.plan_unified(
+                            prompt,
+                            vibe,
+                            home_iata,
+                            depart_date=date.fromisoformat(depart),
+                            currency=currency,
+                            min_stop_days=min_stop,
+                            max_stop_days=max_stop,
+                            max_candidates=max_cand,
+                            quest_days=quest_days,
+                            avoid=avoid,
+                            visited=visited,
+                            exclude_iatas=exclude_iatas,
+                        ),
+                        timeout=34.0,
+                    )
+                    _route_usage.append(_ugrok.accumulated_usage)
+                _uni_trip = _uni.get("escape")
+                _uni_adventure = _uni.get("detour_cities")
+                _uni_quest = _uni.get("quest_pairs") or None
+                _unified_used = bool(_uni_trip or _uni_adventure or _uni_quest)
+            except Exception as _uni_exc:  # noqa: BLE001 — fall back to 3 calls
+                errors.append(f"Unified plan fell back: {str(_uni_exc)[:80]}")
+
         # ── Run only panels not covered by the recycle pool ────────────────────
         # Each recycled panel saves one Grok call + N flight-API calls.
         # Refresh bypasses escape/quest recycle (they stay None) but detour
@@ -2006,10 +2072,18 @@ async def explore_run(request: Request) -> HTMLResponse:
         # ── Search cost accounting ───────────────────────────────────────────────
         import logging as _sc_log
         _rp = [p for p, r in [("escape", _recycled_esc), ("detour", _recycled), ("quest", _recycled_qst)] if r is not None]
+        if _unified_used:
+            # 1 combined call + a per-panel fallback call for each missing section
+            _grok_calls = 1 + sum(
+                1 for s in (_uni_trip, _uni_adventure, _uni_quest) if not s
+            )
+        else:
+            _grok_calls = 3 - len(_rp)
         _sc_log.getLogger("yonder.cost").info(
-            "search_cost grok_calls≈%d recycled_panels=[%s]",
-            3 - len(_rp),
+            "search_cost grok_calls≈%d recycled_panels=[%s] unified=%s",
+            _grok_calls,
             ",".join(_rp) or "none",
+            "yes" if _unified_used else "no",
         )
 
         has_esc = bool(escape_override.get("result"))

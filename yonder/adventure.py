@@ -2077,12 +2077,16 @@ async def plan_quest(
     include_mock: bool = False,
     avoid: list[str] | None = None,
     visited: list[str] | None = None,
+    raw_ideas: list[dict] | None = None,
 ) -> list[QuestIdea]:
     """Propose 1–3 open-jaw Quest itineraries and price both legs per idea.
 
     Each itinerary: fly one-way home→entry_iata on *depart_date*,
     overland to exit_iata over quest_days days, then fly one-way exit_iata→home
     on *depart_date + quest_days*.  Respects passport avoid list.
+
+    raw_ideas: pre-validated idea rows (e.g. from GrokClient.plan_unified) —
+    when provided, the per-panel Grok call is skipped entirely.
     """
     from yonder.grok import GrokClient
     from yonder.money import format_approx
@@ -2095,17 +2099,18 @@ async def plan_quest(
     currency = (settings.default_currency or "USD").upper()
     vt = _vt(vibe)
 
-    # ── 1. Ask Grok for open-jaw ideas ──────────────────────────────────────
-    async with GrokClient(settings) as grok:
-        raw_ideas = await grok.plan_quest(
-            prompt=prompt,
-            vibe=vibe,
-            home_iata=home_iata,
-            depart_date=depart_date,
-            quest_days=days,
-            avoid=avoid or [],
-            visited=visited or [],
-        )
+    # ── 1. Ask Grok for open-jaw ideas (unless supplied by a unified call) ──
+    if raw_ideas is None:
+        async with GrokClient(settings) as grok:
+            raw_ideas = await grok.plan_quest(
+                prompt=prompt,
+                vibe=vibe,
+                home_iata=home_iata,
+                depart_date=depart_date,
+                quest_days=days,
+                avoid=avoid or [],
+                visited=visited or [],
+            )
 
     if not raw_ideas:
         return []
