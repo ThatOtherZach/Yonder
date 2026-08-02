@@ -15,81 +15,15 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import sqlite3
 import time
 import uuid
 from typing import Any
 
-from yonder.config import ROOT
-
-DB_PATH = ROOT / "feedback.db"
+from yonder.db import get_conn
 
 
 def _mock_mode() -> bool:
     return bool((os.environ.get("MOCK") or "").strip())
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS result_feedback (
-            id          TEXT PRIMARY KEY,
-            session_hash TEXT,
-            vibe        TEXT NOT NULL DEFAULT '',
-            dest_iata   TEXT NOT NULL DEFAULT '',
-            query       TEXT NOT NULL DEFAULT '',
-            direction   TEXT NOT NULL CHECK(direction IN ('up','down')),
-            created_at  REAL NOT NULL
-        )
-        """
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_rf_vibe_dest"
-        " ON result_feedback(vibe, dest_iata)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_rf_created"
-        " ON result_feedback(created_at DESC)"
-    )
-    # One up and one down vote max per (session, vibe, dest) — enforced at the
-    # DB level so concurrent requests can't race past an application check.
-    # Migration: drop any historical duplicates first (keep the earliest vote).
-    conn.execute(
-        """
-        DELETE FROM result_feedback WHERE id NOT IN (
-            SELECT id FROM (
-                SELECT id, MIN(created_at)
-                FROM result_feedback
-                GROUP BY IFNULL(session_hash, ''), vibe, dest_iata, direction
-            )
-        )
-        """
-    )
-    conn.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ux_rf_vote ON result_feedback"
-        "(IFNULL(session_hash, ''), vibe, dest_iata, direction)"
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS vibe_questions (
-            id              TEXT PRIMARY KEY,
-            vibe            TEXT NOT NULL DEFAULT '',
-            query_norm      TEXT NOT NULL DEFAULT '',
-            answer_json     TEXT,
-            created_at      REAL NOT NULL,
-            answer_at       REAL,
-            UNIQUE(vibe, query_norm)
-        )
-        """
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_vq_vibe"
-        " ON vibe_questions(vibe, answer_at DESC)"
-    )
-    conn.commit()
-    return conn
 
 
 def _norm_query(q: str) -> str:
@@ -127,13 +61,14 @@ def record_feedback(
         return None
     row_id = uuid.uuid4().hex
     try:
-        with _connect() as conn:
-            # Dedup enforced by the ux_rf_vote unique index: INSERT OR IGNORE
-            # is atomic, so concurrent duplicate votes can't both land.
+        with get_conn() as conn:
+            # Dedup enforced by the ux_rf_vote unique index: ON CONFLICT DO
+            # NOTHING is atomic, so concurrent duplicate votes can't both land.
             cur = conn.execute(
                 """
-                INSERT OR IGNORE INTO result_feedback (id, session_hash, vibe, dest_iata, query, direction, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO result_feedback (id, session_hash, vibe, dest_iata, query, direction, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
                 """,
                 (
                     row_id,
@@ -171,9 +106,9 @@ def upsert_vibe_question(
         return "", False
     row_id = uuid.uuid4().hex
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             existing = conn.execute(
-                "SELECT id, answer_json FROM vibe_questions WHERE vibe = ? AND query_norm = ?",
+                "SELECT id, answer_json FROM vibe_questions WHERE vibe = %s AND query_norm = %s",
                 (v, q),
             ).fetchone()
             if existing:
@@ -181,7 +116,7 @@ def upsert_vibe_question(
             conn.execute(
                 """
                 INSERT INTO vibe_questions (id, vibe, query_norm, created_at)
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
                 """,
                 (row_id, v, q, time.time()),
             )
@@ -196,9 +131,9 @@ def save_vibe_answer(question_id: str, answer: dict[str, Any]) -> bool:
     if not question_id:
         return False
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             conn.execute(
-                "UPDATE vibe_questions SET answer_json = ?, answer_at = ? WHERE id = ?",
+                "UPDATE vibe_questions SET answer_json = %s, answer_at = %s WHERE id = %s",
                 (json.dumps(answer), time.time(), question_id),
             )
             conn.commit()
@@ -222,14 +157,14 @@ def get_suggestions_for_vibe(
     v = _norm_vibe(vibe)
     lim = max(1, min(100, int(limit or 20)))
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             rows = conn.execute(
                 """
                 SELECT id, vibe, query_norm, answer_json, created_at, answer_at
                 FROM vibe_questions
-                WHERE vibe = ? AND answer_json IS NOT NULL
+                WHERE vibe = %s AND answer_json IS NOT NULL
                 ORDER BY answer_at DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (v, lim),
             ).fetchall()
@@ -260,7 +195,7 @@ def get_suggestions_for_vibe(
 def feedback_stats() -> dict[str, Any]:
     """Quick aggregate counts — useful for admin/debug."""
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             total = conn.execute("SELECT COUNT(*) AS c FROM result_feedback").fetchone()["c"]
             ups = conn.execute(
                 "SELECT COUNT(*) AS c FROM result_feedback WHERE direction='up'"

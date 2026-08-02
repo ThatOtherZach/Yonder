@@ -37,8 +37,7 @@ is a no-op and every read returns empty/unknown — matching the
 vibe_signals convention so demo sessions never pollute the knowledge
 tables.
 
-Schema is plain CREATE TABLE / no SQLite-only features, so a Postgres
-migration (Task #402 style) is a straight port.
+Storage lives in the shared Replit PostgreSQL database (see yonder.db).
 """
 
 from __future__ import annotations
@@ -46,15 +45,12 @@ from __future__ import annotations
 import json
 import os
 import re
-import sqlite3
 import threading
 import time
 import uuid
 from typing import Any, Iterable
 
-from yonder.config import ROOT
-
-DB_PATH = ROOT / "knowledge.db"
+from yonder.db import Conn, get_conn
 
 # ── Tunables ─────────────────────────────────────────────────────────────────
 # Failed routes are re-checked after this many days (negative-cache TTL).
@@ -128,86 +124,6 @@ def _mock_mode() -> bool:
     return bool((os.environ.get("MOCK") or "").strip())
 
 
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS route_knowledge (
-            origin_iata TEXT NOT NULL,
-            dest_iata TEXT NOT NULL,
-            status TEXT NOT NULL DEFAULT 'unknown',
-            success_count INTEGER NOT NULL DEFAULT 0,
-            fail_count INTEGER NOT NULL DEFAULT 0,
-            last_verified_at REAL,
-            last_failed_at REAL,
-            last_provider TEXT,
-            best_recent_price REAL,
-            currency TEXT,
-            updated_at REAL,
-            PRIMARY KEY (origin_iata, dest_iata)
-        );
-
-        CREATE TABLE IF NOT EXISTS vibe_interpretations (
-            id TEXT PRIMARY KEY,
-            vibe TEXT NOT NULL DEFAULT 'adventure',
-            raw_query TEXT NOT NULL DEFAULT '',
-            query_norm TEXT NOT NULL DEFAULT '',
-            origin_iata TEXT,
-            dest_iata TEXT NOT NULL,
-            interpretation TEXT NOT NULL DEFAULT '',
-            attribute_tags TEXT NOT NULL DEFAULT '[]',
-            trip_shape TEXT,
-            model_source TEXT,
-            created_at REAL NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_vi_vibe ON vibe_interpretations(vibe);
-        CREATE INDEX IF NOT EXISTS idx_vi_dest ON vibe_interpretations(dest_iata);
-
-        CREATE TABLE IF NOT EXISTS dest_attributes (
-            dest_iata TEXT NOT NULL,
-            attribute TEXT NOT NULL,
-            source TEXT NOT NULL,
-            weight REAL NOT NULL DEFAULT 0,
-            confidence REAL NOT NULL DEFAULT 0,
-            evidence_count INTEGER NOT NULL DEFAULT 0,
-            contradiction_count INTEGER NOT NULL DEFAULT 0,
-            last_reinforced_at REAL,
-            updated_at REAL,
-            PRIMARY KEY (dest_iata, attribute, source)
-        );
-
-        CREATE TABLE IF NOT EXISTS vibe_attributes (
-            vibe TEXT NOT NULL,
-            attribute TEXT NOT NULL,
-            source TEXT NOT NULL,
-            weight REAL NOT NULL DEFAULT 0,
-            confidence REAL NOT NULL DEFAULT 0,
-            evidence_count INTEGER NOT NULL DEFAULT 0,
-            contradiction_count INTEGER NOT NULL DEFAULT 0,
-            last_reinforced_at REAL,
-            updated_at REAL,
-            PRIMARY KEY (vibe, attribute, source)
-        );
-
-        CREATE TABLE IF NOT EXISTS attribute_evidence (
-            id TEXT PRIMARY KEY,
-            subject_kind TEXT NOT NULL,
-            subject TEXT NOT NULL,
-            attribute TEXT NOT NULL,
-            source TEXT NOT NULL,
-            evidence_kind TEXT NOT NULL,
-            evidence_id TEXT NOT NULL,
-            created_at REAL NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_ae_subject
-            ON attribute_evidence(subject_kind, subject, attribute, source);
-        """
-    )
-    conn.commit()
-    return conn
-
-
 def _norm_iata(code: str | None) -> str | None:
     c = (code or "").strip().upper()
     return c if len(c) == 3 and c.isalpha() else None
@@ -267,9 +183,9 @@ def record_route_outcome(
         return False
     now = time.time()
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             row = conn.execute(
-                "SELECT * FROM route_knowledge WHERE origin_iata=? AND dest_iata=?",
+                "SELECT * FROM route_knowledge WHERE origin_iata=%s AND dest_iata=%s",
                 (o, d),
             ).fetchone()
             if row is None:
@@ -279,7 +195,7 @@ def record_route_outcome(
                         origin_iata, dest_iata, status, success_count, fail_count,
                         last_verified_at, last_failed_at, last_provider,
                         best_recent_price, currency, updated_at
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                     """,
                     (
                         o, d,
@@ -302,10 +218,10 @@ def record_route_outcome(
                     conn.execute(
                         """
                         UPDATE route_knowledge SET status='verified',
-                            success_count=success_count+1, last_verified_at=?,
-                            last_provider=?, best_recent_price=?, currency=?,
-                            updated_at=?
-                        WHERE origin_iata=? AND dest_iata=?
+                            success_count=success_count+1, last_verified_at=%s,
+                            last_provider=%s, best_recent_price=%s, currency=%s,
+                            updated_at=%s
+                        WHERE origin_iata=%s AND dest_iata=%s
                         """,
                         (
                             now,
@@ -319,9 +235,9 @@ def record_route_outcome(
                     conn.execute(
                         """
                         UPDATE route_knowledge SET status='failed',
-                            fail_count=fail_count+1, last_failed_at=?,
-                            last_provider=?, updated_at=?
-                        WHERE origin_iata=? AND dest_iata=?
+                            fail_count=fail_count+1, last_failed_at=%s,
+                            last_provider=%s, updated_at=%s
+                        WHERE origin_iata=%s AND dest_iata=%s
                         """,
                         (now, (provider or "").strip() or row["last_provider"], now, o, d),
                     )
@@ -347,9 +263,9 @@ def route_status(
     if not o or not d:
         return "unknown"
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             row = conn.execute(
-                "SELECT * FROM route_knowledge WHERE origin_iata=? AND dest_iata=?",
+                "SELECT * FROM route_knowledge WHERE origin_iata=%s AND dest_iata=%s",
                 (o, d),
             ).fetchone()
     except Exception:
@@ -374,9 +290,9 @@ def get_route(origin: str | None, dest: str | None) -> dict[str, Any] | None:
     if not o or not d:
         return None
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             row = conn.execute(
-                "SELECT * FROM route_knowledge WHERE origin_iata=? AND dest_iata=?",
+                "SELECT * FROM route_knowledge WHERE origin_iata=%s AND dest_iata=%s",
                 (o, d),
             ).fetchone()
         return dict(row) if row else None
@@ -410,7 +326,7 @@ def compute_confidence(
 
 
 def _upsert_attribute(
-    conn: sqlite3.Connection,
+    conn: Conn,
     table: str,
     key_col: str,
     key_val: str,
@@ -423,7 +339,7 @@ def _upsert_attribute(
 ) -> None:
     now = now or time.time()
     row = conn.execute(
-        f"SELECT * FROM {table} WHERE {key_col}=? AND attribute=? AND source=?",
+        f"SELECT * FROM {table} WHERE {key_col}=%s AND attribute=%s AND source=%s",
         (key_val, attribute, source),
     ).fetchone()
     if row is None:
@@ -433,7 +349,7 @@ def _upsert_attribute(
             f"""
             INSERT INTO {table} ({key_col}, attribute, source, weight, confidence,
                 evidence_count, contradiction_count, last_reinforced_at, updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
             (
                 key_val, attribute, source,
@@ -456,9 +372,9 @@ def _upsert_attribute(
         lr = now
     conn.execute(
         f"""
-        UPDATE {table} SET weight=?, confidence=?, evidence_count=?,
-            contradiction_count=?, last_reinforced_at=?, updated_at=?
-        WHERE {key_col}=? AND attribute=? AND source=?
+        UPDATE {table} SET weight=%s, confidence=%s, evidence_count=%s,
+            contradiction_count=%s, last_reinforced_at=%s, updated_at=%s
+        WHERE {key_col}=%s AND attribute=%s AND source=%s
         """,
         (w, compute_confidence(e, c, lr, now=now), e, c, lr, now,
          key_val, attribute, source),
@@ -466,7 +382,7 @@ def _upsert_attribute(
 
 
 def _link_evidence(
-    conn: sqlite3.Connection,
+    conn: Conn,
     *,
     subject_kind: str,
     subject: str,
@@ -480,7 +396,7 @@ def _link_evidence(
         """
         INSERT INTO attribute_evidence (id, subject_kind, subject, attribute,
             source, evidence_kind, evidence_id, created_at)
-        VALUES (?,?,?,?,?,?,?,?)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
         """,
         (uuid.uuid4().hex, subject_kind, subject, attribute, source,
          evidence_kind, evidence_id, now),
@@ -514,13 +430,13 @@ def record_interpretation(
     vid = uuid.uuid4().hex
     now = time.time()
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             conn.execute(
                 """
                 INSERT INTO vibe_interpretations (id, vibe, raw_query, query_norm,
                     origin_iata, dest_iata, interpretation, attribute_tags,
                     trip_shape, model_source, created_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """,
                 (
                     vid, v, (raw_query or ""), _norm_query(raw_query),
@@ -611,12 +527,12 @@ def reinforce_from_feedback(
     now = time.time()
     fid = feedback_id or uuid.uuid4().hex
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             # Attributes this destination was proposed for (AI evidence first)
             rows = conn.execute(
                 """
                 SELECT DISTINCT attribute FROM dest_attributes
-                WHERE dest_iata=? AND source='ai_inference'
+                WHERE dest_iata=%s AND source='ai_inference'
                 """,
                 (dest,),
             ).fetchall()
@@ -625,7 +541,7 @@ def reinforce_from_feedback(
                 rows = conn.execute(
                     """
                     SELECT attribute FROM vibe_attributes
-                    WHERE vibe=? ORDER BY weight*confidence DESC LIMIT 5
+                    WHERE vibe=%s ORDER BY weight*confidence DESC LIMIT 5
                     """,
                     (v,),
                 ).fetchall()
@@ -653,7 +569,7 @@ def reinforce_from_feedback(
                         ("vibe_attributes", "vibe", v),
                     ):
                         row = conn.execute(
-                            f"SELECT 1 FROM {table} WHERE {col}=? AND attribute=? "
+                            f"SELECT 1 FROM {table} WHERE {col}=%s AND attribute=%s "
                             "AND source='ai_inference'",
                             (key, a),
                         ).fetchone()
@@ -689,10 +605,10 @@ def effective_attributes(
     if not key:
         return {}
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             rows = conn.execute(
                 f"SELECT attribute, source, weight, confidence FROM {table} "
-                f"WHERE {col}=?",
+                f"WHERE {col}=%s",
                 (key,),
             ).fetchall()
     except Exception:
@@ -712,13 +628,13 @@ def evidence_for(
     """Trace an aggregated attribute back to its raw rows (interpretation /
     feedback ids). Answers "which exact queries built this score?"."""
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             sql = (
-                "SELECT * FROM attribute_evidence WHERE subject_kind=? AND subject=?"
+                "SELECT * FROM attribute_evidence WHERE subject_kind=%s AND subject=%s"
             )
             params: list[Any] = [subject_kind, subject]
             if attribute:
-                sql += " AND attribute=?"
+                sql += " AND attribute=%s"
                 params.append(attribute)
             rows = conn.execute(sql + " ORDER BY created_at", params).fetchall()
         return [dict(r) for r in rows]
@@ -731,16 +647,16 @@ def get_interpretations(
 ) -> list[dict[str, Any]]:
     """Read raw archive rows (for reprocessing / debugging)."""
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             sql = "SELECT * FROM vibe_interpretations WHERE 1=1"
             params: list[Any] = []
             if vibe:
-                sql += " AND vibe=?"
+                sql += " AND vibe=%s"
                 params.append(_norm_vibe(vibe))
             if dest_iata:
-                sql += " AND dest_iata=?"
+                sql += " AND dest_iata=%s"
                 params.append(_norm_iata(dest_iata))
-            sql += " ORDER BY created_at DESC LIMIT ?"
+            sql += " ORDER BY created_at DESC LIMIT %s"
             params.append(max(1, min(1000, int(limit or 100))))
             rows = conn.execute(sql, params).fetchall()
         out = []
@@ -788,7 +704,7 @@ def seed_candidates(
     candidates: dict[str, float] = dict(direct)
     if vibe_vec:
         try:
-            with _connect() as conn:
+            with get_conn() as conn:
                 rows = conn.execute(
                     "SELECT dest_iata, attribute, source, weight, confidence "
                     "FROM dest_attributes",

@@ -8,36 +8,9 @@ call.
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timezone
 
-from yonder.config import ROOT
-
-DB_PATH = ROOT / "fare_estimates.db"
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS fare_estimates (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            origin       TEXT NOT NULL,
-            destination  TEXT NOT NULL,
-            year_month   TEXT NOT NULL,
-            currency     TEXT NOT NULL DEFAULT 'USD',
-            price_low    REAL NOT NULL,
-            price_high   REAL NOT NULL,
-            sample_count INTEGER NOT NULL DEFAULT 1,
-            sampled_at   TEXT NOT NULL
-        );
-        CREATE UNIQUE INDEX IF NOT EXISTS fare_estimates_route_month
-            ON fare_estimates(origin, destination, year_month, currency);
-        """
-    )
-    conn.commit()
-    return conn
+from yonder.db import get_conn
 
 
 def upsert_estimate(
@@ -58,30 +31,28 @@ def upsert_estimate(
     if not year_month:
         year_month = datetime.now(timezone.utc).strftime("%Y-%m")
     try:
-        conn = _connect()
-        # Check for existing row
-        row = conn.execute(
-            "SELECT id, price_low, price_high, sample_count FROM fare_estimates "
-            "WHERE origin=? AND destination=? AND year_month=? AND currency=?",
-            (origin, destination, year_month, currency),
-        ).fetchone()
-        if row:
-            new_low = min(float(row["price_low"]), price)
-            new_high = max(float(row["price_high"]), price)
-            conn.execute(
-                "UPDATE fare_estimates SET price_low=?, price_high=?, "
-                "sample_count=?, sampled_at=? WHERE id=?",
-                (new_low, new_high, row["sample_count"] + 1, now_iso, row["id"]),
-            )
-        else:
-            conn.execute(
-                "INSERT INTO fare_estimates "
-                "(origin, destination, year_month, currency, price_low, price_high, sample_count, sampled_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
-                (origin, destination, year_month, currency, price, price, now_iso),
-            )
-        conn.commit()
-        conn.close()
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT id, price_low, price_high, sample_count FROM fare_estimates "
+                "WHERE origin=%s AND destination=%s AND year_month=%s AND currency=%s",
+                (origin, destination, year_month, currency),
+            ).fetchone()
+            if row:
+                new_low = min(float(row["price_low"]), price)
+                new_high = max(float(row["price_high"]), price)
+                conn.execute(
+                    "UPDATE fare_estimates SET price_low=%s, price_high=%s, "
+                    "sample_count=%s, sampled_at=%s WHERE id=%s",
+                    (new_low, new_high, row["sample_count"] + 1, now_iso, row["id"]),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO fare_estimates "
+                    "(origin, destination, year_month, currency, price_low, price_high, sample_count, sampled_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, 1, %s)",
+                    (origin, destination, year_month, currency, price, price, now_iso),
+                )
+            conn.commit()
     except Exception:  # noqa: BLE001
         pass
 
@@ -117,21 +88,20 @@ def get_estimate(
         prev_month = None
 
     try:
-        conn = _connect()
-        row = conn.execute(
-            "SELECT * FROM fare_estimates "
-            "WHERE origin=? AND destination=? AND year_month=? AND currency=?",
-            (origin, destination, year_month, currency),
-        ).fetchone()
-        stale = False
-        if not row and prev_month:
+        with get_conn() as conn:
             row = conn.execute(
                 "SELECT * FROM fare_estimates "
-                "WHERE origin=? AND destination=? AND year_month=? AND currency=?",
-                (origin, destination, prev_month, currency),
+                "WHERE origin=%s AND destination=%s AND year_month=%s AND currency=%s",
+                (origin, destination, year_month, currency),
             ).fetchone()
-            stale = True
-        conn.close()
+            stale = False
+            if not row and prev_month:
+                row = conn.execute(
+                    "SELECT * FROM fare_estimates "
+                    "WHERE origin=%s AND destination=%s AND year_month=%s AND currency=%s",
+                    (origin, destination, prev_month, currency),
+                ).fetchone()
+                stale = True
         if not row:
             return None
         low = row["price_low"]

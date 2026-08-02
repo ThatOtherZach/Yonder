@@ -20,14 +20,11 @@ from __future__ import annotations
 
 import hashlib
 import os
-import sqlite3
 import time
 import uuid
 from typing import Any
 
-from yonder.config import ROOT
-
-DB_PATH = ROOT / "vibe_signals.db"
+from yonder.db import get_conn
 
 # Signal strengths
 SEARCHED = 1
@@ -42,72 +39,6 @@ RECENCY_HALFLIFE_DAYS = 90.0
 def _mock_mode() -> bool:
     """All writes are no-ops in test/demo data mode."""
     return bool((os.environ.get("MOCK") or "").strip())
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS search_signals (
-            id TEXT PRIMARY KEY,
-            ts REAL NOT NULL,
-            session_hash TEXT,
-            vibe TEXT,
-            origin TEXT,
-            dest_iata TEXT,
-            search_type TEXT,
-            result_count INTEGER,
-            signal_strength INTEGER NOT NULL DEFAULT 1,
-            prompt_hash TEXT,
-            model_source TEXT
-        )
-        """
-    )
-    # Older DBs predate model_source — add it in place (nullable, legacy rows stay NULL)
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(search_signals)").fetchall()}
-    if "model_source" not in cols:
-        conn.execute("ALTER TABLE search_signals ADD COLUMN model_source TEXT")
-    # Older DBs predate intent columns — add them in place (nullable, legacy rows stay NULL)
-    if "intent_confidence" not in cols:
-        conn.execute("ALTER TABLE search_signals ADD COLUMN intent_confidence REAL")
-    if "intent_rationale" not in cols:
-        conn.execute("ALTER TABLE search_signals ADD COLUMN intent_rationale TEXT")
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_signals_dest_vibe"
-        " ON search_signals(dest_iata, vibe)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_signals_ts ON search_signals(ts DESC)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_signals_result_count"
-        " ON search_signals(result_count, intent_confidence)"
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS dest_vibe_scores (
-            dest_iata TEXT NOT NULL,
-            vibe TEXT NOT NULL,
-            score REAL NOT NULL DEFAULT 0,
-            search_count INTEGER NOT NULL DEFAULT 0,
-            save_count INTEGER NOT NULL DEFAULT 0,
-            last_signal_ts REAL,
-            updated_at REAL,
-            PRIMARY KEY (dest_iata, vibe)
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS signals_meta (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL DEFAULT ''
-        )
-        """
-    )
-    conn.commit()
-    return conn
 
 
 def _norm_iata(code: str | None) -> str | None:
@@ -164,14 +95,15 @@ def record_search(
         return None
     sid = signal_id or uuid.uuid4().hex
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             conn.execute(
                 """
-                INSERT OR IGNORE INTO search_signals (
+                INSERT INTO search_signals (
                     id, ts, session_hash, vibe, origin, dest_iata,
                     search_type, result_count, signal_strength, prompt_hash,
                     model_source, intent_confidence, intent_rationale
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (id) DO NOTHING
                 """,
                 (
                     sid,
@@ -214,13 +146,13 @@ def record_rejection(
         return None
     sid = uuid.uuid4().hex
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             conn.execute(
                 """
                 INSERT INTO search_signals (
                     id, ts, session_hash, vibe, origin, dest_iata,
                     search_type, result_count, signal_strength, prompt_hash
-                ) VALUES (?,?,?,?,NULL,?,?,?,?,NULL)
+                ) VALUES (%s,%s,%s,%s,NULL,%s,%s,%s,%s,NULL)
                 """,
                 (
                     sid,
@@ -258,10 +190,10 @@ def upsert_signal(
         return None
     strength = max(1, min(4, int(signal_strength or 1)))
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             if signal_id:
                 row = conn.execute(
-                    "SELECT id, signal_strength, dest_iata FROM search_signals WHERE id = ?",
+                    "SELECT id, signal_strength, dest_iata FROM search_signals WHERE id = %s",
                     (signal_id,),
                 ).fetchone()
                 # Only upgrade the row when the destination matches (or none given)
@@ -271,7 +203,7 @@ def upsert_signal(
                 if row:
                     if strength > int(row["signal_strength"] or 1):
                         conn.execute(
-                            "UPDATE search_signals SET signal_strength = ? WHERE id = ?",
+                            "UPDATE search_signals SET signal_strength = %s WHERE id = %s",
                             (strength, signal_id),
                         )
                         conn.commit()
@@ -286,7 +218,7 @@ def upsert_signal(
                 INSERT INTO search_signals (
                     id, ts, session_hash, vibe, origin, dest_iata,
                     search_type, result_count, signal_strength, prompt_hash
-                ) VALUES (?,?,?,?,?,?,?,?,?,NULL)
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NULL)
                 """,
                 (
                     sid,
@@ -316,7 +248,7 @@ def recompute_scores(*, force: bool = False) -> bool:
         return False
     now = time.time()
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             row = conn.execute(
                 "SELECT value FROM signals_meta WHERE key = 'last_recompute'"
             ).fetchone()
@@ -325,7 +257,8 @@ def recompute_scores(*, force: bool = False) -> bool:
                 return False
             # Claim the slot first so concurrent requests don't all recompute
             conn.execute(
-                "INSERT OR REPLACE INTO signals_meta (key, value) VALUES ('last_recompute', ?)",
+                "INSERT INTO signals_meta (key, value) VALUES ('last_recompute', %s) "
+                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
                 (str(now),),
             )
             rows = conn.execute(
@@ -357,7 +290,7 @@ def recompute_scores(*, force: bool = False) -> bool:
                 INSERT INTO dest_vibe_scores (
                     dest_iata, vibe, score, search_count, save_count,
                     last_signal_ts, updated_at
-                ) VALUES (?,?,?,?,?,?,?)
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s)
                 """,
                 [
                     (
@@ -392,11 +325,11 @@ def shape_lean_for_vibe(vibe: str | None, *, demo: bool = False) -> float:
     try:
         now = time.time()
         halflife_s = RECENCY_HALFLIFE_DAYS * 86400.0
-        with _connect() as conn:
+        with get_conn() as conn:
             rows = conn.execute(
                 """
                 SELECT search_type, signal_strength, ts FROM search_signals
-                WHERE vibe = ? AND search_type IN ('escape', 'detour')
+                WHERE vibe = %s AND search_type IN ('escape', 'detour')
                 """,
                 (_norm_vibe(vibe),),
             ).fetchall()
@@ -427,9 +360,9 @@ def scores_for_vibe(vibe: str | None, *, demo: bool = False) -> dict[str, float]
         return {}
     recompute_scores()
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             rows = conn.execute(
-                "SELECT dest_iata, score FROM dest_vibe_scores WHERE vibe = ?",
+                "SELECT dest_iata, score FROM dest_vibe_scores WHERE vibe = %s",
                 (_norm_vibe(vibe),),
             ).fetchall()
         return {r["dest_iata"]: float(r["score"] or 0.0) for r in rows}
@@ -456,14 +389,14 @@ def top_for_vibe(
     recompute_scores()
     lim = max(1, min(100, int(limit or 10)))
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             rows = conn.execute(
                 """
                 SELECT dest_iata, vibe, score, search_count, save_count, last_signal_ts
                 FROM dest_vibe_scores
-                WHERE vibe = ?
+                WHERE vibe = %s
                 ORDER BY score DESC, search_count DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (_norm_vibe(vibe), lim),
             ).fetchall()
@@ -505,53 +438,43 @@ def low_confidence_misses(
     if _mock_mode():
         return []
     try:
-        with _connect() as conn:
+        with get_conn() as conn:
             rows = conn.execute(
                 """
                 SELECT
                     prompt_hash,
-                    vibe,
-                    search_type,
-                    intent_confidence,
-                    intent_rationale,
+                    MAX(vibe) AS vibe,
+                    MAX(search_type) AS search_type,
+                    MAX(intent_confidence) AS intent_confidence,
+                    MAX(intent_rationale) AS intent_rationale,
                     MAX(ts) AS ts,
                     COUNT(id) AS search_count
                 FROM search_signals
                 WHERE result_count = 0
                   AND intent_confidence IS NOT NULL
-                  AND intent_confidence < ?
+                  AND intent_confidence < %s
                   AND prompt_hash IS NOT NULL
                 GROUP BY prompt_hash
                 ORDER BY ts DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (float(confidence_threshold), int(limit)),
             ).fetchall()
     except Exception:
         return []
 
-    # Cross-DB thumbs-down lookup from feedback.db (no shared schema, Python join)
+    # Thumbs-down cross-reference — result_feedback lives in the same Postgres DB
     thumbs_down_hashes: set[str] = set()
     try:
-        from yonder.config import ROOT as _ROOT
-
-        _fb_path = _ROOT / "feedback.db"
-        if _fb_path.exists():
-            import sqlite3 as _sqlite3
-
-            _fconn = _sqlite3.connect(str(_fb_path), check_same_thread=False)
-            _fconn.row_factory = _sqlite3.Row
-            try:
-                _fb_rows = _fconn.execute(
-                    "SELECT DISTINCT query FROM result_feedback WHERE direction = 'down'"
-                ).fetchall()
-                for fr in _fb_rows:
-                    _q = " ".join((fr["query"] or "").lower().split())[:200]
-                    _h = prompt_hash(_q)
-                    if _h:
-                        thumbs_down_hashes.add(_h)
-            finally:
-                _fconn.close()
+        with get_conn() as conn:
+            _fb_rows = conn.execute(
+                "SELECT DISTINCT query FROM result_feedback WHERE direction = 'down'"
+            ).fetchall()
+        for fr in _fb_rows:
+            _q = " ".join((fr["query"] or "").lower().split())[:200]
+            _h = prompt_hash(_q)
+            if _h:
+                thumbs_down_hashes.add(_h)
     except Exception:
         pass
 

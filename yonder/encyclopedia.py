@@ -3,32 +3,15 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import time
 from dataclasses import dataclass
 from typing import Any
 
-from yonder.config import ROOT, Settings
+from yonder.config import Settings
+from yonder.db import get_conn
 
-DB_PATH = ROOT / "place_book_cache.db"
 # ~45 days
 TTL_SEC = 45 * 24 * 3600
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS place_briefs (
-            cache_key TEXT PRIMARY KEY,
-            payload_json TEXT NOT NULL,
-            fetched_at REAL NOT NULL
-        )
-        """
-    )
-    conn.commit()
-    return conn
 
 
 def cache_key(
@@ -64,9 +47,9 @@ def _strip_emdash(obj: Any) -> Any:
 
 
 def get_cached(key: str) -> dict[str, Any] | None:
-    with _connect() as conn:
+    with get_conn() as conn:
         row = conn.execute(
-            "SELECT payload_json, fetched_at FROM place_briefs WHERE cache_key = ?",
+            "SELECT payload_json, fetched_at FROM place_briefs WHERE cache_key = %s",
             (key,),
         ).fetchone()
     if not row:
@@ -97,16 +80,16 @@ def get_any_cached_for_iata(iata: str, lang: str | None = None) -> dict[str, Any
     prefix = (iata or "").upper().strip() + "|"
     code = (lang or "en").lower()
     if code == "en":
-        lang_clause = "AND cache_key NOT LIKE '%|l:%'"
+        lang_clause = "AND cache_key NOT LIKE '%%|l:%%'"
         params: tuple = (prefix + "%",)
     else:
-        lang_clause = "AND cache_key LIKE ?"
+        lang_clause = "AND cache_key LIKE %s"
         params = (prefix + "%", f"%|l:{code}")
-    with _connect() as conn:
+    with get_conn() as conn:
         row = conn.execute(
             f"""
             SELECT payload_json, fetched_at FROM place_briefs
-            WHERE cache_key LIKE ? AND cache_key NOT LIKE '%|t:%'
+            WHERE cache_key LIKE %s AND cache_key NOT LIKE '%%|t:%%'
             {lang_clause}
             ORDER BY fetched_at DESC LIMIT 1
             """,
@@ -135,7 +118,7 @@ def purge_legacy_field_notes() -> int:
     request for each purged entry will re-fetch a fresh note from Grok.
     """
     deleted = 0
-    with _connect() as conn:
+    with get_conn() as conn:
         rows = conn.execute(
             "SELECT cache_key, payload_json FROM place_briefs"
         ).fetchall()
@@ -149,7 +132,7 @@ def purge_legacy_field_notes() -> int:
                 to_delete.append(row["cache_key"])
         if to_delete:
             conn.executemany(
-                "DELETE FROM place_briefs WHERE cache_key = ?",
+                "DELETE FROM place_briefs WHERE cache_key = %s",
                 [(k,) for k in to_delete],
             )
             conn.commit()
@@ -158,11 +141,14 @@ def purge_legacy_field_notes() -> int:
 
 
 def put_cached(key: str, payload: dict[str, Any]) -> None:
-    with _connect() as conn:
+    with get_conn() as conn:
         conn.execute(
             """
-            INSERT OR REPLACE INTO place_briefs (cache_key, payload_json, fetched_at)
-            VALUES (?, ?, ?)
+            INSERT INTO place_briefs (cache_key, payload_json, fetched_at)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (cache_key) DO UPDATE SET
+                payload_json = EXCLUDED.payload_json,
+                fetched_at = EXCLUDED.fetched_at
             """,
             (key, json.dumps(payload, default=str), time.time()),
         )

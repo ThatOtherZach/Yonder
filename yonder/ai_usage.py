@@ -3,9 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sqlite3
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
 
 log = logging.getLogger(__name__)
 
@@ -18,8 +16,6 @@ _PRICING: dict[str, tuple[float, float]] = {
     "grok-3":        (3.00, 15.00),
 }
 _DEFAULT_PRICING = (3.00, 15.00)  # conservative fallback
-
-DB_PATH = Path("data/ai_usage.db")
 
 
 def estimate_cost(prompt_tokens: int, completion_tokens: int, model: str = "") -> float:
@@ -63,56 +59,32 @@ def fmt_usage(usage: dict) -> str:
     return f"~{tok_str} tok · ${cost:.4f}{call_txt}"
 
 
-# ── SQLite persistence ────────────────────────────────────────────────────────
-
-def _ensure_db() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS ai_usage (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts               TEXT    NOT NULL,
-            route            TEXT    NOT NULL,
-            model            TEXT,
-            prompt_tokens    INTEGER DEFAULT 0,
-            completion_tokens INTEGER DEFAULT 0,
-            total_tokens     INTEGER DEFAULT 0,
-            est_cost_usd     REAL    DEFAULT 0,
-            calls            INTEGER DEFAULT 1,
-            model_source     TEXT
-        )
-    """)
-    # Older DBs predate model_source — add it in place (nullable, legacy rows stay NULL)
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(ai_usage)").fetchall()}
-    if "model_source" not in cols:
-        conn.execute("ALTER TABLE ai_usage ADD COLUMN model_source TEXT")
-    conn.commit()
-    return conn
-
+# ── PostgreSQL persistence ────────────────────────────────────────────────────
 
 def _log_sync(route: str, usage: dict) -> None:
     if not usage or not usage.get("total_tokens"):
         return
     try:
-        conn = _ensure_db()
-        conn.execute(
-            "INSERT INTO ai_usage "
-            "(ts, route, model, prompt_tokens, completion_tokens, total_tokens, est_cost_usd, calls, model_source) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                datetime.now(timezone.utc).isoformat(),
-                route,
-                usage.get("model", ""),
-                int(usage.get("prompt_tokens", 0)),
-                int(usage.get("completion_tokens", 0)),
-                int(usage.get("total_tokens", 0)),
-                float(usage.get("est_cost_usd", 0.0)),
-                int(usage.get("calls", 1)),
-                usage.get("model_source") or None,
-            ),
-        )
-        conn.commit()
-        conn.close()
+        from yonder.db import get_conn
+
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO ai_usage "
+                "(ts, route, model, prompt_tokens, completion_tokens, total_tokens, est_cost_usd, calls, model_source) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (
+                    datetime.now(timezone.utc).isoformat(),
+                    route,
+                    usage.get("model", ""),
+                    int(usage.get("prompt_tokens", 0)),
+                    int(usage.get("completion_tokens", 0)),
+                    int(usage.get("total_tokens", 0)),
+                    float(usage.get("est_cost_usd", 0.0)),
+                    int(usage.get("calls", 1)),
+                    usage.get("model_source") or None,
+                ),
+            )
+            conn.commit()
     except Exception as exc:  # noqa: BLE001
         log.warning("ai_usage log failed: %s", exc)
 
@@ -130,38 +102,42 @@ def summarise(days: int | None = None) -> dict:
         total_tokens, prompt_tokens, completion_tokens, est_cost_usd, calls
     Returns an empty dict (not an error) when the DB doesn't exist yet.
     """
-    if not DB_PATH.exists():
-        return {}
     try:
-        conn = sqlite3.connect(DB_PATH)
-        if days is not None:
-            row = conn.execute(
-                """
-                SELECT
-                    COALESCE(SUM(total_tokens), 0),
-                    COALESCE(SUM(prompt_tokens), 0),
-                    COALESCE(SUM(completion_tokens), 0),
-                    COALESCE(SUM(est_cost_usd), 0.0),
-                    COALESCE(SUM(calls), 0)
-                FROM ai_usage
-                WHERE ts >= datetime('now', ?)
-                """,
-                (f"-{days} days",),
-            ).fetchone()
-        else:
-            row = conn.execute(
-                """
-                SELECT
-                    COALESCE(SUM(total_tokens), 0),
-                    COALESCE(SUM(prompt_tokens), 0),
-                    COALESCE(SUM(completion_tokens), 0),
-                    COALESCE(SUM(est_cost_usd), 0.0),
-                    COALESCE(SUM(calls), 0)
-                FROM ai_usage
-                """,
-            ).fetchone()
-        conn.close()
-        total_tokens, prompt_tokens, completion_tokens, est_cost_usd, calls = row
+        from yonder.db import get_conn
+
+        with get_conn() as conn:
+            if days is not None:
+                cutoff = (
+                    datetime.now(timezone.utc) - timedelta(days=int(days))
+                ).isoformat()
+                row = conn.execute(
+                    """
+                    SELECT
+                        COALESCE(SUM(total_tokens), 0) AS a,
+                        COALESCE(SUM(prompt_tokens), 0) AS b,
+                        COALESCE(SUM(completion_tokens), 0) AS c,
+                        COALESCE(SUM(est_cost_usd), 0.0) AS d,
+                        COALESCE(SUM(calls), 0) AS e
+                    FROM ai_usage
+                    WHERE ts >= %s
+                    """,
+                    (cutoff,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT
+                        COALESCE(SUM(total_tokens), 0) AS a,
+                        COALESCE(SUM(prompt_tokens), 0) AS b,
+                        COALESCE(SUM(completion_tokens), 0) AS c,
+                        COALESCE(SUM(est_cost_usd), 0.0) AS d,
+                        COALESCE(SUM(calls), 0) AS e
+                    FROM ai_usage
+                    """,
+                ).fetchone()
+        total_tokens, prompt_tokens, completion_tokens, est_cost_usd, calls = (
+            row["a"], row["b"], row["c"], row["d"], row["e"]
+        )
         return {
             "total_tokens": total_tokens,
             "prompt_tokens": prompt_tokens,

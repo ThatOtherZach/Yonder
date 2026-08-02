@@ -7,19 +7,17 @@ via mid-market FX (Frankfurter). Cached 60 days under lean_v1 keys.
 from __future__ import annotations
 
 import json
-import sqlite3
 import time
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
-from yonder.config import ROOT, Settings
+from yonder.config import Settings
 from yonder.countries import COUNTRY_NAME, country_for_iata
 from yonder.currency import convert_amount
 from yonder.money import format_approx
 
-DB_PATH = ROOT / "daily_costs_cache.db"
 CACHE_TTL_SEC = 60 * 24 * 3600  # 60 days
 CACHE_VERSION = "lean_v1"
 
@@ -212,28 +210,7 @@ def local_currency(cc: str) -> str:
     return _LOCAL_CCY.get((cc or "").upper(), "USD")
 
 
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS daily_cost_cache (
-            cache_key TEXT PRIMARY KEY,
-            origin_cc TEXT NOT NULL,
-            stop_cc TEXT NOT NULL,
-            currency TEXT NOT NULL,
-            daily_origin REAL NOT NULL,
-            daily_stop REAL NOT NULL,
-            style TEXT,
-            includes TEXT,
-            blurb TEXT,
-            source TEXT,
-            fetched_at REAL NOT NULL
-        )
-        """
-    )
-    conn.commit()
-    return conn
+from yonder.db import get_conn
 
 
 def _key(origin_cc: str, stop_cc: str, currency: str) -> str:
@@ -318,9 +295,9 @@ def anchor_examples_for_currency(currency: str) -> list[dict[str, Any]]:
 
 def cache_get(origin_cc: str, stop_cc: str, currency: str) -> dict[str, Any] | None:
     k = _key(origin_cc, stop_cc, currency)
-    with _connect() as conn:
+    with get_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM daily_cost_cache WHERE cache_key = ?", (k,)
+            "SELECT * FROM daily_cost_cache WHERE cache_key = %s", (k,)
         ).fetchone()
     if not row:
         return None
@@ -346,13 +323,24 @@ def cache_put(
     source: str = "grok",
 ) -> None:
     k = _key(origin_cc, stop_cc, currency)
-    with _connect() as conn:
+    with get_conn() as conn:
         conn.execute(
             """
-            INSERT OR REPLACE INTO daily_cost_cache (
+            INSERT INTO daily_cost_cache (
                 cache_key, origin_cc, stop_cc, currency,
                 daily_origin, daily_stop, style, includes, blurb, source, fetched_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (cache_key) DO UPDATE SET
+                origin_cc = EXCLUDED.origin_cc,
+                stop_cc = EXCLUDED.stop_cc,
+                currency = EXCLUDED.currency,
+                daily_origin = EXCLUDED.daily_origin,
+                daily_stop = EXCLUDED.daily_stop,
+                style = EXCLUDED.style,
+                includes = EXCLUDED.includes,
+                blurb = EXCLUDED.blurb,
+                source = EXCLUDED.source,
+                fetched_at = EXCLUDED.fetched_at
             """,
             (
                 k,

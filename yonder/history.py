@@ -3,58 +3,13 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from yonder.config import ROOT
+from yonder.db import get_conn
 from yonder.types import FlightOffer, SearchQuery
-
-DB_PATH = ROOT / "price_history.db"
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS price_samples (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            origin TEXT NOT NULL,
-            destination TEXT NOT NULL,
-            depart_date TEXT NOT NULL,
-            return_date TEXT,
-            price REAL NOT NULL,
-            currency TEXT NOT NULL,
-            source TEXT NOT NULL,
-            price_kind TEXT,
-            stops INTEGER,
-            airlines TEXT,
-            duration_minutes INTEGER,
-            notes TEXT,
-            google_flights_url TEXT,
-            deep_link TEXT,
-            raw_id TEXT,
-            observed_at TEXT NOT NULL,
-            model_source TEXT
-        )
-        """
-    )
-    # Older DBs predate model_source — add it in place (nullable, legacy rows stay NULL)
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(price_samples)").fetchall()}
-    if "model_source" not in cols:
-        conn.execute("ALTER TABLE price_samples ADD COLUMN model_source TEXT")
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_route_date
-        ON price_samples(origin, destination, depart_date, observed_at)
-        """
-    )
-    conn.commit()
-    return conn
-
 
 def record_offer(
     query: SearchQuery,
@@ -71,7 +26,7 @@ def record_offer(
     if offer.price_kind == "mock":
         return False  # don't pollute history with demo
     ts = (observed_at or datetime.now(timezone.utc)).isoformat()
-    with _connect() as conn:
+    with get_conn() as conn:
         conn.execute(
             """
             INSERT INTO price_samples (
@@ -79,7 +34,7 @@ def record_offer(
                 price, currency, source, price_kind, stops, airlines,
                 duration_minutes, notes, google_flights_url, deep_link, raw_id, observed_at,
                 model_source
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
             (
                 query.origin.upper(),
@@ -199,18 +154,23 @@ def route_stats(
 ) -> RouteStats:
     o, d = origin.upper(), destination.upper()
     cur = (currency or "").upper() or None
-    with _connect() as conn:
+    with get_conn() as conn:
+        from datetime import timedelta
+
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=int(days_back))
+        ).isoformat()
         sql = """
             SELECT price, currency, observed_at, price_kind FROM price_samples
-            WHERE origin = ? AND destination = ?
-              AND observed_at >= datetime('now', ?)
+            WHERE origin = %s AND destination = %s
+              AND observed_at >= %s
         """
-        params: list[Any] = [o, d, f"-{int(days_back)} days"]
+        params: list[Any] = [o, d, cutoff]
         if cur:
-            sql += " AND currency = ?"
+            sql += " AND currency = %s"
             params.append(cur)
         if exclude_sandbox:
-            sql += " AND IFNULL(price_kind, '') NOT IN ('sandbox', 'mock')"
+            sql += " AND COALESCE(price_kind, '') NOT IN ('sandbox', 'mock')"
         rows = conn.execute(sql, params).fetchall()
 
     prices = sorted(float(r["price"]) for r in rows)
@@ -235,20 +195,20 @@ def route_stats(
 
 
 def count_samples() -> int:
-    with _connect() as conn:
+    with get_conn() as conn:
         row = conn.execute("SELECT COUNT(*) AS c FROM price_samples").fetchone()
         return int(row["c"] if row else 0)
 
 
 def recent_samples(limit: int = 20) -> list[dict[str, Any]]:
-    with _connect() as conn:
+    with get_conn() as conn:
         rows = conn.execute(
             """
             SELECT origin, destination, depart_date, price, currency, source,
                    price_kind, observed_at
             FROM price_samples
             ORDER BY id DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (limit,),
         ).fetchall()
@@ -264,7 +224,7 @@ _EXPORT_COLUMNS = (
 
 def export_all() -> list[dict[str, Any]]:
     """All price samples as raw row dicts (without local ids) — for backup export."""
-    with _connect() as conn:
+    with get_conn() as conn:
         rows = conn.execute("SELECT * FROM price_samples ORDER BY id").fetchall()
     return [{k: r[k] for k in _EXPORT_COLUMNS} for r in rows]
 
@@ -291,12 +251,12 @@ def import_samples(items: list[dict[str, Any]]) -> tuple[int, int]:
     so re-imports never double-count observations.
     """
     imported = skipped = 0
-    with _connect() as conn:
+    with get_conn() as conn:
         existing = {
             _sample_key({c: r[c] for c in _EXPORT_COLUMNS})
             for r in conn.execute("SELECT * FROM price_samples").fetchall()
         }
-        placeholders = ",".join("?" * len(_EXPORT_COLUMNS))
+        placeholders = ",".join(["%s"] * len(_EXPORT_COLUMNS))
         for raw in items:
             if not isinstance(raw, dict):
                 skipped += 1
@@ -333,8 +293,8 @@ def import_samples(items: list[dict[str, Any]]) -> tuple[int, int]:
 
 
 def export_jsonl(path: Path | None = None) -> Path:
-    out = path or (ROOT / "price_history_export.jsonl")
-    with _connect() as conn, out.open("w", encoding="utf-8") as f:
-        for row in conn.execute("SELECT * FROM price_samples ORDER BY id"):
+    out = path or (Path(__file__).resolve().parent.parent / "price_history_export.jsonl")
+    with get_conn() as conn, out.open("w", encoding="utf-8") as f:
+        for row in conn.execute("SELECT * FROM price_samples ORDER BY id").fetchall():
             f.write(json.dumps(dict(row), default=str) + "\n")
     return out

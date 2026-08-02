@@ -6,46 +6,14 @@ import hashlib
 import io
 import json
 import re
-import sqlite3
 import time
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote
 
-from yonder.config import ROOT
+from yonder.db import get_conn
 
-DB_PATH = ROOT / "shared_trips.db"
 DEFAULT_TTL_SEC = 90 * 24 * 3600  # 90 days
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS shared_trips (
-            id TEXT PRIMARY KEY,
-            created_at REAL NOT NULL,
-            expires_at REAL,
-            kind TEXT NOT NULL,
-            title TEXT NOT NULL,
-            slug TEXT,
-            payload_json TEXT NOT NULL
-        )
-        """
-    )
-    # Older DBs may lack slug — add if missing
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(shared_trips)").fetchall()}
-    if "slug" not in cols:
-        try:
-            conn.execute("ALTER TABLE shared_trips ADD COLUMN slug TEXT")
-        except Exception:
-            pass
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_shared_created ON shared_trips(created_at DESC)"
-    )
-    conn.commit()
-    return conn
 
 
 def _slug_token(s: str, *, max_len: int = 48) -> str:
@@ -168,11 +136,11 @@ def create_share(
     now = time.time()
     expires = now + max(3600, int(ttl_sec)) if ttl_sec else None
     blob = json.dumps(payload, ensure_ascii=False, default=str)
-    with _connect() as conn:
+    with get_conn() as conn:
         conn.execute(
             """
             INSERT INTO shared_trips (id, created_at, expires_at, kind, title, slug, payload_json)
-            VALUES (?,?,?,?,?,?,?)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT(id) DO UPDATE SET
                 expires_at = excluded.expires_at,
                 kind = excluded.kind,
@@ -198,9 +166,9 @@ def get_share(share_id: str) -> SharedTrip | None:
     sid = (share_id or "").strip()
     if not sid or len(sid) > 64:
         return None
-    with _connect() as conn:
+    with get_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM shared_trips WHERE id = ?", (sid,)
+            "SELECT * FROM shared_trips WHERE id = %s", (sid,)
         ).fetchone()
     if not row:
         return None

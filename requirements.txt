@@ -12,3 +12,4 @@ segno>=1.6
 airportsdata
 pytest
 pytest-asyncio
+psycopg2-binary

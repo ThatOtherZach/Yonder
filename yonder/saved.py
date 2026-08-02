@@ -4,67 +4,14 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
 import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from yonder.config import ROOT
+from yonder.db import get_conn
 from yonder.money import format_approx
-
-DB_PATH = ROOT / "saved_itineraries.db"
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS saved_itineraries (
-            id TEXT PRIMARY KEY,
-            saved_at REAL NOT NULL,
-            priced_at REAL,
-            title TEXT NOT NULL,
-            kind TEXT NOT NULL,
-            currency TEXT NOT NULL,
-            total_price REAL,
-            display_price TEXT,
-            stop_city TEXT,
-            stop_iata TEXT,
-            stay_days INTEGER,
-            origin TEXT,
-            destination TEXT,
-            adults INTEGER DEFAULT 1,
-            cabin TEXT DEFAULT 'economy',
-            vibe TEXT,
-            trip_prompt TEXT,
-            theme_country TEXT,
-            theme_primary TEXT,
-            theme_accent TEXT,
-            theme_gradient TEXT,
-            theme_flag_img TEXT,
-            theme_label TEXT,
-            google_flights_url TEXT,
-            kayak_url TEXT,
-            ground_display TEXT,
-            ground_compare_line TEXT,
-            all_in_display TEXT,
-            notes_json TEXT,
-            itinerary_json TEXT NOT NULL,
-            trip_meta_json TEXT
-        )
-        """
-    )
-    conn.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_saved_at
-        ON saved_itineraries(saved_at DESC)
-        """
-    )
-    conn.commit()
-    return conn
 
 
 @dataclass
@@ -174,7 +121,7 @@ class SavedItinerary:
             return None
 
 
-def _row_to_saved(row: sqlite3.Row) -> SavedItinerary:
+def _row_to_saved(row: dict[str, Any]) -> SavedItinerary:
     notes_raw = row["notes_json"] or "[]"
     meta_raw = row["trip_meta_json"] or "{}"
     it_raw = row["itinerary_json"] or "{}"
@@ -267,7 +214,7 @@ def _find_duplicate_id(
     )
     if not key[1] and not key[2]:
         return None
-    with _connect() as conn:
+    with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, kind, origin, destination, title, itinerary_json "
             "FROM saved_itineraries"
@@ -410,17 +357,43 @@ def save_itinerary(
         json.dumps(itinerary, default=str),
         json.dumps(meta, default=str),
     )
-    with _connect() as conn:
+    with get_conn() as conn:
         conn.execute(
             """
-            INSERT OR REPLACE INTO saved_itineraries (
-                id, saved_at, priced_at, title, kind, currency, total_price,
-                display_price, stop_city, stop_iata, stay_days, origin, destination,
-                adults, cabin, vibe, trip_prompt, theme_country, theme_primary,
-                theme_accent, theme_gradient, theme_flag_img, theme_label,
-                google_flights_url, kayak_url, ground_display, ground_compare_line,
-                all_in_display, notes_json, itinerary_json, trip_meta_json
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO saved_itineraries (
+                id, saved_at, priced_at, title, kind, currency, total_price, display_price, stop_city, stop_iata, stay_days, origin, destination, adults, cabin, vibe, trip_prompt, theme_country, theme_primary, theme_accent, theme_gradient, theme_flag_img, theme_label, google_flights_url, kayak_url, ground_display, ground_compare_line, all_in_display, notes_json, itinerary_json, trip_meta_json
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (id) DO UPDATE SET
+                saved_at = EXCLUDED.saved_at,
+                priced_at = EXCLUDED.priced_at,
+                title = EXCLUDED.title,
+                kind = EXCLUDED.kind,
+                currency = EXCLUDED.currency,
+                total_price = EXCLUDED.total_price,
+                display_price = EXCLUDED.display_price,
+                stop_city = EXCLUDED.stop_city,
+                stop_iata = EXCLUDED.stop_iata,
+                stay_days = EXCLUDED.stay_days,
+                origin = EXCLUDED.origin,
+                destination = EXCLUDED.destination,
+                adults = EXCLUDED.adults,
+                cabin = EXCLUDED.cabin,
+                vibe = EXCLUDED.vibe,
+                trip_prompt = EXCLUDED.trip_prompt,
+                theme_country = EXCLUDED.theme_country,
+                theme_primary = EXCLUDED.theme_primary,
+                theme_accent = EXCLUDED.theme_accent,
+                theme_gradient = EXCLUDED.theme_gradient,
+                theme_flag_img = EXCLUDED.theme_flag_img,
+                theme_label = EXCLUDED.theme_label,
+                google_flights_url = EXCLUDED.google_flights_url,
+                kayak_url = EXCLUDED.kayak_url,
+                ground_display = EXCLUDED.ground_display,
+                ground_compare_line = EXCLUDED.ground_compare_line,
+                all_in_display = EXCLUDED.all_in_display,
+                notes_json = EXCLUDED.notes_json,
+                itinerary_json = EXCLUDED.itinerary_json,
+                trip_meta_json = EXCLUDED.trip_meta_json
             """,
             row,
         )
@@ -431,20 +404,20 @@ def save_itinerary(
 
 
 def get(saved_id: str) -> SavedItinerary | None:
-    with _connect() as conn:
+    with get_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM saved_itineraries WHERE id = ?", (saved_id,)
+            "SELECT * FROM saved_itineraries WHERE id = %s", (saved_id,)
         ).fetchone()
     return _row_to_saved(row) if row else None
 
 
 def list_saved(*, limit: int = 50) -> list[SavedItinerary]:
-    with _connect() as conn:
+    with get_conn() as conn:
         rows = conn.execute(
             """
             SELECT * FROM saved_itineraries
             ORDER BY saved_at DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (max(1, min(200, limit)),),
         ).fetchall()
@@ -452,9 +425,9 @@ def list_saved(*, limit: int = 50) -> list[SavedItinerary]:
 
 
 def delete(saved_id: str) -> bool:
-    with _connect() as conn:
+    with get_conn() as conn:
         cur = conn.execute(
-            "DELETE FROM saved_itineraries WHERE id = ?", (saved_id,)
+            "DELETE FROM saved_itineraries WHERE id = %s", (saved_id,)
         )
         conn.commit()
         return cur.rowcount > 0
@@ -462,7 +435,7 @@ def delete(saved_id: str) -> bool:
 
 def clear_all_saves() -> int:
     """Delete every saved itinerary. Returns the number of rows deleted."""
-    with _connect() as conn:
+    with get_conn() as conn:
         cur = conn.execute("DELETE FROM saved_itineraries")
         conn.commit()
         return cur.rowcount
@@ -480,7 +453,7 @@ _EXPORT_COLUMNS = (
 
 def export_all() -> list[dict[str, Any]]:
     """All saved trips as raw row dicts — for backup export."""
-    with _connect() as conn:
+    with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM saved_itineraries ORDER BY saved_at"
         ).fetchall()
@@ -515,7 +488,7 @@ def import_rows(items: list[dict[str, Any]]) -> tuple[int, int]:
     and cross-device merges never duplicate a trip.
     """
     imported = skipped = 0
-    with _connect() as conn:
+    with get_conn() as conn:
         existing_ids = {
             r["id"] for r in conn.execute("SELECT id FROM saved_itineraries")
         }
@@ -524,7 +497,7 @@ def import_rows(items: list[dict[str, Any]]) -> tuple[int, int]:
             k = _route_key({c: r[c] for c in _EXPORT_COLUMNS})
             if k:
                 existing_keys.add(k)
-        placeholders = ",".join("?" * len(_EXPORT_COLUMNS))
+        placeholders = ",".join(["%s"] * len(_EXPORT_COLUMNS))
         for raw in items:
             if not isinstance(raw, dict):
                 skipped += 1
@@ -566,7 +539,7 @@ def import_rows(items: list[dict[str, Any]]) -> tuple[int, int]:
 
 
 def count_saved() -> int:
-    with _connect() as conn:
+    with get_conn() as conn:
         row = conn.execute("SELECT COUNT(*) AS n FROM saved_itineraries").fetchone()
     return int(row["n"]) if row else 0
 

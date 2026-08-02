@@ -7,46 +7,12 @@ Preference learning stays Save-only; this module tracks *marketing* signals
 
 from __future__ import annotations
 
-import sqlite3
 import time
 import uuid
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from yonder.config import ROOT
-
-DB_PATH = ROOT / "attribution.db"
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS funnel_events (
-            id TEXT PRIMARY KEY,
-            ts REAL NOT NULL,
-            event TEXT NOT NULL,
-            click_id TEXT,
-            chip_id TEXT,
-            chip_source TEXT,
-            vibe TEXT,
-            origin TEXT,
-            search_id TEXT,
-            saved_id TEXT,
-            dest TEXT,
-            url TEXT,
-            meta_json TEXT
-        )
-        """
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_funnel_ts ON funnel_events(ts DESC)"
-    )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_funnel_click ON funnel_events(click_id)"
-    )
-    conn.commit()
-    return conn
+from yonder.db import get_conn
 
 
 def new_click_id() -> str:
@@ -75,13 +41,13 @@ def log_event(
     import json
 
     eid = uuid.uuid4().hex
-    with _connect() as conn:
+    with get_conn() as conn:
         conn.execute(
             """
             INSERT INTO funnel_events (
                 id, ts, event, click_id, chip_id, chip_source, vibe, origin,
                 search_id, saved_id, dest, url, meta_json
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """,
             (
                 eid,
