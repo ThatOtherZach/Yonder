@@ -1433,7 +1433,11 @@
           · economy · <a href="/saved">Saved</a>
         </p>
         <div class="pass-stack">
-          {{ bp.vibe_base_card('explore', vibe_base) }}
+          {% for o in vibe_base.result.offers[:1] %}
+          {{ bp.escape_card('explore', o, vibe_base.result.query, loop.index0,
+                            esc_vibe=esc_vibe,
+                            gap_label=(vibe_base.gap_label if vibe_base.gap_label is defined else none)) }}
+          {% endfor %}
         </div>
       </div>
     {% endif %}
