@@ -503,6 +503,7 @@ class GrokClient:
             "PASSPORT MAP (ground truth — always apply):\n"
             "- NEVER propose candidate countries in avoid_countries (ISO2)\n"
             "- For getaway / 'not somewhere I've been' / new places: NEVER propose visited_countries (ISO2)\n"
+            "- For detour trips (user specified a fixed A→B route): stopovers are connection cities, NOT novelty destinations — visited_countries does NOT exclude them\n"
             "- The map lists are authoritative even if the user names a visited place in prose\n"
             "Other rules:\n"
             "- IATA 3-letter codes only\n"

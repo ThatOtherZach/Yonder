@@ -793,8 +793,10 @@ def filter_ideas(
         cc = (idea.country or country_for_iata(code) or "").upper()
         if cc and cc in avoid:
             continue
-        # Passport map: never land somewhere already stamped visited
-        if visited and cc and cc in visited:
+        # Passport map: for getaway trips, never land somewhere already stamped visited.
+        # Detour stopovers are connection cities, not novelty destinations, so the
+        # visited-country filter does not apply.
+        if getaway and visited and cc and cc in visited:
             continue
         seen.add(code)
         out.append(idea.model_copy(update={"iata": code, "country": cc or idea.country}))
