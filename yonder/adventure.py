@@ -223,6 +223,32 @@ class AdventureResult(BaseModel):
     pricing_provider: str | None = None
 
 
+class QuestIdea(BaseModel):
+    """Open-jaw itinerary: fly INTO entry_iata, overland to exit_iata, fly OUT home."""
+
+    entry_iata: str
+    exit_iata: str
+    entry_city: str
+    exit_city: str
+    overland_narrative: str = ""
+    transport: list[str] = Field(default_factory=list)
+    highlights: list[str] = Field(default_factory=list)
+    # Priced legs (populated by plan_quest engine)
+    inbound_leg: PricedLeg | None = None   # home → entry_iata
+    outbound_leg: PricedLeg | None = None  # exit_iata → home
+    currency: str = "USD"
+    depart_date: date | None = None
+    outbound_date: date | None = None
+    total_price: float | None = None
+    display_total: str | None = None
+    inbound_fare_missing: bool = False
+    outbound_fare_missing: bool = False
+    # Vibe theme (set server-side from active vibe)
+    theme_primary: str = "#e6b450"
+    theme_accent: str = "#f0c96a"
+    theme_label: str = "Quest"
+
+
 def _cheapest(offers: list[FlightOffer]) -> FlightOffer | None:
     if not offers:
         return None
@@ -1840,3 +1866,137 @@ async def reprice_itinerary(
         ),
         meta,
     )
+
+
+# ── Quest: open-jaw overland adventure ────────────────────────────────────────
+
+async def plan_quest(
+    prompt: str,
+    vibe: str,
+    home_iata: str,
+    depart_date: date,
+    settings: Settings,
+    *,
+    include_mock: bool = False,
+    avoid: list[str] | None = None,
+    visited: list[str] | None = None,
+) -> list[QuestIdea]:
+    """Propose 1–3 open-jaw Quest itineraries and price both legs per idea.
+
+    Each itinerary: fly one-way home→entry_iata on *depart_date*,
+    overland to exit_iata over 10 days, then fly one-way exit_iata→home
+    on *depart_date + 10 days*.  Respects passport avoid list.
+    """
+    from yonder.grok import GrokClient
+    from yonder.money import format_approx
+    from yonder.vibe_theme import vibe_theme as _vt
+    from yonder.links import google_flights_url as _gfu
+
+    settings = settings or get_settings()
+    outbound_date = depart_date + timedelta(days=10)
+    currency = (settings.default_currency or "USD").upper()
+    vt = _vt(vibe)
+
+    # ── 1. Ask Grok for open-jaw ideas ──────────────────────────────────────
+    async with GrokClient(settings) as grok:
+        raw_ideas = await grok.plan_quest(
+            prompt=prompt,
+            vibe=vibe,
+            home_iata=home_iata,
+            depart_date=depart_date,
+            avoid=avoid or [],
+            visited=visited or [],
+        )
+
+    if not raw_ideas:
+        return []
+
+    # ── 2. Build a minimal AdventureRequest for _price_leg ──────────────────
+    req = AdventureRequest(
+        origin=home_iata,
+        destination=home_iata,
+        depart_date=depart_date,
+        adults=1,
+        currency=currency,
+        cabin=CabinClass.ECONOMY,
+        vibe=vibe,
+        prompt=prompt,
+        avoid_countries=avoid or [],
+        visited_countries=visited or [],
+        trip_kind="getaway",
+    )
+
+    # ── 3. Price both legs for every idea concurrently ───────────────────────
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(connect=8.0, read=20.0, write=10.0, pool=8.0)
+    ) as http:
+        providers = await pick_pricing_provider(settings, http, include_mock)
+        only = providers[:1] if providers else None
+
+        async def _price_idea(row: dict) -> QuestIdea:
+            entry = row["entry_iata"]
+            exit_ = row["exit_iata"]
+            inbound, outbound = await asyncio.gather(
+                _price_leg(
+                    home_iata, entry, depart_date, req,
+                    settings=settings, include_mock=include_mock,
+                    only=only, http=http,
+                ),
+                _price_leg(
+                    exit_, home_iata, outbound_date, req,
+                    settings=settings, include_mock=include_mock,
+                    only=only, http=http,
+                ),
+            )
+            # Mark mock fares as missing (prices never shown to user)
+            if inbound.offer and (inbound.offer.price_kind or "") == "mock":
+                inbound = inbound.model_copy(
+                    update={"offer": inbound.offer.model_copy(update={"fare_missing": True})}
+                )
+            if outbound.offer and (outbound.offer.price_kind or "") == "mock":
+                outbound = outbound.model_copy(
+                    update={"offer": outbound.offer.model_copy(update={"fare_missing": True})}
+                )
+            ib_missing = (not inbound.offer) or bool(inbound.offer.fare_missing)
+            ob_missing = (not outbound.offer) or bool(outbound.offer.fare_missing)
+
+            # Populate booking URLs for missing legs
+            if not inbound.google_flights_url:
+                inbound = inbound.model_copy(
+                    update={"google_flights_url": _gfu(home_iata, entry, depart_date, currency=currency)}
+                )
+            if not outbound.google_flights_url:
+                outbound = outbound.model_copy(
+                    update={"google_flights_url": _gfu(exit_, home_iata, outbound_date, currency=currency)}
+                )
+
+            total: float | None = None
+            display_total: str | None = None
+            if not ib_missing and not ob_missing:
+                total = round(float(inbound.offer.price) + float(outbound.offer.price), 2)  # type: ignore[union-attr]
+                display_total = format_approx(total, currency)
+
+            return QuestIdea(
+                entry_iata=entry,
+                exit_iata=exit_,
+                entry_city=row["entry_city"],
+                exit_city=row["exit_city"],
+                overland_narrative=row.get("overland_narrative", ""),
+                transport=row.get("transport", []),
+                highlights=row.get("highlights", []),
+                inbound_leg=inbound,
+                outbound_leg=outbound,
+                currency=currency,
+                depart_date=depart_date,
+                outbound_date=outbound_date,
+                total_price=total,
+                display_total=display_total,
+                inbound_fare_missing=ib_missing,
+                outbound_fare_missing=ob_missing,
+                theme_primary=vt["color"],
+                theme_accent=vt["deep"],
+                theme_label=vt["label"],
+            )
+
+        results = list(await asyncio.gather(*[_price_idea(r) for r in raw_ideas]))
+    return results

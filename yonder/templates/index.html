@@ -1191,6 +1191,12 @@
                 <span class="toggle-track"></span>
                 Return
               </label>
+              <button type="button" id="btn-quest-mode"
+                class="toggle-switch"
+                title="Quest: fly into one city, travel overland to another, fly home — 10-day open-jaw adventure"
+                style="background:none;border:1px solid var(--line,#ddd);border-radius:4px;padding:0.25rem 0.55rem;cursor:pointer;font-size:0.82rem;white-space:nowrap">
+                ⛰ Quest
+              </button>
             </div>
           </div>
           <div
@@ -1306,6 +1312,8 @@
     {% endif %}
     {% set has_escape = escape_result is defined and escape_result %}
     {% set has_detour = detour_result is defined and detour_result %}
+    {% set _qp = quest_panel if quest_panel is defined else {} %}
+    {% set has_quest = _qp and _qp.result and _qp.result|length > 0 %}
     {% set criteria_origin = none %}
     {% if has_detour and detour_result and detour_result.request is defined and detour_result.request.origin %}
       {% set criteria_origin = detour_result.request.origin %}
@@ -1315,12 +1323,13 @@
     {% set criteria_origin = criteria_origin or home_resolved or (travel_ctx.home_iata if travel_ctx is defined else none) or 'YVR' %}
     {% set criteria_min = (df.min_stop_days if df.min_stop_days is defined and df.min_stop_days else none) or stop_min_days or 3 %}
     {% set criteria_max = (df.max_stop_days if df.max_stop_days is defined and df.max_stop_days else none) or stop_max_days or 5 %}
-    {% if has_escape or has_detour %}
+    {% if has_escape or has_detour or has_quest %}
     <div class="results-toolbar" id="results-toolbar" data-clear-with-results>
       <div class="results-filter mode-tabs" id="results-filter" role="tablist" aria-label="Filter results">
         <button type="button" class="active" data-filter="all" role="tab" aria-selected="true">All</button>
         <button type="button" data-filter="escape" role="tab" aria-selected="false"{% if not has_escape %} disabled{% endif %}>Escape</button>
         <button type="button" data-filter="detour" role="tab" aria-selected="false"{% if not has_detour %} disabled{% endif %}>Detour</button>
+        <button type="button" data-filter="quest" role="tab" aria-selected="false"{% if not has_quest %} disabled{% endif %}>⛰ Quest</button>
         <button type="button" data-filter="clear" role="tab" aria-selected="false" title="Clear results and return to compose">Clear</button>
       </div>
       <div class="results-criteria" id="results-criteria" aria-label="Re-run criteria">
@@ -1368,7 +1377,7 @@
     {% endif %}
 
     {# ——— Product ad widget (shown only after a search has results) ——— #}
-    {% if escape_result or detour_result %}
+    {% if escape_result or detour_result or has_quest %}
     {% include "_product_ad.html" %}
     {% endif %}
 
@@ -1458,6 +1467,32 @@
       </div>
     {% endif %}
     </div>
+
+    {# ——— Quest results: open-jaw overland adventures ——— #}
+    <div class="results-panel" id="quest-results" data-result-kind="quest">
+    {% if has_quest %}
+      {% set q_home = _qp.home_iata or criteria_origin %}
+      {% set q_vibe = _qp.vibe or det_vibe or esc_vibe or '' %}
+      <div class="card" id="quest-results-card">
+        <h2>⛰ Quest</h2>
+        <p class="sub">
+          Open-jaw overland adventures · fly in one city, overland to another, fly home
+          · {{ _qp.result|length }} idea{{ 's' if _qp.result|length != 1 else '' }}
+          · 10-day window
+        </p>
+        {% if ai_usage_display %}
+        <div class="pills" style="margin-top:0;margin-bottom:0.85rem">
+          <span class="pill" style="opacity:0.7">{{ ai_usage_display }}</span>
+        </div>
+        {% endif %}
+        <div class="pass-stack">
+          {% for idea in _qp.result %}
+          {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe) }}
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+    </div>
   </main>
   <footer class="site-foot container">
     Vibes aren't tickets, check live fares. Culture notes are short takes, not gospel. Some links earn us a commission. &middot; Designed by <a href="https://saymservices.com" target="_blank" rel="noopener" style="color:#e8590c;text-decoration:none">Saym Services Inc.</a>
@@ -1539,6 +1574,7 @@
       function applyResultFilter(filter) {
         var esc = document.getElementById("escape-results");
         var det = document.getElementById("detour-results");
+        var qst = document.getElementById("quest-results");
         var f = filter || "all";
         if (f === "clear") {
           clearResultsBoard();
@@ -1546,15 +1582,21 @@
         }
         if (esc) {
           var hasEsc = esc.querySelector(".boarding-pass, .place-book, .card");
-          esc.hidden = f === "detour" || (!hasEsc && f === "escape");
           if (f === "all") esc.hidden = !hasEsc;
-          if (f === "escape") esc.hidden = !hasEsc;
+          else if (f === "escape") esc.hidden = !hasEsc;
+          else esc.hidden = true;
         }
         if (det) {
           var hasDet = det.querySelector(".boarding-pass, .card");
           if (f === "all") det.hidden = !hasDet;
           else if (f === "detour") det.hidden = !hasDet;
           else det.hidden = true;
+        }
+        if (qst) {
+          var hasQst = qst.querySelector(".boarding-pass, .card");
+          if (f === "all") qst.hidden = !hasQst;
+          else if (f === "quest") qst.hidden = !hasQst;
+          else qst.hidden = true;
         }
         document.querySelectorAll("#results-filter [data-filter]").forEach(function (tab) {
           var on = tab.getAttribute("data-filter") === f;
@@ -1565,7 +1607,7 @@
 
       function clearResultsBoard() {
         // Drop result panels + filter from the page
-        ["results-toolbar", "results-filter", "escape-results", "detour-results", "escape-parsed"].forEach(
+        ["results-toolbar", "results-filter", "escape-results", "detour-results", "quest-results", "escape-parsed"].forEach(
           function (id) {
             var el = document.getElementById(id);
             if (el && el.parentNode) el.parentNode.removeChild(el);
@@ -2658,6 +2700,30 @@
         next();
       }
 
+      function bootQuestButton() {
+        var qBtn = document.getElementById("btn-quest-mode");
+        if (!qBtn || !form) return;
+        qBtn.addEventListener("click", function () {
+          if (!window.YonderProgress) {
+            showError("Progress UI failed — hard-refresh.");
+            return;
+          }
+          var text = (ta && ta.value || "").trim();
+          if (!text) {
+            showError("Type a vibe prompt first, then hit Quest.");
+            return;
+          }
+          var forceEl = document.getElementById("explore-force");
+          if (forceEl) forceEl.value = "quest";
+          YonderProgress.submitWithProgress(form, {
+            mode: "adventure",
+            title: "Plotting your Quest…",
+          }).finally(function () {
+            if (forceEl) forceEl.value = "";
+          });
+        });
+      }
+
       function boot() {
         bootForm();
         bootSaveAndShare();
@@ -2666,6 +2732,7 @@
         bootThumbVotes();
         bootResultsFilter();
         bootCriteriaRefresh();
+        bootQuestButton();
         bindFieldNoteToggles(document);
         bootFieldNotes();
         document.title = "Yonder";

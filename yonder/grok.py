@@ -434,6 +434,115 @@ class GrokClient:
                 "tagline": "Trust your gut; recheck the fare.",
             }
 
+    async def plan_quest(
+        self,
+        prompt: str,
+        vibe: str,
+        home_iata: str,
+        depart_date: date,
+        *,
+        avoid: list[str] | None = None,
+        visited: list[str] | None = None,
+    ) -> list[dict]:
+        """Propose 1–3 open-jaw overland Quest itineraries.
+
+        Entry and exit in different countries, neither in avoid_countries.
+        Narrative names specific real transport links.
+        Returns list of raw dicts matching QuestIdea schema.
+        """
+        from datetime import timedelta
+        from yonder.countries import country_for_iata
+
+        outbound_date = depart_date + timedelta(days=10)
+        avoid_codes = [a.upper() for a in (avoid or []) if a]
+        avoid_set = {a.upper() for a in avoid_codes}
+
+        system = (
+            "You are an open-jaw adventure trip planner for a vibe-first travel app. "
+            "Propose 1–3 open-jaw itineraries: fly INTO one city, travel OVERLAND to another, fly OUT of there. "
+            "Rules:\n"
+            "- Entry and exit MUST be in DIFFERENT countries, NEITHER in avoid_countries (ISO2).\n"
+            "- Name SPECIFIC real transport: actual train lines (e.g. 'Reunification Express'), "
+            "ferry routes, bus companies — not generic 'bus' or 'train'.\n"
+            "- The overland journey must be genuinely feasible in the 10-day window.\n"
+            "- Match the traveler's vibe: food, chaos, romance, nature, etc.\n"
+            "- Vary regions across ideas; don't repeat the same pair.\n"
+            "Return STRICT JSON only (no markdown):\n"
+            '{"ideas":['
+            '{"entry_iata":"HAN","exit_iata":"BKK","entry_city":"Hanoi","exit_city":"Bangkok",'
+            '"overland_narrative":"Ride the Reunification Express south to Ho Chi Minh City, then a Mekong slow boat through Cambodia to Phnom Penh, crossing overland into Thailand.",'
+            '"transport":["Reunification Express","Mekong slow boat","National Bus Cambodia"],'
+            '"highlights":["Hội An","Phnom Penh","Siem Reap"]}'
+            "]}"
+            + language_directive(detect_lang(prompt))
+        )
+        user = json.dumps(
+            {
+                "prompt": prompt.strip()[:400],
+                "vibe": vibe,
+                "home_iata": home_iata,
+                "depart_date": depart_date.isoformat(),
+                "outbound_date": outbound_date.isoformat(),
+                "window_days": 10,
+                "avoid_countries": avoid_codes,
+                "count": "1 to 3 ideas (prefer 2-3 diverse options)",
+            },
+            default=str,
+        )
+
+        text = await self._chat(system, user, temperature=0.65)
+        try:
+            payload = _extract_json(text)
+        except Exception:
+            return []
+
+        # Normalise: model may return {"ideas":[...]} or a bare top-level array
+        if isinstance(payload, list):
+            raw = payload
+        else:
+            raw = payload.get("ideas") or []
+
+        results: list[dict] = []
+        for row in raw[:3]:
+            try:
+                entry = str(row.get("entry_iata") or "").upper()
+                exit_ = str(row.get("exit_iata") or "").upper()
+                if (
+                    len(entry) != 3
+                    or not entry.isalpha()
+                    or len(exit_) != 3
+                    or not exit_.isalpha()
+                ):
+                    continue
+                home_up = home_iata.upper()
+                if entry == exit_ or entry == home_up or exit_ == home_up:
+                    continue
+                # Respect avoid list
+                entry_cc = (country_for_iata(entry) or "").upper()
+                exit_cc = (country_for_iata(exit_) or "").upper()
+                if entry_cc and entry_cc in avoid_set:
+                    continue
+                if exit_cc and exit_cc in avoid_set:
+                    continue
+                # Entry and exit must be in different countries
+                if entry_cc and exit_cc and entry_cc == exit_cc:
+                    continue
+                results.append(
+                    {
+                        "entry_iata": entry,
+                        "exit_iata": exit_,
+                        "entry_city": str(row.get("entry_city") or entry),
+                        "exit_city": str(row.get("exit_city") or exit_),
+                        "overland_narrative": str(row.get("overland_narrative") or ""),
+                        "transport": [str(t) for t in (row.get("transport") or [])],
+                        "highlights": [str(h) for h in (row.get("highlights") or [])],
+                    }
+                )
+            except (TypeError, ValueError):
+                continue
+
+        return results
+
     def to_search_query(self, trip: ParsedTrip, max_results: int = 5) -> SearchQuery:
         return SearchQuery(
             origin=trip.origin,

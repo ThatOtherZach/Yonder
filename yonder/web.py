@@ -15,7 +15,9 @@ from fastapi.templating import Jinja2Templates
 from yonder.adventure import (
     AdventureItinerary,
     AdventureRequest,
+    QuestIdea,
     plan_adventure,
+    plan_quest,
     reprice_itinerary,
     seed_ideas,
 )
@@ -884,7 +886,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     if not vibe or len(vibe) > 32 or not vibe.replace("-", "").replace("_", "").isalnum():
         vibe = "adventure"
     force = _s("force_mode") or _s("mode")  # optional soft force from UI
-    if force in ("escape", "detour", "mix"):
+    if force in ("escape", "detour", "mix", "quest"):
         pass
     else:
         force = None
@@ -1089,6 +1091,7 @@ async def explore_run(request: Request) -> HTMLResponse:
 
     escape_override: dict = {"ask": prompt, "form": empty_esc, "result": None}
     detour_override: dict = {"form": det_form, "result": None}
+    quest_override: dict = {"ask": prompt, "result": None}
     # Route resolved by the Escape half's parse (origin, destination IATAs).
     # The Detour half reuses it when the AI is unavailable so non-English
     # prompts keep their route instead of collapsing to a home getaway.
@@ -1721,6 +1724,37 @@ async def explore_run(request: Request) -> HTMLResponse:
         if decision.shape != "mix":
             active_mode = "detour"
 
+    async def _do_quest() -> None:
+        nonlocal quest_override, active_mode
+        if search_id and is_cancelled(search_id):
+            errors.append("Quest skipped — user hit Skip")
+            return
+        if not settings.grok_ready():
+            errors.append("Quest requires AI — add XAI_API_KEY or a BYOM endpoint in Settings")
+            return
+        try:
+            depart_dt = date.fromisoformat(depart)
+        except (ValueError, TypeError):
+            depart_dt = date.today() + timedelta(days=45)
+
+        quest_ideas = await plan_quest(
+            prompt,
+            vibe,
+            home_iata,
+            depart_dt,
+            settings,
+            include_mock=mock,
+            avoid=avoid,
+            visited=visited,
+        )
+        quest_override = {
+            "ask": prompt,
+            "result": quest_ideas,
+            "home_iata": home_iata,
+            "vibe": vibe,
+        }
+        active_mode = "quest"
+
     # When not testing, prefer previously saved (non-mock) trips over AI
     # generation. Recycled results render through the same card pipeline as
     # fresh results — fare hidden until a live check on Share/Save. No match
@@ -1813,19 +1847,26 @@ async def explore_run(request: Request) -> HTMLResponse:
                 pin_first=not is_refresh,
             )
             active_mode = "detour"
-        if _recycled is None and decision.shape in ("escape", "mix"):
+        if force == "quest":
             try:
-                await _do_escape()
+                await _do_quest()
             except Exception as exc:  # noqa: BLE001
-                errors.append(f"Escape: {exc}")
-        if _recycled is None and decision.shape in ("detour", "mix"):
-            try:
-                await _do_detour()
-            except Exception as exc:  # noqa: BLE001
-                errors.append(f"Detour: {exc}")
+                errors.append(f"Quest: {exc}")
+        else:
+            if _recycled is None and decision.shape in ("escape", "mix"):
+                try:
+                    await _do_escape()
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"Escape: {exc}")
+            if _recycled is None and decision.shape in ("detour", "mix"):
+                try:
+                    await _do_detour()
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(f"Detour: {exc}")
 
         has_esc = bool(escape_override.get("result"))
         has_det = bool(detour_override.get("result"))
+        has_quest = bool(quest_override.get("result"))
 
         # Vibe-learning: tier-1 "searched" signal per destination that came back.
         # IDs are generated up front and returned in data-signal-* attributes so
@@ -1958,13 +1999,15 @@ async def explore_run(request: Request) -> HTMLResponse:
         except Exception:
             pass
 
-        if not has_esc and not has_det:
+        if not has_esc and not has_det and not has_quest:
             raise ValueError(
                 "; ".join(errors) if errors else "Nothing priced — try again or Turbo."
             )
 
         # Prefer showing the side that has data; mix defaults to escape panel first
-        if _recycled is not None:
+        if has_quest:
+            active_mode = "quest"
+        elif _recycled is not None:
             active_mode = "detour"
         elif decision.shape == "mix":
             active_mode = "escape" if has_esc else "detour"
@@ -1984,8 +2027,8 @@ async def explore_run(request: Request) -> HTMLResponse:
 
         ctx = _compose_page_ctx(
             settings,
-            mode=active_mode,
-            error=None if has_esc or has_det else err_msg,
+            mode=active_mode if active_mode != "quest" else "escape",
+            error=None if has_esc or has_det or has_quest else err_msg,
             escape_override=escape_override if has_esc or escape_override.get("ask") else None,
             detour_override=detour_override if has_det or detour_override.get("form") else None,
             lock_vibe=True,
@@ -1997,6 +2040,9 @@ async def explore_run(request: Request) -> HTMLResponse:
         if has_det:
             base_det = ctx.get("detour_panel") if isinstance(ctx.get("detour_panel"), dict) else {}
             ctx["detour_panel"] = {**base_det, **detour_override}
+        if has_quest:
+            ctx["quest_panel"] = quest_override
+            ctx["mode"] = "quest"
         ctx["intent_shape"] = decision.shape
         ctx["intent_rationale"] = decision.rationale
         ctx["result_filter"] = "all"

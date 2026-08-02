@@ -562,3 +562,152 @@
   </div>
 </article>
 {% endmacro %}
+
+
+{% macro quest_card(mode, idea, idx, home_iata='', quest_vibe='') %}
+{# ── Quest: open-jaw overland adventure card ──────────────────────────────────
+   idea: QuestIdea Pydantic model (serialized to dict by Jinja2)
+   home_iata: the traveler's home airport IATA
+   quest_vibe: active vibe string for the badge
+#}
+{% set accent = idea.theme_primary or '#e6b450' %}
+{% set ib_leg = idea.inbound_leg %}
+{% set ob_leg = idea.outbound_leg %}
+{% set ib_missing = idea.inbound_fare_missing or (not ib_leg) or (not ib_leg.offer) %}
+{% set ob_missing = idea.outbound_fare_missing or (not ob_leg) or (not ob_leg.offer) %}
+{% set both_missing = ib_missing and ob_missing %}
+<article
+  class="boarding-pass is-adventure is-quest"
+  data-quest-entry="{{ idea.entry_iata }}"
+  data-quest-exit="{{ idea.exit_iata }}"
+  style="--bp-accent: {{ accent }}; border-color: color-mix(in srgb, {{ accent }} 35%, var(--line));"
+>
+  <div class="bp-main">
+    <div class="bp-top">
+      <span class="bp-label">Quest</span>
+      <span class="bp-badge soft" style="background:{{ accent }};color:#fff;border:none">
+        {% if quest_vibe %}{{ quest_vibe | vibe_emoji }} {% endif %}{{ idea.theme_label or 'Quest' }}
+      </span>
+    </div>
+
+    {# Route arc: home ✈ entry ⟿ (overland) ⟿ exit ✈ home #}
+    <div class="bp-route">
+      <span class="bp-iata">{{ home_iata or '—' }}</span>
+      <span class="bp-plane" aria-hidden="true">✈</span>
+      <span class="bp-iata bp-iata-mid" style="font-size:1.35rem;opacity:0.85">{{ idea.entry_iata }}</span>
+      <span class="bp-plane" aria-hidden="true" style="opacity:0.45;font-style:normal;letter-spacing:-0.05em">⟿</span>
+      <span class="bp-iata bp-iata-mid" style="font-size:1.35rem;opacity:0.85">{{ idea.exit_iata }}</span>
+      <span class="bp-plane" aria-hidden="true">✈</span>
+      <span class="bp-iata">{{ home_iata or '—' }}</span>
+    </div>
+
+    <p class="bp-cities">{{ idea.entry_city }} → overland → {{ idea.exit_city }}</p>
+
+    {% if idea.overland_narrative %}
+    <p class="bp-why">{{ idea.overland_narrative }}</p>
+    {% endif %}
+
+    {# Transport chips #}
+    {% if idea.transport %}
+    <div class="pb-fast-facts" aria-label="Transport options">
+      {% for t in idea.transport %}<span class="pb-fact">🚂 {{ t }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    {# Highlights #}
+    {% if idea.highlights %}
+    <div class="pb-fast-facts" aria-label="Highlights" style="margin-top:0.25rem">
+      {% for h in idea.highlights %}<span class="pb-fact" style="background:color-mix(in srgb, {{ accent }} 12%, var(--paper-2,#f4f1ea))">📍 {{ h }}</span>{% endfor %}
+    </div>
+    {% endif %}
+
+    {# Two priced legs #}
+    <div class="bp-legs">
+      {# Inbound: home → entry city #}
+      <div class="bp-leg">
+        <div class="codes">{{ home_iata }} → {{ idea.entry_iata }}</div>
+        <div class="fare">
+          {% if ib_missing %}
+          <span class="cf-slot"
+                data-cf-origin="{{ home_iata }}"
+                data-cf-dest="{{ idea.entry_iata }}"
+                data-cf-depart="{{ idea.depart_date or '' }}"
+                data-cf-return=""
+                data-cf-adults="1"
+                data-cf-currency="{{ idea.currency or '' }}">
+            <button type="button" class="btn-check-fares">Check Fares</button>
+            <span class="cf-error" hidden></span>
+          </span>
+          {% elif ib_leg and ib_leg.offer %}
+            {{ ib_leg.offer.display_price_base or ib_leg.offer.display_price or ('~' ~ idea.currency ~ ' ' ~ '%.0f'|format(ib_leg.offer.price)) }}
+          {% else %}—{% endif %}
+        </div>
+        <div class="meta">
+          {% if idea.depart_date %}{{ idea.depart_date | fmt_date }}{% endif %}
+          · one-way in
+          {% if ib_leg and ib_leg.offer and not ib_missing %}
+            · {{ ib_leg.offer.airlines|join(', ') or '—' }}
+            · {{ 'Direct' if ib_leg.offer.stops_out == 0 else (ib_leg.offer.stops_out|string ~ ' stop' ~ ('s' if ib_leg.offer.stops_out != 1 else '')) }}
+          {% elif ib_leg and ib_leg.error %}· {{ ib_leg.error[:48] }}{% endif %}
+        </div>
+      </div>
+
+      {# Outbound: exit city → home #}
+      <div class="bp-leg">
+        <div class="codes">{{ idea.exit_iata }} → {{ home_iata }}</div>
+        <div class="fare">
+          {% if ob_missing %}
+          <span class="cf-slot"
+                data-cf-origin="{{ idea.exit_iata }}"
+                data-cf-dest="{{ home_iata }}"
+                data-cf-depart="{{ idea.outbound_date or '' }}"
+                data-cf-return=""
+                data-cf-adults="1"
+                data-cf-currency="{{ idea.currency or '' }}">
+            <button type="button" class="btn-check-fares">Check Fares</button>
+            <span class="cf-error" hidden></span>
+          </span>
+          {% elif ob_leg and ob_leg.offer %}
+            {{ ob_leg.offer.display_price_base or ob_leg.offer.display_price or ('~' ~ idea.currency ~ ' ' ~ '%.0f'|format(ob_leg.offer.price)) }}
+          {% else %}—{% endif %}
+        </div>
+        <div class="meta">
+          {% if idea.outbound_date %}{{ idea.outbound_date | fmt_date }}{% endif %}
+          · one-way out
+          {% if ob_leg and ob_leg.offer and not ob_missing %}
+            · {{ ob_leg.offer.airlines|join(', ') or '—' }}
+            · {{ 'Direct' if ob_leg.offer.stops_out == 0 else (ob_leg.offer.stops_out|string ~ ' stop' ~ ('s' if ob_leg.offer.stops_out != 1 else '')) }}
+          {% elif ob_leg and ob_leg.error %}· {{ ob_leg.error[:48] }}{% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# Booking links #}
+    <div class="bp-actions">
+      {% if ib_leg and ib_leg.google_flights_url %}
+      <a class="btn secondary" href="{{ ib_leg.google_flights_url }}" target="_blank" rel="noopener">Book {{ home_iata }} → {{ idea.entry_iata }} ↗</a>
+      {% endif %}
+      {% if ob_leg and ob_leg.google_flights_url %}
+      <a class="btn secondary" href="{{ ob_leg.google_flights_url }}" target="_blank" rel="noopener">Book {{ idea.exit_iata }} → {{ home_iata }} ↗</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="bp-stub">
+    <div>
+      <div class="bp-stub-label">Combined fare</div>
+      <div class="bp-stub-price price-with-sign">
+        {% if both_missing %}
+        <span class="price-amt cf-total" data-cf-base="0" data-cf-currency="{{ idea.currency or '' }}" style="font-size:1rem">—</span>
+        {% elif idea.display_total %}
+        <span class="price-amt">{{ idea.display_total }}</span>
+        {% else %}
+        <span class="price-amt" style="font-size:1rem">—</span>
+        {% endif %}
+      </div>
+      <div style="font-size:0.76rem;color:var(--muted);margin-top:0.25rem">two one-way tickets</div>
+    </div>
+    <div class="bp-barcode" aria-hidden="true"></div>
+  </div>
+</article>
+{% endmacro %}
