@@ -1887,9 +1887,18 @@ async def explore_run(request: Request) -> HTMLResponse:
         # Reuses direct_price from the detour result (computed as baseline there).
         # Falls back to a Check Fares slot when direct_price is None (common).
         vibe_base: dict | None = None
+        import logging as _log
+        _log.getLogger("yonder.vibe_base").warning(
+            "VIBE_BASE_DEBUG has_esc=%s has_det=%s has_quest=%s esc_res_type=%s",
+            has_esc, has_det, has_quest,
+            type(escape_override.get("result")).__name__,
+        )
         if has_esc:
             _esc_res = escape_override.get("result")
             _esc_q = getattr(_esc_res, "query", None) if _esc_res else None
+            _log.getLogger("yonder.vibe_base").warning(
+                "VIBE_BASE_DEBUG _esc_q=%s", type(_esc_q).__name__ if _esc_q else None
+            )
             if _esc_q:
                 from datetime import timedelta as _vtd
                 _vbt = vibe_theme(vibe)
