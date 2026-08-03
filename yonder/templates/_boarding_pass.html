@@ -307,7 +307,7 @@
     {% endif %}
     {% endif %}
 
-    {% if it.legs %}
+    {% if it.legs and not (it.no_flight_hub_url or it.no_flight_adj_url) %}
     <div class="bp-legs">
       {% for leg in it.legs %}
       <div class="bp-leg">
@@ -335,8 +335,6 @@
           {% if leg.offer and not leg_missing %}
             · {{ leg.offer.airlines|join(', ') or '—' }}
             · {{ 'Direct' if leg.offer.stops_out == 0 else (leg.offer.stops_out|string + (' stop' if leg.offer.stops_out == 1 else ' stops')) }}
-          {% elif leg.error %}
-            · {{ leg.error[:64] }}
           {% endif %}
           {% if mode == 'explore' and leg.offer and leg.offer.deep_link and 'kayak.com' not in leg.offer.deep_link %}
             · <a href="{{ leg.offer.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(leg.offer.airlines) }} ↗</a>
