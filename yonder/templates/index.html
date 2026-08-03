@@ -2,6 +2,35 @@
 {% import "_boarding_pass.html" as bp %}
 {% block title %}{% if mode == 'detour' %}Detour · Yonder{% else %}Escape · Yonder{% endif %}{% endblock %}
 {% block extra_css %}
+    /* Plan a Quest on-demand button */
+    .btn-plan-quest {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4em;
+      padding: 0.55em 1.3em;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--ink);
+      background: var(--paper);
+      border: 1.5px solid var(--vibe-now, var(--sky));
+      border-radius: var(--radius-sm, 11px);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      margin-top: 0.35rem;
+    }
+    .btn-plan-quest:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--vibe-now, var(--sky)) 12%, var(--paper));
+      border-color: var(--vibe-now, var(--sky-bright));
+      color: var(--vibe-now, var(--sky-bright));
+    }
+    .btn-plan-quest:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .quest-error {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
     /* Compose: one card, prompt + map + actions */
     .compose-card {
       position: relative;
@@ -1323,7 +1352,7 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
-    <script src="/static/country_map.js?v=24"></script>
+    <script src="/static/country_map.js?v=25"></script>
     <script>
     document.addEventListener("DOMContentLoaded", function() {
       var tpl = document.getElementById("xp-badge-tpl");
@@ -1374,7 +1403,7 @@
         <button type="button" data-filter="escape" role="tab" aria-selected="false"{% if not has_escape %} disabled{% endif %}>Escape</button>
         <button type="button" data-filter="vibe-base" role="tab" aria-selected="false"{% if not (vibe_base is defined and vibe_base) %} disabled{% endif %}>{% if vibe_base is defined and vibe_base %}{{ vibe_base.vibe_emoji }} {{ vibe_base.vibe_label }}{% else %}Vibe{% endif %}</button>
         <button type="button" data-filter="detour" role="tab" aria-selected="false"{% if not has_detour %} disabled{% endif %}>Detour</button>
-        <button type="button" data-filter="quest" role="tab" aria-selected="false"{% if not has_quest %} disabled{% endif %}>Quest</button>
+        <button type="button" data-filter="quest" role="tab" aria-selected="false" id="quest-filter-tab">Quest</button>
         <button type="button" data-filter="clear" role="tab" aria-selected="false" title="Clear results and return to compose">Clear</button>
       </div>
       <div class="results-criteria" id="results-criteria" aria-label="Re-run criteria">
@@ -1536,40 +1565,17 @@
     {% endif %}
     </div>
 
-    {# ——— Quest results: open-jaw overland adventures ——— #}
+    {# ——— Quest results: on-demand open-jaw adventures ——— #}
     <div class="results-panel" id="quest-results" data-result-kind="quest">
-    {% if has_quest %}
-      {% set q_home = _qp.home_iata or criteria_origin %}
-      {% set q_vibe = _qp.vibe or det_vibe or esc_vibe or '' %}
+    {% if has_escape or has_detour %}
       <div class="card" id="quest-results-card">
         <h2>Quest</h2>
-        <p class="sub">
-          Open-jaw overland adventures · fly in one city, overland to another, fly home
-          · {{ _qp.result|length }} idea{{ 's' if _qp.result|length != 1 else '' }}
-          · 10-day window
-        </p>
-        {% if _qp.error is defined and _qp.error %}
-          <p class="muted quest-note" role="note">{{ _qp.error }}</p>
-        {% endif %}
-        {% if ai_usage_display %}
-        <div class="pills" style="margin-top:0;margin-bottom:0.85rem">
-          <span class="pill" style="opacity:0.7">{{ ai_usage_display }}</span>
+        <p class="sub" id="quest-card-sub">Open-jaw overland adventures · fly into one city, travel overland, fly home from another</p>
+        <div id="quest-card-body">
+          <button type="button" class="btn-plan-quest" id="btn-plan-quest">
+            🗺️ Plan a Quest
+          </button>
         </div>
-        {% endif %}
-        <div class="pass-stack">
-          {% for idea in _qp.result %}
-          {% set share = share_quest(request, idea, q_home) %}
-          {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe, share=share) }}
-          {% endfor %}
-        </div>
-      </div>
-    {% elif quest_empty %}
-      <div class="card" id="quest-results-card">
-        <h2>Quest</h2>
-        <p class="muted" id="quest-empty-note">
-          {{ _qp.error if _qp.error is defined and _qp.error else 'Quest needs an AI key — add one in Settings' }}
-          · <a href="/settings">Open Settings</a>
-        </p>
       </div>
     {% endif %}
     </div>
@@ -2817,27 +2823,69 @@
         next();
       }
 
-      function bootQuestButton() {
-        var qBtn = document.getElementById("btn-quest-mode");
-        if (!qBtn || !form) return;
-        qBtn.addEventListener("click", function () {
-          if (!window.YonderProgress) {
-            showError("Progress UI failed — hard-refresh.");
+      function bootPlanQuestButton() {
+        var btn = document.getElementById("btn-plan-quest");
+        if (!btn) return;
+        btn.addEventListener("click", function () {
+          var cardBody = document.getElementById("quest-card-body");
+          var subEl = document.getElementById("quest-card-sub");
+
+          // Gather context from the search form
+          var prompt = (ta && ta.value || "").trim();
+          if (!prompt) {
+            // Try reading from the hidden criteria block if the form isn't visible
+            var criEl = document.querySelector("[data-search-prompt]");
+            if (criEl) prompt = criEl.dataset.searchPrompt || "";
+          }
+          if (!prompt) {
+            if (cardBody) cardBody.innerHTML = '<p class="muted quest-error" role="alert">Type a search prompt first, then hit Plan a Quest.</p>';
             return;
           }
-          var text = (ta && ta.value || "").trim();
-          if (!text) {
-            showError("Type a vibe prompt first, then hit Quest.");
-            return;
-          }
-          var forceEl = document.getElementById("explore-force");
-          if (forceEl) forceEl.value = "quest";
-          YonderProgress.submitWithProgress(form, {
-            mode: "adventure",
-            title: "Plotting your Quest…",
-          }).finally(function () {
-            if (forceEl) forceEl.value = "";
-          });
+          var origin = (document.getElementById("explore-origin") || {}).value || "";
+          var depart = (document.getElementById("explore-depart") || {}).value || "";
+          var vibe = (document.getElementById("explore-vibe") || {}).value || "adventure";
+
+          // Show loading state
+          btn.disabled = true;
+          btn.textContent = "Planning your Quest…";
+          if (subEl) subEl.textContent = "Talking to the AI — this takes a moment…";
+
+          var data = new URLSearchParams({ prompt: prompt, origin: origin, depart: depart, vibe: vibe, quest_days: "10" });
+          fetch("/api/quest/plan", { method: "POST", body: data, headers: { "Content-Type": "application/x-www-form-urlencoded" } })
+            .then(function (r) { return r.json(); })
+            .then(function (json) {
+              var questResults = document.getElementById("quest-results");
+              if (!questResults) return;
+              if (json.html) {
+                questResults.innerHTML = json.html;
+                // Re-enable the Quest filter tab now that results exist
+                var questTab = document.getElementById("quest-filter-tab");
+                if (questTab) {
+                  questTab.disabled = false;
+                  questTab.removeAttribute("disabled");
+                }
+                // Re-run the results filter so Quest cards are shown/hidden correctly
+                if (typeof applyResultFilter === "function") applyResultFilter("all");
+                // Reinitialise outbound-link tracking for newly injected cards
+                if (typeof bootOutboundLinks === "function") bootOutboundLinks();
+                // Rebind save/share buttons on newly injected quest cards
+                if (typeof bootSaveAndShare === "function") bootSaveAndShare();
+                // Rebind field-note toggles for any injected field note blocks
+                if (typeof bindFieldNoteToggles === "function") bindFieldNoteToggles(questResults);
+                if (typeof bootFieldNotes === "function") bootFieldNotes();
+              } else {
+                questResults.innerHTML = '<div class="card" id="quest-results-card"><h2>Quest</h2><p class="muted quest-error" role="alert">' + (json.error || "Something went wrong — try again.") + '</p><div id="quest-card-body"><button type="button" class="btn-plan-quest" id="btn-plan-quest">Try again</button></div></div>';
+              }
+              // Re-bind the Plan a Quest / retry button for any newly injected button
+              bootPlanQuestButton();
+            })
+            .catch(function (err) {
+              var questResults = document.getElementById("quest-results");
+              if (questResults) {
+                questResults.innerHTML = '<div class="card" id="quest-results-card"><h2>Quest</h2><p class="muted quest-error" role="alert">Network error — check connection and try again.</p><div id="quest-card-body"><button type="button" class="btn-plan-quest" id="btn-plan-quest">Try again</button></div></div>';
+                bootPlanQuestButton();
+              }
+            });
         });
       }
 
@@ -2849,6 +2897,7 @@
         bootThumbVotes();
         bootResultsFilter();
         bootCriteriaRefresh();
+        bootPlanQuestButton();
         // Pre-fill visible origin field from hidden explore-origin (set by GPS/settings)
         (function () {
           var hid = document.getElementById("explore-origin");

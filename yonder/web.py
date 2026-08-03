@@ -1779,67 +1779,8 @@ async def explore_run(request: Request) -> HTMLResponse:
         )
         active_mode = "detour"
 
-    async def _do_quest() -> None:
-        nonlocal quest_override, active_mode
-        if search_id and is_cancelled(search_id):
-            errors.append("Quest skipped — user hit Skip")
-            return
-        if not settings.grok_ready():
-            errors.append("Quest requires AI — add XAI_API_KEY or a BYOM endpoint in Settings")
-            # Empty list (not None) → the quest panel renders a friendly
-            # "needs an AI key" empty state instead of a blank card.
-            quest_override = {
-                "ask": prompt,
-                "result": [],
-                "home_iata": home_iata,
-                "vibe": vibe,
-                "error": "Quest needs an AI key — add one in Settings",
-            }
-            return
-        try:
-            depart_dt = date.fromisoformat(depart)
-        except (ValueError, TypeError):
-            depart_dt = date.today() + timedelta(days=45)
-
-        try:
-            quest_ideas = await plan_quest(
-                prompt,
-                vibe,
-                home_iata,
-                depart_dt,
-                settings,
-                quest_days=quest_days,
-                include_mock=mock,
-                avoid=avoid,
-                visited=visited,
-                # Unified cold-start call already proposed pairs — skip the Grok call
-                raw_ideas=_uni_quest if _uni_quest else None,
-                anchor_legs=anchor_legs,
-            )
-        except Exception as exc:  # noqa: BLE001
-            # Surface a human-readable note in the Quest card header too,
-            # then re-raise so _safe still logs "Quest: …" in the error box.
-            quest_override = {
-                "ask": prompt,
-                "result": [],
-                "home_iata": home_iata,
-                "vibe": vibe,
-                "error": f"Quest couldn't reach the AI planner — {str(exc)[:120]}",
-            }
-            raise
-        quest_override = {
-            "ask": prompt,
-            "result": quest_ideas,
-            "home_iata": home_iata,
-            "vibe": vibe,
-            "error": (
-                None
-                if quest_ideas
-                else "Quest needs an AI key — add one in Settings"
-            ),
-        }
-        if quest_ideas:
-            active_mode = "quest"
+    # Quest is no longer called from the main search — it runs on demand via
+    # the "Plan a Quest" button and the /api/quest/plan endpoint.
 
     # When not testing, prefer previously saved (non-mock) trips over AI
     # generation. Recycled results render through the same card pipeline as
@@ -1847,11 +1788,10 @@ async def explore_run(request: Request) -> HTMLResponse:
     # → seamless fallback to the normal AI path below.
     _recycled = None
     _recycled_esc: "UnifiedSearchResult | None" = None
-    _recycled_qst: "list | None" = None
     _recycle_off = (os.environ.get("YONDER_DISABLE_RECYCLE") or "").strip().lower() in ("1", "true", "yes")
     if not settings.testing and not _recycle_off:
         try:
-            from yonder.recycle import find_recycled_result, find_recycled_escape, find_recycled_quest
+            from yonder.recycle import find_recycled_result, find_recycled_escape
 
             _recycled = find_recycled_result(
                 prompt=prompt,
@@ -1872,17 +1812,9 @@ async def explore_run(request: Request) -> HTMLResponse:
                     depart=depart,
                     currency=currency,
                 )
-                _recycled_qst = find_recycled_quest(
-                    prompt=prompt,
-                    vibe=vibe,
-                    origin=home_iata,
-                    depart=depart,
-                    currency=currency,
-                )
         except Exception:  # noqa: BLE001
             _recycled = None
             _recycled_esc = None
-            _recycled_qst = None
 
     try:
         if _recycled is not None:
@@ -2039,16 +1971,6 @@ async def explore_run(request: Request) -> HTMLResponse:
             except Exception:  # noqa: BLE001
                 _recycled_esc = None
 
-        # ── Quest recycle: best saved quest ideas → fare-missing QuestIdea list ──
-        if _recycled_qst is not None and not quest_override.get("result"):
-            quest_override = {
-                "ask": prompt,
-                "result": _recycled_qst,
-                "home_iata": home_iata,
-                "vibe": vibe,
-            }
-            active_mode = "quest"
-
         async def _safe(fn, name: str) -> None:
             try:
                 await fn()
@@ -2072,13 +1994,11 @@ async def explore_run(request: Request) -> HTMLResponse:
         except Exception:
             anchor_legs = []
 
-        # ── Unified cold-start plan: 3 Grok calls → 1 ──────────────────────────
+        # ── Unified cold-start plan: 2 Grok calls → 1 ──────────────────────────
         # When NO panel is recycled (cold-start Find), one combined structured
-        # call covers escape-parse + detour-invent + quest-pairs. Sections that
-        # come back incomplete stay None and fall back to per-panel calls.
+        # call covers escape-parse + detour-invent.  Quest runs on demand only.
         _uni_trip = None        # ParsedTrip | None → _do_escape
         _uni_adventure = None   # (AdventureRequest, ideas) | None → _do_detour
-        _uni_quest = None       # list[dict] | None → _do_quest
         _unified_used = False
         _chip_fast_seeds = (
             bool(chip_seeds)
@@ -2088,7 +2008,6 @@ async def explore_run(request: Request) -> HTMLResponse:
         if (
             _recycled_esc is None
             and _recycled is None
-            and _recycled_qst is None
             and settings.grok_ready()
             and not is_refresh
             and not _chip_fast_seeds
@@ -2113,7 +2032,6 @@ async def explore_run(request: Request) -> HTMLResponse:
                             min_stop_days=min_stop,
                             max_stop_days=max_stop,
                             max_candidates=max_cand,
-                            quest_days=quest_days,
                             avoid=avoid,
                             visited=visited,
                             exclude_iatas=exclude_iatas,
@@ -2123,41 +2041,41 @@ async def explore_run(request: Request) -> HTMLResponse:
                             # non-refresh today; the flag keeps that safe.)
                             use_cache=not is_refresh,
                             anchor_legs=anchor_legs,
+                            # Quest runs on demand — skip AI budget for it here
+                            include_quest=False,
                         ),
                         timeout=34.0,
                     )
                     _route_usage.append(_ugrok.accumulated_usage)
                 _uni_trip = _uni.get("escape")
                 _uni_adventure = _uni.get("detour_cities")
-                _uni_quest = _uni.get("quest_pairs") or None
-                _unified_used = bool(_uni_trip or _uni_adventure or _uni_quest)
-            except Exception as _uni_exc:  # noqa: BLE001 — fall back to 3 calls
+                _unified_used = bool(_uni_trip or _uni_adventure)
+            except Exception as _uni_exc:  # noqa: BLE001 — fall back to 2 calls
                 errors.append(f"Unified plan fell back: {str(_uni_exc)[:80]}")
 
         # ── Run only panels not covered by the recycle pool ────────────────────
         # Each recycled panel saves one Grok call + N flight-API calls.
-        # Refresh bypasses escape/quest recycle (they stay None) but detour
-        # recycle can still filter by exclude_iatas to avoid repeats.
+        # Quest is no longer part of the cold-start gather — it runs on demand.
+        # Refresh bypasses escape recycle (stays None) but detour recycle can
+        # still filter by exclude_iatas to avoid repeats.
         _gather_tasks = []
         if _recycled_esc is None:
             _gather_tasks.append(_safe(_do_escape, "Escape"))
         if _recycled is None and multi_city:
             _gather_tasks.append(_safe(_do_detour, "Detour"))
-        if _recycled_qst is None:
-            _gather_tasks.append(_safe(_do_quest, "Quest"))
         if _gather_tasks:
             await asyncio.gather(*_gather_tasks)
 
         # ── Search cost accounting ───────────────────────────────────────────────
         import logging as _sc_log
-        _rp = [p for p, r in [("escape", _recycled_esc), ("detour", _recycled), ("quest", _recycled_qst)] if r is not None]
+        _rp = [p for p, r in [("escape", _recycled_esc), ("detour", _recycled)] if r is not None]
         if _unified_used:
             # 1 combined call + a per-panel fallback call for each missing section
             _grok_calls = 1 + sum(
-                1 for s in (_uni_trip, _uni_adventure, _uni_quest) if not s
+                1 for s in (_uni_trip, _uni_adventure) if not s
             )
         else:
-            _grok_calls = 3 - len(_rp)
+            _grok_calls = 2 - len(_rp)
         _sc_log.getLogger("yonder.cost").info(
             "search_cost grok_calls≈%d recycled_panels=[%s] unified=%s",
             _grok_calls,
@@ -2167,10 +2085,9 @@ async def explore_run(request: Request) -> HTMLResponse:
 
         has_esc = bool(escape_override.get("result"))
         has_det = bool(detour_override.get("result"))
-        has_quest = bool(quest_override.get("result"))
-        # [] (empty list, not None) → quest ran but produced nothing;
-        # the panel still renders with a friendly explanation.
-        quest_empty = quest_override.get("result") == []
+        # Quest is on-demand — the main search never populates quest_override.result
+        has_quest = False
+        quest_empty = False
 
         # ── Apply gap labels to results that fill a known saved-trip gap ──────
         # Soft constraints only — normal results still appear if nothing matches.
@@ -2229,45 +2146,6 @@ async def explore_run(request: Request) -> HTMLResponse:
                             update={"itineraries": _new_its}
                         )
 
-                # Quest: float gap-filling idea to position 0
-                if has_quest and quest_override.get("result"):
-                    _q_ideas = list(quest_override["result"])
-                    _q_gap_idx: int | None = None
-                    _q_gap_lbl: str | None = None
-                    _home_u = home_iata.upper() if home_iata else ""
-                    for _qi, _idea in enumerate(_q_ideas):
-                        _idea_entry = (getattr(_idea, "entry_iata", "") or "").upper()
-                        _idea_exit = (getattr(_idea, "exit_iata", "") or "").upper()
-                        for _g3 in trip_gaps:
-                            _g3_from = (_g3.from_iata or "").upper()
-                            _g3_to = (_g3.to_iata or "").upper()
-                            # quest_inbound: home → entry_iata
-                            if (
-                                _g3.kind == "quest_inbound"
-                                and _g3_from == _home_u
-                                and _g3_to == _idea_entry
-                            ):
-                                _q_gap_idx = _qi
-                                _q_gap_lbl = _g3.context_label
-                                break
-                            # quest_outbound: exit_iata → home
-                            elif (
-                                _g3.kind == "quest_outbound"
-                                and _g3_from == _idea_exit
-                                and _g3_to == _home_u
-                            ):
-                                _q_gap_idx = _qi
-                                _q_gap_lbl = _g3.context_label
-                                break
-                        if _q_gap_idx is not None:
-                            break
-                    if _q_gap_idx is not None and _q_gap_lbl:
-                        _labelled_idea = _q_ideas[_q_gap_idx].model_copy(
-                            update={"gap_label": _q_gap_lbl}
-                        )
-                        quest_override["result"] = [_labelled_idea] + [
-                            x for j3, x in enumerate(_q_ideas) if j3 != _q_gap_idx
-                        ]
             except Exception:
                 pass  # gap labelling is best-effort — never crash the search
 
@@ -2326,28 +2204,6 @@ async def explore_run(request: Request) -> HTMLResponse:
                             update={"itineraries": _its_a}
                         )
 
-                # Quest: overland exit city is where the anchor flight departs
-                if has_quest and quest_override.get("result"):
-                    _q_ideas_a = list(quest_override["result"])
-                    _changed_qa = False
-                    for _qa_i, _qa_idea in enumerate(_q_ideas_a):
-                        if getattr(_qa_idea, "gap_label", None) or getattr(
-                            _qa_idea, "anchor_label", None
-                        ):
-                            continue
-                        _a_q = _match_anchor(
-                            dest_iata=getattr(_qa_idea, "exit_iata", None),
-                            arrive_date=getattr(_qa_idea, "outbound_date", None),
-                            anchors=anchor_legs,
-                            from_iata=getattr(_qa_idea, "entry_iata", None),
-                        )
-                        if _a_q:
-                            _q_ideas_a[_qa_i] = _qa_idea.model_copy(
-                                update={"anchor_label": _a_q["label"]}
-                            )
-                            _changed_qa = True
-                    if _changed_qa:
-                        quest_override["result"] = _q_ideas_a
             except Exception:
                 pass  # anchor badging is best-effort — never crash the search
 
@@ -2527,15 +2383,13 @@ async def explore_run(request: Request) -> HTMLResponse:
         except Exception:
             pass
 
-        if not has_esc and not has_det and not has_quest and not quest_empty:
+        if not has_esc and not has_det:
             raise ValueError(
                 "; ".join(errors) if errors else "Nothing priced — try again or Turbo."
             )
 
         # Prefer showing the side that has data; mix defaults to escape panel first
-        if has_quest:
-            active_mode = "quest"
-        elif _recycled is not None:
+        if _recycled is not None:
             active_mode = "detour"
         elif decision.shape == "mix":
             active_mode = "escape" if has_esc else "detour"
@@ -2555,8 +2409,8 @@ async def explore_run(request: Request) -> HTMLResponse:
 
         ctx = _compose_page_ctx(
             settings,
-            mode=active_mode if active_mode != "quest" else "escape",
-            error=None if has_esc or has_det or has_quest else err_msg,
+            mode=active_mode,
+            error=None if has_esc or has_det else err_msg,
             escape_override=escape_override if has_esc or escape_override.get("ask") else None,
             detour_override=detour_override if has_det or detour_override.get("form") else None,
             lock_vibe=True,
@@ -2568,10 +2422,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         if has_det:
             base_det = ctx.get("detour_panel") if isinstance(ctx.get("detour_panel"), dict) else {}
             ctx["detour_panel"] = {**base_det, **detour_override}
-        if has_quest or quest_empty:
-            ctx["quest_panel"] = quest_override
-        if has_quest:
-            ctx["mode"] = "quest"
+        # Quest is on-demand — no quest_panel in the initial search response.
         if vibe_base:
             ctx["vibe_base"] = vibe_base
         ctx["intent_shape"] = decision.shape
@@ -2602,6 +2453,149 @@ async def explore_run(request: Request) -> HTMLResponse:
     finally:
         if search_id:
             clear_search_cancel(search_id)
+
+
+@app.post("/api/quest/plan")
+async def quest_plan_api(request: Request):
+    """On-demand Quest planning endpoint — called by the 'Plan a Quest' button.
+
+    Runs only the Quest planning + pricing pipeline, isolated from the main
+    search lifecycle.  Applies a generous read timeout and one automatic retry
+    on timeout so the user gets a clear message instead of a dangling spinner.
+
+    Returns JSON: {ok: bool, html: str} — the caller replaces #quest-results
+    innerHTML with the returned card HTML.
+    """
+    from datetime import timedelta
+
+    settings = reload_settings()
+    form_data = await request.form()
+
+    def _s(key: str, fallback: str = "") -> str:
+        v = form_data.get(key)
+        return str(v).strip() if v is not None and str(v).strip() else fallback
+
+    prompt = _s("prompt") or _s("ask")
+    vibe = _s("vibe", "adventure").lower()
+    if not vibe or len(vibe) > 32 or not vibe.replace("-", "").replace("_", "").isalnum():
+        vibe = "adventure"
+
+    home_iata = settings.resolve_home_iata()
+    origin_override = _s("origin").upper()
+    if len(origin_override) == 3 and origin_override.isalpha():
+        home_iata = origin_override
+
+    _QUEST_DAYS_ALLOWED = {7, 10, 14, 21}
+    try:
+        quest_days = int(_s("quest_days", "10"))
+        if quest_days not in _QUEST_DAYS_ALLOWED:
+            quest_days = 10
+    except (ValueError, TypeError):
+        quest_days = 10
+
+    defaults = _adventure_form_defaults(settings)
+    depart = _s("depart", defaults["depart"])
+    if not depart:
+        depart = (date.today() + timedelta(days=45)).isoformat()
+
+    avoid = settings.effective_avoid_country_list()
+    visited = settings.visited_country_list()
+    mock = not settings.configured_providers()
+
+    try:
+        anchor_legs: list = []
+        from yonder.saved import upcoming_anchor_legs as _quest_anchors
+        anchor_legs = _quest_anchors(limit=3)
+    except Exception:
+        anchor_legs = []
+
+    def _render_quest(quest_panel_dict: dict, error_message: str | None = None) -> str:
+        """Render the quest results partial template to an HTML string."""
+        tpl = templates.env.get_template("_quest_results_partial.html")
+        return tpl.render(
+            request=request,
+            quest_panel=quest_panel_dict,
+            home_iata_fallback=home_iata,
+            vibe_fallback=vibe,
+            error_message=error_message,
+        )
+
+    if not prompt:
+        return JSONResponse({"ok": False, "error": "No prompt — type a vibe first.", "html": ""})
+
+    if not settings.grok_ready():
+        error_text = "Quest needs an AI key — add one in Settings."
+        html = _render_quest(
+            {"ask": prompt, "result": [], "home_iata": home_iata, "vibe": vibe,
+             "error": error_text}
+        )
+        return JSONResponse({"ok": False, "error": error_text, "html": html})
+
+    try:
+        depart_dt = date.fromisoformat(depart)
+    except (ValueError, TypeError):
+        depart_dt = date.today() + timedelta(days=45)
+
+    # Run plan_quest with 45 s read timeout; one automatic retry on timeout.
+    async def _run_quest() -> list:
+        return await asyncio.wait_for(
+            plan_quest(
+                prompt,
+                vibe,
+                home_iata,
+                depart_dt,
+                settings,
+                quest_days=quest_days,
+                include_mock=mock,
+                avoid=avoid,
+                visited=visited,
+                anchor_legs=anchor_legs,
+            ),
+            timeout=45.0,
+        )
+
+    quest_ideas = None
+    _last_err: str | None = None
+    for _attempt in range(2):  # first try + one retry on timeout
+        try:
+            quest_ideas = await _run_quest()
+            _last_err = None
+            break
+        except asyncio.TimeoutError:
+            _last_err = "timeout"
+            if _attempt == 0:
+                continue  # retry
+            break
+        except Exception as _exc:  # noqa: BLE001
+            _last_err = str(_exc)[:200]
+            break
+
+    if _last_err == "timeout":
+        error_text = "The AI took too long — try again."
+        html = _render_quest({}, error_message=error_text)
+        return JSONResponse({"ok": False, "error": error_text, "html": html})
+
+    if _last_err is not None:
+        error_text = f"Quest couldn't reach the AI planner — {_last_err[:120]}"
+        html = _render_quest({}, error_message=error_text)
+        return JSONResponse({"ok": False, "error": error_text, "html": html})
+
+    quest_panel = {
+        "ask": prompt,
+        "result": quest_ideas,
+        "home_iata": home_iata,
+        "vibe": vibe,
+        "error": (
+            None if quest_ideas
+            else "Quest needs an AI key — add one in Settings"
+        ),
+    }
+    try:
+        html = _render_quest(quest_panel)
+    except Exception as _render_exc:
+        return JSONResponse({"ok": False, "error": f"Render error: {_render_exc}", "html": ""})
+
+    return JSONResponse({"ok": bool(quest_ideas), "html": html})
 
 
 @app.get("/adventure", response_class=HTMLResponse)

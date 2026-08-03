@@ -373,8 +373,13 @@ def _card_with(html: str, marker: str) -> str:
     return cards[0]
 
 
-def test_explore_renders_anchor_badge_on_detour_and_quest_cards(monkeypatch):
-    """Mix search: Detour itinerary + Quest idea ending at NRT get the ⚓ badge."""
+def test_explore_renders_anchor_badge_on_detour_cards(monkeypatch):
+    """Mix search: Detour itinerary ending at NRT gets the ⚓ badge.
+
+    Quest is on-demand only (/api/quest/plan) — the main search page renders
+    a 'Plan a Quest' button, not quest cards, so anchor-badge checks for quest
+    belong in the /api/quest/plan test suite (test_quest_ondemand.py).
+    """
     _patch_detour_quest_planners(monkeypatch)
     html = _explore(monkeypatch, [_saved_upcoming_trip()], force_mode="mix")
 
@@ -387,18 +392,18 @@ def test_explore_renders_anchor_badge_on_detour_and_quest_cards(monkeypatch):
     det_miss = _card_with(html, 'data-stop-iata="HKG"')
     assert "bp-anchor-label" not in det_miss
 
-    # Quest: overland exit NRT connects; exit BKK does not
-    q_match = _card_with(html, 'data-quest-exit="NRT"')
-    assert "bp-anchor-label" in q_match
-    assert "Connects to your saved" in q_match
-    q_miss = _card_with(html, 'data-quest-exit="BKK"')
-    assert "bp-anchor-label" not in q_miss
+    # Quest is on-demand: main search page shows only the button, not quest cards
+    assert "btn-plan-quest" in html or "Plan a Quest" in html
+    assert 'data-quest-exit="NRT"' not in html
+    assert 'data-quest-exit="BKK"' not in html
 
 
 def test_explore_mix_renders_no_anchor_badge_without_upcoming_saves(monkeypatch):
     _patch_detour_quest_planners(monkeypatch)
     html = _explore(monkeypatch, [], force_mode="mix")
     assert 'data-stop-iata="TPE"' in html      # detour panel rendered
-    assert 'data-quest-exit="NRT"' in html     # quest panel rendered
+    # Quest is on-demand: no quest cards in initial search response
+    assert 'data-quest-exit="NRT"' not in html
+    assert 'data-quest-exit="BKK"' not in html
     assert "Connects to your saved" not in html
     assert "bp-anchor-label" not in html

@@ -1102,6 +1102,7 @@ class GrokClient:
         today: date | None = None,
         use_cache: bool = True,
         anchor_legs: list[dict] | None = None,
+        include_quest: bool = True,
     ) -> dict:
         """ONE Grok call covering all three Find panels on a cold start.
 
@@ -1169,9 +1170,23 @@ class GrokClient:
                     _PARSE_CACHE.pop(cache_k, None)
 
         _xp = _compute_xp(visited_codes, avoid_codes)
+        _section_count = "THREE" if include_quest else "TWO"
+        _quest_schema = (
+            ',"quest":{"ideas":['
+            '{"entry_iata":"HAN","exit_iata":"BKK","entry_city":"Hanoi","exit_city":"Bangkok",'
+            '"overland_narrative":"...","transport":["Reunification Express"],'
+            '"highlights":["Hội An"]}]}'
+        ) if include_quest else ""
+        _quest_section_desc = (
+            "SECTION quest — 1-3 open-jaw itineraries: fly INTO entry_iata, travel OVERLAND to "
+            "exit_iata, fly out from there. Entry and exit MUST be in DIFFERENT countries, "
+            "neither equal to home. Name SPECIFIC real transport (actual train lines, ferry "
+            "routes, bus companies). The overland journey must be feasible in window_days. "
+            "Vary regions across ideas.\n"
+        ) if include_quest else ""
         system = (
-            "You are the planning engine for a vibe-first travel app. From ONE traveler "
-            "prompt, produce THREE independent sections in a single reply. "
+            f"You are the planning engine for a vibe-first travel app. From ONE traveler "
+            f"prompt, produce {_section_count} independent sections in a single reply. "
             "Return STRICT JSON only (no markdown fences) with exactly this shape:\n"
             "{"
             '"escape":{'
@@ -1184,12 +1199,9 @@ class GrokClient:
             '"min_stop_days":3,"max_stop_days":5,"vibe":"adventure",'
             '"intent_summary":"one line",'
             '"candidates":[{"iata":"PDX","city":"Portland","country":"US",'
-            '"stay_days":3,"why":"...","vibe_tags":["city","cheap"]}]},'
-            '"quest":{"ideas":['
-            '{"entry_iata":"HAN","exit_iata":"BKK","entry_city":"Hanoi","exit_city":"Bangkok",'
-            '"overland_narrative":"...","transport":["Reunification Express"],'
-            '"highlights":["Hội An"]}]}'
-            "}\n"
+            '"stay_days":3,"why":"...","vibe_tags":["city","cheap"]}]}'
+            + _quest_schema
+            + "}\n"
             "SECTION escape — parse the prompt as a point-to-point flight search. "
             "IATA codes only; prefer major commercial airports; resolve relative dates from today. "
             "If the user omits a from-city, origin MUST be default_origin. "
@@ -1202,12 +1214,8 @@ class GrokClient:
             "country = ISO2 for each candidate. traveler_comfort rank guides boldness: "
             "Chaos Pilot/Nomadic Soul → off-beaten-path; Armchair Explorer/Day Tripper → "
             "nearby safe hubs and easy connections.\n"
-            "SECTION quest — 1-3 open-jaw itineraries: fly INTO entry_iata, travel OVERLAND to "
-            "exit_iata, fly out from there. Entry and exit MUST be in DIFFERENT countries, "
-            "neither equal to home. Name SPECIFIC real transport (actual train lines, ferry "
-            "routes, bus companies). The overland journey must be feasible in window_days. "
-            "Vary regions across ideas.\n"
-            "PASSPORT RULES (hard constraints for ALL sections — ground truth is the ISO2 lists):\n"
+            + _quest_section_desc
+            + "PASSPORT RULES (hard constraints for ALL sections — ground truth is the ISO2 lists):\n"
             "- NEVER use a destination/candidate/entry/exit in avoid_countries.\n"
             "- When the user wants somewhere new / not been: NEVER pick visited_countries "
             "(escape destination and getaway candidates). Detour mid-route stops are exempt.\n"
@@ -1240,29 +1248,30 @@ class GrokClient:
             system += _ANCHOR_DIRECTIVE
         system += language_directive(detect_lang(prompt))
 
-        user = json.dumps(
-            {
-                "today": today.isoformat(),
-                "default_origin": home,
-                "default_currency": currency.upper(),
-                "depart_date": depart_date.isoformat(),
-                "quest_outbound_date": outbound_date.isoformat(),
-                "window_days": days,
-                "min_stop_days": min_stop_days,
-                "max_stop_days": max_stop_days,
-                "max_candidates": max_candidates,
-                "vibe": vibe,
-                "avoid_countries": avoid_codes,
-                "visited_countries": visited_codes,
-                "excluded_iatas": excl[:24],
-                "traveler_comfort": _xp["rank"],
-                "visited_country_count": len(visited_codes),
-                "user_prompt": prompt.strip()[:400],
-                **({"learned_candidates": learned} if learned else {}),
-                **({"saved_anchor_legs": _anchor_rows} if _anchor_rows else {}),
-            },
-            default=str,
-        )
+        _user_payload: dict = {
+            "today": today.isoformat(),
+            "default_origin": home,
+            "default_currency": currency.upper(),
+            "depart_date": depart_date.isoformat(),
+            "min_stop_days": min_stop_days,
+            "max_stop_days": max_stop_days,
+            "max_candidates": max_candidates,
+            "vibe": vibe,
+            "avoid_countries": avoid_codes,
+            "visited_countries": visited_codes,
+            "excluded_iatas": excl[:24],
+            "traveler_comfort": _xp["rank"],
+            "visited_country_count": len(visited_codes),
+            "user_prompt": prompt.strip()[:400],
+        }
+        if include_quest:
+            _user_payload["quest_outbound_date"] = outbound_date.isoformat()
+            _user_payload["window_days"] = days
+        if learned:
+            _user_payload["learned_candidates"] = learned
+        if _anchor_rows:
+            _user_payload["saved_anchor_legs"] = _anchor_rows
+        user = json.dumps(_user_payload, default=str)
 
         text = await self._chat(system, user, temperature=0.45)
         payload = _extract_json(text)
@@ -1325,16 +1334,20 @@ class GrokClient:
             except Exception:  # noqa: BLE001 — incomplete section → fallback
                 pass
 
-        # ── quest section ────────────────────────────────────────────────────
-        q_raw = payload.get("quest")
-        if isinstance(q_raw, list):
-            rows = q_raw
-        elif isinstance(q_raw, dict):
-            rows = q_raw.get("ideas") or []
-        else:
-            rows = []
-        out["quest_pairs"] = _filter_quest_rows(rows, home, avoid_set)
-        # Learning layer: archive the unified escape + quest proposals too
+        # ── quest section (only when requested) ─────────────────────────────
+        if include_quest:
+            q_raw = payload.get("quest")
+            if isinstance(q_raw, list):
+                rows = q_raw
+            elif isinstance(q_raw, dict):
+                rows = q_raw.get("ideas") or []
+            else:
+                rows = []
+            out["quest_pairs"] = _filter_quest_rows(rows, home, avoid_set)
+            self._capture_quest_interpretations(
+                out["quest_pairs"], vibe=vibe, prompt=prompt, home_iata=home
+            )
+        # Learning layer: archive the escape proposal.
         # (detour candidates were captured inside _adventure_from_payload).
         try:
             from yonder.knowledge import capture_interpretations_async
@@ -1358,9 +1371,6 @@ class GrokClient:
                 )
         except Exception:
             pass
-        self._capture_quest_interpretations(
-            out["quest_pairs"], vibe=vibe, prompt=prompt, home_iata=home
-        )
         # Only cache when at least one section succeeded — an all-empty result
         # must not make a transient failure "free" for the whole TTL.
         if use_cache and (out["escape"] or out["detour_cities"] or out["quest_pairs"]):

@@ -1,0 +1,41 @@
+{% import "_boarding_pass.html" as bp %}
+{% set _qp = quest_panel if quest_panel is defined else {} %}
+{% set has_quest = _qp and _qp.result and _qp.result|length > 0 %}
+{% set quest_empty = _qp and _qp.result is defined and _qp.result is not none and _qp.result|length == 0 %}
+{% set q_home = (_qp.home_iata if _qp and _qp.home_iata is defined else none) or home_iata_fallback or 'YVR' %}
+{% set q_vibe = (_qp.vibe if _qp and _qp.vibe is defined else none) or vibe_fallback or 'adventure' %}
+{% if has_quest %}
+<div class="card" id="quest-results-card">
+  <h2>Quest</h2>
+  <p class="sub">
+    Open-jaw overland adventures · fly in one city, overland to another, fly home
+    · {{ _qp.result|length }} idea{{ 's' if _qp.result|length != 1 else '' }}
+    · 10-day window
+  </p>
+  {% if _qp.error is defined and _qp.error %}
+    <p class="muted quest-note" role="note">{{ _qp.error }}</p>
+  {% endif %}
+  <div class="pass-stack">
+    {% for idea in _qp.result %}
+    {% set share = share_quest(request, idea, q_home) %}
+    {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe, share=share) }}
+    {% endfor %}
+  </div>
+</div>
+{% elif quest_empty %}
+<div class="card" id="quest-results-card">
+  <h2>Quest</h2>
+  <p class="muted" id="quest-empty-note">
+    {{ _qp.error if _qp.error is defined and _qp.error else 'Quest found no ideas — try a different prompt' }}
+    · <a href="/settings">Open Settings</a>
+  </p>
+</div>
+{% elif error_message is defined and error_message %}
+<div class="card" id="quest-results-card">
+  <h2>Quest</h2>
+  <p class="muted quest-error" role="alert" style="margin-bottom:0.75rem">{{ error_message }}</p>
+  <div id="quest-card-body">
+    <button type="button" class="btn-plan-quest" id="btn-plan-quest">Try again</button>
+  </div>
+</div>
+{% endif %}

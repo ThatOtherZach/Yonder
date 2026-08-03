@@ -434,8 +434,13 @@ class TestExploreRecycleIntegration:
     def test_full_recycle_pool_skips_all_panels_and_logs_cost(
         self, client, monkeypatch, caplog
     ):
-        """Escape + quest + detour saved matches → zero panel coroutines run,
-        overrides come from recycled data, and the search_cost line lists them."""
+        """Escape + detour saved matches → zero panel coroutines run,
+        overrides come from recycled data, and the search_cost line lists them.
+
+        Quest is on-demand only (not part of the main search recycle pool),
+        so saved quest trips are ignored here and 'quest' is never in
+        recycled_panels.
+        """
         saved = [
             _make_saved(kind="escape", itinerary=_escape_itinerary()),
             _make_saved(
@@ -467,13 +472,14 @@ class TestExploreRecycleIntegration:
             )
         assert resp.status_code == 200
 
-        # No panel coroutine fired — the recycle pool covered everything
+        # No panel coroutine fired — the recycle pool covered escape + detour
         assert not captures["search"], "escape panel ran despite recycled escape"
-        assert not captures["quest"], "quest panel ran despite recycled quest"
+        # quest panel is never called from /explore (on-demand only)
+        assert not captures["quest"], "plan_quest must not be called from /explore"
         assert not captures["plan"], "detour panel ran despite recycled detour"
         assert not captures["grok"], "Grok was called despite full recycle pool"
 
-        # search_cost log line reflects the recycled panels
+        # search_cost log line reflects the recycled panels (escape + detour only)
         cost_lines = [
             r.getMessage() for r in caplog.records if r.name == "yonder.cost"
         ]
@@ -481,21 +487,21 @@ class TestExploreRecycleIntegration:
         line = cost_lines[-1]
         assert "recycled_panels=" in line
         assert "escape" in line
-        assert "quest" in line
+        # quest is NOT in recycled_panels — it runs on-demand, not in main search
+        assert "quest" not in line.split("recycled_panels=")[1].split("unified=")[0]
         assert "grok_calls≈0" in line
 
         # Overrides came from the recycled data (rendered into the page)
         html = resp.text
         assert "KIX" in html  # recycled escape/detour destination
-        assert "BKK" in html and "SIN" in html  # recycled quest legs
 
-    def test_escape_only_recycle_logs_escape_and_runs_other_panels(
+    def test_escape_only_recycle_logs_escape_and_runs_detour_panel(
         self, client, monkeypatch, caplog
     ):
-        """Only an escape match saved → recycled_panels lists escape only and the
-        quest/detour panels still attempt to run (captured, not asserted-fail)."""
+        """Only an escape match saved → recycled_panels lists escape only;
+        detour panel still runs; quest is NOT in recycled_panels (on-demand only)."""
         saved = [_make_saved(kind="escape", itinerary=_escape_itinerary())]
-        captures: dict[str, list] = {"quest": [], "plan": []}
+        captures: dict[str, list] = {"plan": []}
 
         settings = Settings(testing=False, xai_api_key="test-key")
         monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
@@ -510,10 +516,6 @@ class TestExploreRecycleIntegration:
 
         # The saved escape itinerary is NOT a valid AdventureItinerary (no
         # title), so find_recycled_result returns None → detour panel runs.
-        async def _fake_plan_quest(*a: Any, **kw: Any):
-            captures["quest"].append(a)
-            return []
-
         async def _fake_plan(req, *a: Any, **kw: Any):
             captures["plan"].append(req)
             from yonder.adventure import AdventureRequest, AdventureResult
@@ -541,7 +543,6 @@ class TestExploreRecycleIntegration:
                 [],
             )
 
-        monkeypatch.setattr(web_module, "plan_quest", _fake_plan_quest)
         monkeypatch.setattr(web_module, "plan_adventure", _fake_plan)
         import yonder.grok as grok_module
 
@@ -568,6 +569,5 @@ class TestExploreRecycleIntegration:
         assert cost_lines, "search_cost line missing"
         line = cost_lines[-1]
         assert "escape" in line
-        assert "quest" not in line.split("recycled_panels=")[1]
-        # The un-recycled quest panel did run
-        assert captures["quest"], "quest panel should run when no quest is recycled"
+        # quest is never in recycled_panels — it's on-demand only
+        assert "quest" not in line.split("recycled_panels=")[1].split("unified=")[0]
