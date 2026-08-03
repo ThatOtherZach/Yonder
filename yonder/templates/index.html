@@ -1740,6 +1740,9 @@
           tab.addEventListener("click", function () {
             if (tab.disabled) return;
             applyResultFilter(tab.getAttribute("data-filter") || "all");
+            // Re-hydrate Quest from sessionStorage on every tab switch so the
+            // Quest panel is never left blank after switching away and back.
+            if (typeof hydrateQuestFromStorage === "function") hydrateQuestFromStorage();
           });
         });
         applyResultFilter("all");
