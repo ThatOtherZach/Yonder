@@ -40,7 +40,7 @@ def test_no_home_regions_for_retired_countries():
     assert T.unvisited_home_regions("BR", ["BR"]) == []
     assert T.unvisited_home_regions("AU", []) == []
     # Subdivided countries still report regions
-    assert len(T.unvisited_home_regions("CA", [])) == 9
+    assert len(T.unvisited_home_regions("CA", [])) == 7
 
 
 # ---------------------------------------------------------------------------
@@ -49,8 +49,9 @@ def test_no_home_regions_for_retired_countries():
 
 
 def test_normalize_collapses_retired_region_codes():
+    # US-CA is now an alias → normalises to US-PAC
     out = T.normalize_tile_list(["MX-JAL", "MX-OAX", "US-CA", "BR-SP", "AU"])
-    assert out == ["MX", "US-CA", "BR", "AU"]
+    assert out == ["MX", "US-PAC", "BR", "AU"]
     # Plain country + retired region dedupe to one entry, stamp order kept
     assert T.normalize_tile_list("MX,MX-JAL,FR") == ["MX", "FR"]
     assert T.normalize_tile_list("MX-JAL,MX") == ["MX"]

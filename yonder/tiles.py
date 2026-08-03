@@ -41,75 +41,32 @@ import re
 
 # ISO 3166-2 subdivision tiles: code -> (display name, land area km²)
 SUBDIVISION_TILES: dict[str, tuple[str, int]] = {
-    # CA
-    "CA-AB": ("Alberta", 660758),
-    "CA-BC": ("British Columbia", 941451),
-    "CA-MB": ("Manitoba", 649717),
+    # CA — 2 merged regions (BC+AB, SK+MB) + 5 unchanged solo tiles
+    "CA-WCA": ("Western Canada", 1602209),    # BC + AB
+    "CA-PRA": ("Prairie Provinces", 1297776), # SK + MB
+    "CA-ON": ("Ontario", 1073988),
+    "CA-QC": ("Québec", 1499430),
     # Atlantic Canada merged tile: NB + NL + NS + PE (see MERGED_TILE_ALIASES)
     "CA-ATL": ("Atlantic Canada", 535010),
     # Northern merged tile: NT + NU (see MERGED_TILE_ALIASES)
     "CA-NTH": ("Northwest Territories & Nunavut", 3404611),
-    "CA-ON": ("Ontario", 1073988),
-    "CA-QC": ("Québec", 1499430),
-    "CA-SK": ("Saskatchewan", 648059),
     "CA-YT": ("Yukon", 481475),
     # GB
     "GB-ENG": ("England", 130279),
     "GB-NIR": ("Northern Ireland", 14130),
     "GB-SCT": ("Scotland", 77933),
     "GB-WLS": ("Wales", 20735),
-    # US
+    # US — 8 continental regions + AK + HI
+    "US-NEC": ("Northeast", 475826),          # ME NH VT MA RI CT NY NJ PA MD DC DE
+    "US-SEC": ("Southeast", 673381),          # VA WV NC SC GA FL
+    "US-SOU": ("South", 728805),              # KY TN AL MS AR LA
+    "US-TEX": ("Texas & Oklahoma", 866530),   # TX OK
+    "US-GLK": ("Great Lakes", 778667),        # OH IN MI IL WI
+    "US-MWP": ("Midwest & Plains", 1344272),  # MN IA MO ND SD NE KS
+    "US-MTN": ("Mountain West", 2232971),     # MT ID WY CO UT NV NM AZ
+    "US-PAC": ("Pacific Coast", 834584),      # WA OR CA
     "US-AK": ("Alaska", 1495905),
-    "US-AL": ("Alabama", 133909),
-    "US-AR": ("Arkansas", 137553),
-    "US-AZ": ("Arizona", 295138),
-    "US-CA": ("California", 409565),
-    "US-CO": ("Colorado", 268980),
-    "US-CT": ("Connecticut", 12686),
-    "US-DC": ("District of Columbia", 162),
-    "US-DE": ("Delaware", 5167),
-    "US-FL": ("Florida", 146923),
-    "US-GA": ("Georgia", 152252),
     "US-HI": ("Hawaii", 16896),
-    "US-IA": ("Iowa", 145223),
-    "US-ID": ("Idaho", 215807),
-    "US-IL": ("Illinois", 149990),
-    "US-IN": ("Indiana", 94235),
-    "US-KS": ("Kansas", 212675),
-    "US-KY": ("Kentucky", 104526),
-    "US-LA": ("Louisiana", 119656),
-    "US-MA": ("Massachusetts", 21128),
-    "US-MD": ("Maryland", 25440),
-    "US-ME": ("Maine", 84063),
-    "US-MI": ("Michigan", 249498),
-    "US-MN": ("Minnesota", 224212),
-    "US-MO": ("Missouri", 180353),
-    "US-MS": ("Mississippi", 123875),
-    "US-MT": ("Montana", 378471),
-    "US-NC": ("North Carolina", 127655),
-    "US-ND": ("North Dakota", 182236),
-    "US-NE": ("Nebraska", 200686),
-    "US-NH": ("New Hampshire", 24220),
-    "US-NJ": ("New Jersey", 19646),
-    "US-NM": ("New Mexico", 315139),
-    "US-NV": ("Nevada", 286830),
-    "US-NY": ("New York", 136693),
-    "US-OH": ("Ohio", 115910),
-    "US-OK": ("Oklahoma", 180627),
-    "US-OR": ("Oregon", 251391),
-    "US-PA": ("Pennsylvania", 119206),
-    "US-RI": ("Rhode Island", 2828),
-    "US-SC": ("South Carolina", 80188),
-    "US-SD": ("South Dakota", 198887),
-    "US-TN": ("Tennessee", 109286),
-    "US-TX": ("Texas", 685903),
-    "US-UT": ("Utah", 219565),
-    "US-VA": ("Virginia", 103674),
-    "US-VT": ("Vermont", 24587),
-    "US-WA": ("Washington", 173628),
-    "US-WI": ("Wisconsin", 169034),
-    "US-WV": ("West Virginia", 62689),
-    "US-WY": ("Wyoming", 253041),
 }
 
 # Formerly subdivided countries whose region tiles are retired: any stored
@@ -121,12 +78,38 @@ RETIRED_SUBDIVIDED_COUNTRIES: frozenset[str] = frozenset({"MX", "BR", "AU"})
 # stored or incoming old code maps to its merged tile on normalization, so
 # storage self-heals on the next save.
 MERGED_TILE_ALIASES: dict[str, str] = {
+    # CA Atlantic provinces → ATL
     "CA-NB": "CA-ATL",
     "CA-NL": "CA-ATL",
     "CA-NS": "CA-ATL",
     "CA-PE": "CA-ATL",
+    # CA northern territories → NTH
     "CA-NT": "CA-NTH",
     "CA-NU": "CA-NTH",
+    # CA provinces merged into regional tiles
+    "CA-BC": "CA-WCA",
+    "CA-AB": "CA-WCA",
+    "CA-SK": "CA-PRA",
+    "CA-MB": "CA-PRA",
+    # US states → continental region tiles
+    "US-ME": "US-NEC", "US-NH": "US-NEC", "US-VT": "US-NEC",
+    "US-MA": "US-NEC", "US-RI": "US-NEC", "US-CT": "US-NEC",
+    "US-NY": "US-NEC", "US-NJ": "US-NEC", "US-PA": "US-NEC",
+    "US-MD": "US-NEC", "US-DC": "US-NEC", "US-DE": "US-NEC",
+    "US-VA": "US-SEC", "US-WV": "US-SEC", "US-NC": "US-SEC",
+    "US-SC": "US-SEC", "US-GA": "US-SEC", "US-FL": "US-SEC",
+    "US-KY": "US-SOU", "US-TN": "US-SOU", "US-AL": "US-SOU",
+    "US-MS": "US-SOU", "US-AR": "US-SOU", "US-LA": "US-SOU",
+    "US-TX": "US-TEX", "US-OK": "US-TEX",
+    "US-OH": "US-GLK", "US-IN": "US-GLK", "US-MI": "US-GLK",
+    "US-IL": "US-GLK", "US-WI": "US-GLK",
+    "US-MN": "US-MWP", "US-IA": "US-MWP", "US-MO": "US-MWP",
+    "US-ND": "US-MWP", "US-SD": "US-MWP", "US-NE": "US-MWP",
+    "US-KS": "US-MWP",
+    "US-MT": "US-MTN", "US-ID": "US-MTN", "US-WY": "US-MTN",
+    "US-CO": "US-MTN", "US-UT": "US-MTN", "US-NV": "US-MTN",
+    "US-NM": "US-MTN", "US-AZ": "US-MTN",
+    "US-WA": "US-PAC", "US-OR": "US-PAC", "US-CA": "US-PAC",
 }
 
 # Countries that are subdivided into tiles (the whitelist)

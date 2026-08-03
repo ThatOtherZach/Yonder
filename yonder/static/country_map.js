@@ -23,7 +23,7 @@
   // First-level subdivision tiles for continent-scale countries
   // (US/CA + UK constituent countries) — km²-unlocked progression.
   // MX/BR/AU are single-country tiles again (regions retired).
-  var TILES_URL = "/static/tiles_admin1.json?v=3";
+  var TILES_URL = "/static/tiles_admin1.json?v=4";
   var SAVE_URL = "/api/travel-map";
   // Tile codes: plain ISO2 ("FR") or ISO 3166-2 subdivision ("CA-ON", "GB-ENG")
   var TILE_RE = /^[A-Z]{2}(-[A-Z0-9]{1,3})?$/;

@@ -25,8 +25,8 @@ from yonder.xp import RANKS, compute_xp
 
 def test_whitelist_countries_are_subdivided():
     assert set(T.SUBDIVIDED_COUNTRIES) == {"US", "CA", "GB"}
-    assert len(T.SUBDIVIDED_COUNTRIES["US"]) == 51  # 50 states + DC
-    assert len(T.SUBDIVIDED_COUNTRIES["CA"]) == 9
+    assert len(T.SUBDIVIDED_COUNTRIES["US"]) == 10  # 8 continental regions + AK + HI
+    assert len(T.SUBDIVIDED_COUNTRIES["CA"]) == 7
     assert set(T.SUBDIVIDED_COUNTRIES["GB"]) == {
         "GB-ENG", "GB-SCT", "GB-WLS", "GB-NIR",
     }
@@ -34,10 +34,10 @@ def test_whitelist_countries_are_subdivided():
 
 def test_subdivision_areas_are_plausible():
     # Rough sanity on land areas (km², approximate geometry-derived figures)
-    assert 600_000 < T.tile_area("US-TX") < 800_000
+    assert 800_000 < T.tile_area("US-TEX") < 1_000_000  # TX + OK merged region
     assert 900_000 < T.tile_area("CA-ON") < 1_200_000
     assert T.tile_area("GB-ENG") == 130_279
-    assert T.tile_area("US-RI") < 5_000
+    assert T.tile_area("US-NEC") > 400_000  # 12-state Northeast region
     # Country totals ballpark
     assert 9_000_000 < T.country_total_area("US") < 10_500_000
     assert 9_000_000 < T.country_total_area("CA") < 10_500_000
@@ -76,8 +76,9 @@ def test_full_subdivision_sweep_credits_full_country():
 
 
 def test_normalize_tile_list_validates_and_keeps_stamp_order():
+    # us-tx is an alias → normalises to US-TEX
     got = T.normalize_tile_list("ca-on, us-tx, ZZ, GB-ENG, fr, US-XX, CA-ON")
-    assert got == ["CA-ON", "US-TX", "GB-ENG", "FR"]
+    assert got == ["CA-ON", "US-TEX", "GB-ENG", "FR"]
 
 
 # ---------------------------------------------------------------------------
