@@ -1520,9 +1520,17 @@
           · economy · <a href="/saved">Saved</a>
         </p>
         <div class="pass-stack">
+          {% set vb_train_links = train_options(vibe_base.origin, vibe_base.destination) %}
           {% for o in vibe_base.result.offers[:1] %}
+          {% set vb_share = share_escape(request, vibe_base.result, o, esc_vibe) %}
           {{ bp.escape_card('explore', o, vibe_base.result.query, loop.index0,
+                            esc_theme=(escape_dest_theme or {}),
                             esc_vibe=esc_vibe,
+                            escape_parsed=escape_parsed,
+                            escape_place_book=escape_place_book,
+                            share=vb_share,
+                            esc_text=(esc_text or ''), ask=(ask or ''),
+                            train_links=vb_train_links,
                             gap_label=(vibe_base.gap_label if vibe_base.gap_label is defined else none)) }}
           {% endfor %}
         </div>
@@ -1675,8 +1683,7 @@
         }
         if (vbr) {
           var hasVbr = vbr.querySelector(".boarding-pass, .card");
-          if (f === "all") vbr.hidden = !hasVbr;
-          else if (f === "vibe-base") vbr.hidden = !hasVbr;
+          if (f === "all" || f === "escape" || f === "vibe-base") vbr.hidden = !hasVbr;
           else vbr.hidden = true;
         }
         if (det) {
