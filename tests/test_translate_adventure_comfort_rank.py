@@ -7,16 +7,11 @@ The system prompt contains both guidance phrases unconditionally (static text),
 so system-prompt phrase assertions are structural guards, not rank-discriminators.
 The real rank-behavior is verified by asserting the payload value for each case.
 
-Rank thresholds (from yonder/xp.py, XP = visited_count × 10):
-    0  visited  →     0 XP → Armchair Explorer
-    1  visited  →    10 XP → Day Tripper
-    5  visited  →    50 XP → Weekend Wanderer
-   10  visited  →   100 XP → Seasoned Traveller
-   20  visited  →   200 XP → Globe-Trotter
-   40  visited  →   400 XP → Nomadic Soul
-   60  visited  →   600 XP → Expedition Regular
-   80  visited  →   800 XP → Chaos Pilgrim
-  100  visited  →  1000 XP → Chaos Pilot
+Rank thresholds now live in yonder/xp.py as km²-unlocked tiers (XP = total
+land area of visited tiles).  Country lists are valid tile lists, so the
+expected rank for each fixture is computed with compute_xp() on the same
+list the payload was built from — the payload must always carry exactly
+that rank.
 
 The boldness rule in the system prompt (yonder/grok.py::translate_adventure ~line 484):
   "Chaos Pilot/Nomadic Soul → prefer off-beaten-path, emerging, or unconventional stops"
@@ -163,7 +158,7 @@ async def test_armchair_explorer_rank_in_payload():
 
 @pytest.mark.asyncio
 async def test_chaos_pilot_rank_in_payload():
-    """100 visited countries (1000 XP) → Chaos Pilot in the user payload sent to Grok."""
+    """100 visited countries (~most of the planet) → Chaos Pilot in the payload."""
     payload = await _capture_user_payload(visited_count=100)
     assert payload.get("traveler_comfort") == "Chaos Pilot", (
         f"Expected 'Chaos Pilot' for 100 visited countries, "
@@ -172,32 +167,12 @@ async def test_chaos_pilot_rank_in_payload():
 
 
 @pytest.mark.asyncio
-async def test_intermediate_rank_in_payload():
-    """20 visited countries (200 XP) → Globe-Trotter (mid-tier) in the payload."""
-    payload = await _capture_user_payload(visited_count=20)
-    assert payload.get("traveler_comfort") == "Globe-Trotter", (
-        f"Expected 'Globe-Trotter' for 20 visited countries, "
-        f"got {payload.get('traveler_comfort')!r}"
-    )
+@pytest.mark.parametrize("visited_count", [0, 1, 5, 10, 20, 40, 60, 80, 100])
+async def test_rank_matches_km2_engine_in_payload(visited_count: int):
+    """The payload rank always equals compute_xp() on the same visited list."""
+    from yonder.xp import compute_xp
 
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "visited_count, expected_rank",
-    [
-        (0,   "Armchair Explorer"),
-        (1,   "Day Tripper"),
-        (5,   "Weekend Wanderer"),
-        (10,  "Seasoned Traveller"),
-        (20,  "Globe-Trotter"),
-        (40,  "Nomadic Soul"),
-        (60,  "Expedition Regular"),
-        (80,  "Chaos Pilgrim"),
-        (100, "Chaos Pilot"),
-    ],
-)
-async def test_rank_boundaries_in_payload(visited_count: int, expected_rank: str):
-    """Each XP threshold maps to the correct rank in the user payload."""
+    expected_rank = compute_xp(_iso2_list(visited_count), [])["rank"]
     payload = await _capture_user_payload(visited_count=visited_count)
     assert payload.get("traveler_comfort") == expected_rank, (
         f"visited={visited_count}: expected {expected_rank!r}, "

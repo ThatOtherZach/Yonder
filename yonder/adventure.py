@@ -138,6 +138,11 @@ class AdventureRequest(BaseModel):
     # detour = A → stop → B · getaway = home → X → home (open destination)
     trip_kind: str = "detour"
     visited_countries: list[str] = Field(default_factory=list)  # ISO2 passport map
+    # Tile-level visited places (ISO 3166-2 subdivision codes + country tiles).
+    # When set, the getaway visited filter suppresses only FULLY visited
+    # countries (partial coverage of a subdivided country keeps it eligible).
+    # When empty, falls back to visited_countries as country-level tiles.
+    visited_tiles: list[str] = Field(default_factory=list)
     proximity_mode: bool = False  # True when query contains "not too far" / "nearby" etc.
 
 
@@ -897,15 +902,39 @@ def _adventure_score(
     return max(0.0, min(100.0, score))
 
 
+def _normalize_tile_list(raw) -> list[str]:
+    from yonder.tiles import normalize_tile_list
+
+    return normalize_tile_list(raw)
+
+
+def _suppressed_countries(req: AdventureRequest) -> set[str]:
+    """Countries the getaway visited filter should suppress.
+
+    Tile-aware: only FULLY visited countries are suppressed (see
+    yonder.tiles.fully_visited_countries).  Requests without tile data fall
+    back to treating each visited country as its country-level tile — which
+    means subdivided whitelist countries (US/CA/MX/BR/AU/GB) count as
+    partial coverage and stay eligible.
+    """
+    from yonder.tiles import fully_visited_countries
+
+    tiles = list(req.visited_tiles or []) or list(
+        normalize_country_list(req.visited_countries or [], max_n=250)
+    )
+    return fully_visited_countries(tiles)
+
+
 def filter_ideas(
     ideas: list[StopoverIdea],
     req: AdventureRequest,
 ) -> list[StopoverIdea]:
     avoid = normalize_avoid_list(req.avoid_countries)
-    visited = {
-        c.upper()
-        for c in normalize_country_list(req.visited_countries or [], max_n=250)
-    }
+    # Getaway suppression works on FULLY visited countries: with tile-level
+    # data, partial coverage of a subdivided country (e.g. only Ontario, or
+    # a country-level "some coverage" stamp for Canada) keeps that country
+    # eligible.  Legacy country-only lists fall back to country tiles.
+    visited = _suppressed_countries(req)
     origin = req.origin.upper()
     dest = req.destination.upper()
     getaway = _is_getaway(req)
@@ -1382,10 +1411,7 @@ def seed_ideas(
     origin = req.origin.upper()
     dest = req.destination.upper()
     avoid = normalize_avoid_list(req.avoid_countries)
-    visited = {
-        c.upper()
-        for c in normalize_country_list(req.visited_countries or [], max_n=250)
-    }
+    visited = _suppressed_countries(req)
     ban = {c.upper() for c in (exclude_iatas or set()) if c}
     getaway = _is_getaway(req)
     stay = max(
@@ -1457,6 +1483,7 @@ async def plan_adventure(
             "visited_countries": normalize_country_list(
                 req.visited_countries or [], max_n=250
             ),
+            "visited_tiles": _normalize_tile_list(req.visited_tiles or []),
             "trip_kind": trip_kind,
             # No meaningful A→A direct baseline for getaways
             "include_direct": False if trip_kind == "getaway" else req.include_direct,
@@ -1467,9 +1494,14 @@ async def plan_adventure(
     ideas = filter_ideas(ideas, req)
     if ban:
         ideas = [i for i in ideas if (i.iata or "").upper() not in ban]
-    # Extra filter for getaway: drop visited countries even if Grok suggested them
-    if _is_getaway(req) and req.visited_countries:
-        visited = {c.upper() for c in req.visited_countries}
+    # Extra filter for getaway: drop FULLY visited countries even if Grok
+    # suggested them (partial tile coverage keeps a country eligible)
+    if _is_getaway(req) and (req.visited_countries or req.visited_tiles):
+        from yonder.tiles import fully_visited_countries as _fully_visited
+
+        visited = _fully_visited(
+            list(req.visited_tiles or []) or [c.upper() for c in req.visited_countries]
+        )
         filtered: list[StopoverIdea] = []
         for idea in ideas:
             cc = (idea.country or country_for_iata(idea.iata) or "").upper()

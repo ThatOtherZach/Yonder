@@ -51,3 +51,13 @@ yonder/
 ## User preferences
 
 - Run in mock/test mode by default (no API keys required).
+
+## Progression: tiled world map + km²-unlocked XP
+
+XP = raw square kilometers of land unlocked on a tiled world map (not country counts).
+
+- **Tiles**: continent-scale countries — US, CA, MX, BR, AU, plus the UK split into England/Scotland/Wales/Northern Ireland — subdivide into ISO 3166-2 first-level regions (`US-TX`, `CA-ON`, `GB-ENG`). Every other country is one tile (plain ISO2). Registry + areas: `yonder/tiles.py`; map geometry: `yonder/static/tiles_admin1.json` (Natural Earth, public domain, simplified).
+- **Partial-coverage rule**: a country-level entry for a subdivided country credits ONE average region (country total ÷ region count) — "some coverage".
+- **Migration rule**: legacy visited-country lists convert to country-level tiles (not expanded to all subdivisions). `visited_tiles` pref is the tile source of truth; `visited_countries` stays in sync (stamp order preserved, first stamp = home).
+- **Ranks**: same names/emoji, km² thresholds (0 → Armchair Explorer … 25M km² → Chaos Pilot) in `yonder/xp.py`. Avoid list no longer subtracts XP.
+- **Search behavior**: a subdivided country is suppressed from getaway suggestions only when ALL its regions are marked; partial coverage keeps it eligible. Domestic seeds get a prompt hint listing unvisited home-country regions (`_domestic_region_hint` in `yonder/grok.py`).

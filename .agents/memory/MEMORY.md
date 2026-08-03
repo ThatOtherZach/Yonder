@@ -11,3 +11,4 @@
 - [Learning-layer knowledge graph](knowledge-layer.md) — route negative cache only from live "no offers" (never errors/timeouts); per-source attribute rows never collapsed; raw interpretation log is append-only forever.
 - [PG test isolation](pg-test-isolation.md) — tests for get_conn() modules use a throwaway PG schema + monkeypatched module-level get_conn; never touch real tables.
 - [Git push workaround](git-push-workaround.md) — Replit's GitHub credential is broken here; push with the GITHUB_PERSONAL_ACCESS_TOKEN secret (needs workflow scope), mask token in output.
+- [Tiled km² progression](tiled-km2-progression.md) — visited data is tiles not countries; partial coverage ≠ seen; go through yonder/tiles.py helpers.

@@ -16,6 +16,11 @@ DB_PATH = ROOT / "user_prefs.db"
 # All keys managed here, with their factory defaults
 PREF_DEFAULTS: dict[str, str] = {
     "visited_countries": "",
+    # Tile-level visited places (ISO 3166-2 subdivision codes for the
+    # subdivided whitelist countries + plain ISO2 country tiles).  When
+    # blank but visited_countries is set, reads fall back to the legacy
+    # country list (each country becomes its country-level tile).
+    "visited_tiles": "",
     "avoid_countries": "",
     "col_expected_daily": "0",
     "col_tolerance_pct": "25",

@@ -1262,7 +1262,7 @@
             data-yonder-map
             data-compact="1"
             data-theme="phosphor"
-            data-visited="{{ (visited_defaults or [])|join(',') }}"
+            data-visited="{{ (visited_tiles_defaults or visited_defaults or [])|join(',') }}"
             data-avoid="{{ (avoid_defaults or [])|join(',') }}"
           ></div>
         </div>
@@ -1281,10 +1281,10 @@
 
     {% if xp_profile %}
     <template id="xp-badge-tpl">
-      <a href="/settings#travel-map" class="xp-rank-badge" title="{{ xp_profile.xp }} XP · {{ xp_profile.rank_blurb }}">
+      <a href="/settings#travel-map" class="xp-rank-badge" title="{{ xp_profile.km2_label }} km² unlocked · {{ xp_profile.rank_blurb }}">
         <span class="xp-rank-badge-emoji">{{ xp_profile.rank_emoji }}</span>
         <span class="xp-rank-badge-name">{{ xp_profile.rank }}</span>
-        <span class="xp-rank-badge-xp">{{ xp_profile.xp }} XP</span>
+        <span class="xp-rank-badge-xp">{{ xp_profile.km2_label }} km²</span>
       </a>
     </template>
     {% endif %}
@@ -1323,7 +1323,7 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
-    <script src="/static/country_map.js?v=19"></script>
+    <script src="/static/country_map.js?v=20"></script>
     <script>
     document.addEventListener("DOMContentLoaded", function() {
       var tpl = document.getElementById("xp-badge-tpl");
@@ -1344,8 +1344,8 @@
       var xpEl = badge.querySelector(".xp-rank-badge-xp");
       if (emoji && xp.rank_emoji) emoji.textContent = xp.rank_emoji;
       if (name && xp.rank) name.textContent = xp.rank;
-      if (xpEl && typeof xp.xp === "number") xpEl.textContent = Math.max(0, xp.xp) + " XP";
-      if (xp.rank_blurb) badge.title = Math.max(0, xp.xp || 0) + " XP · " + xp.rank_blurb;
+      if (xpEl && typeof xp.xp === "number") xpEl.textContent = (xp.km2_label || Math.max(0, xp.xp)) + " km²";
+      if (xp.rank_blurb) badge.title = (xp.km2_label || Math.max(0, xp.xp || 0)) + " km² unlocked · " + xp.rank_blurb;
     });
     </script>
 

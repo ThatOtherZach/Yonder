@@ -333,7 +333,7 @@
             <div class="xp-rank-line">
               <span class="xp-emoji" id="xp-emoji">{{ xp_profile.rank_emoji }}</span>
               <span class="xp-rank-name" id="xp-rank-name">{{ xp_profile.rank }}</span>
-              <span class="xp-amount" id="xp-amount">{{ xp_profile.xp }} XP</span>
+              <span class="xp-amount" id="xp-amount">{{ xp_profile.km2_label }} km² unlocked</span>
             </div>
             <p class="xp-blurb" id="xp-blurb">{{ xp_profile.rank_blurb }}</p>
             <div id="xp-progress">
@@ -342,7 +342,7 @@
                 <div class="xp-bar-fill" id="xp-bar-fill" style="width:{{ xp_profile.progress_pct }}%"></div>
               </div>
               <p class="xp-bar-label" id="xp-bar-label">
-                <strong>{{ xp_profile.xp_to_next }} XP</strong> to {{ xp_profile.next_rank_emoji }} {{ xp_profile.next_rank }}
+                <strong>{{ xp_profile.xp_to_next_label }} km²</strong> to {{ xp_profile.next_rank_emoji }} {{ xp_profile.next_rank }}
               </p>
               {% else %}
               <p class="xp-bar-label" id="xp-bar-label">Maximum rank — you've been everywhere. ✦</p>
@@ -357,7 +357,7 @@
           <p class="map-status" style="margin:0">
             Visited: <strong id="xp-visited-count">{{ (visited_defaults or [])|length }}</strong>
             · Avoid: <strong id="xp-avoid-count">{{ (avoid_defaults or [])|length }}</strong>/10
-            <span style="margin-left:0.5rem;font-size:0.75rem;opacity:0.7">(+10 XP / −10 XP)</span>
+            <span style="margin-left:0.5rem;font-size:0.75rem;opacity:0.7">(each tile unlocks its km²)</span>
           </p>
           <div class="chip-row" id="xp-visited-chips" aria-label="Visited countries">
             {% for code in visited_defaults or [] %}
@@ -937,7 +937,7 @@
         if (!xp) return;
         setText("xp-emoji",     xp.rank_emoji || "");
         setText("xp-rank-name", xp.rank       || "");
-        setText("xp-amount",    (xp.xp || 0) + " XP");
+        setText("xp-amount",    (xp.km2_label || xp.xp || 0) + " km² unlocked");
         setText("xp-blurb",     xp.rank_blurb || "");
         setText("xp-visited-count", String(xp.visited_count || 0));
         setText("xp-avoid-count",   String(xp.avoid_count   || 0));
@@ -950,7 +950,7 @@
                 '<div class="xp-bar-fill" style="width:' + xp.progress_pct + '%"></div>' +
               '</div>' +
               '<p class="xp-bar-label" id="xp-bar-label">' +
-                '<strong>' + xp.xp_to_next + ' XP</strong> to ' +
+                '<strong>' + (xp.xp_to_next_label || xp.xp_to_next) + ' km²</strong> to ' +
                 xp.next_rank_emoji + ' ' + xp.next_rank +
               '</p>';
           } else {

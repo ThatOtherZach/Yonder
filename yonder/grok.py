@@ -94,6 +94,63 @@ _ANCHOR_DIRECTIVE = (
 )
 
 
+def _fully_visited_set(visited: list[str]) -> set[str]:
+    """Countries counted as completely seen for hard destination drops.
+
+    Tile-aware: reads the stored tile list when it matches the given
+    country list, so partial coverage of a subdivided country (e.g. only
+    Ontario) never hard-blocks that country.  Legacy country-only data
+    treats each country as its country-level tile (subdivided whitelist
+    countries then count as partial coverage).
+    """
+    try:
+        from yonder.tiles import fully_visited_countries, visited_countries_from_tiles
+
+        codes = [str(v).upper() for v in (visited or []) if v]
+        try:
+            from yonder.config import get_settings
+
+            tiles = get_settings().visited_tile_list()
+        except Exception:  # noqa: BLE001
+            tiles = []
+        if tiles and set(visited_countries_from_tiles(tiles)) == set(codes):
+            return fully_visited_countries(tiles)
+        return fully_visited_countries(codes)
+    except Exception:  # noqa: BLE001
+        return {str(v).upper() for v in (visited or []) if v}
+
+
+def _domestic_region_hint(home_iata: str | None) -> str:
+    """Prompt line steering domestic picks toward unvisited home regions.
+
+    Only fires when the traveller's home country is one of the subdivided
+    whitelist countries (US/CA/MX/BR/AU/GB), they have some coverage
+    recorded, and unvisited regions remain.  Empty string otherwise.
+    """
+    try:
+        from yonder.config import get_settings
+        from yonder.countries import country_for_iata
+        from yonder.tiles import is_subdivided, unvisited_home_regions
+
+        cc = (country_for_iata((home_iata or "").strip().upper()) or "").upper()
+        if not is_subdivided(cc):
+            return ""
+        tiles = get_settings().visited_tile_list()
+        if not any(t == cc or t.startswith(cc + "-") for t in tiles):
+            return ""
+        remaining = unvisited_home_regions(cc, tiles)
+        if not remaining:
+            return ""
+        names = ", ".join(n for _, n in remaining[:8])
+        return (
+            "\n- Domestic picks: the traveler has NOT yet explored these home-country "
+            f"regions: {names}. When suggesting domestic destinations, prefer cities "
+            "in those regions over already-visited ones."
+        )
+    except Exception:  # noqa: BLE001 — prompt hint must never break parsing
+        return ""
+
+
 def _anchor_prompt_rows(anchor_legs: list[dict] | None) -> list[dict]:
     """Compact anchor rows for prompt JSON (no ids/labels — token-lean)."""
     rows: list[dict] = []
@@ -328,7 +385,10 @@ class GrokClient:
         avoid = [a.upper() for a in (avoid_countries or []) if a]
         visited = [v.upper() for v in (visited_countries or []) if v]
         avoid_set = set(avoid)
-        visited_set = set(visited)
+        # Hard destination blocks only apply to FULLY visited countries —
+        # partial tile coverage of a subdivided country keeps it eligible
+        # (see yonder.tiles.fully_visited_countries).
+        visited_set = _fully_visited_set(visited)
         home = (default_origin or "").strip().upper()
         if len(home) != 3 or not home.isalpha():
             home = "YVR"
@@ -765,6 +825,7 @@ class GrokClient:
                 "short-haul destinations only; avoid suggesting any flight longer "
                 "than 4 hours from the origin."
             )
+        system += _domestic_region_hint(str(form.get("origin") or ""))
         # Knowledge-assisted seeding: learned candidates the AI may confirm,
         # reorder, or override — the AI stays the decision-maker.
         learned = (
@@ -927,7 +988,8 @@ class GrokClient:
         raw = payload.get("candidates") or []
         ideas: list[StopoverIdea] = []
         avoid_set = {a.upper() for a in avoid}
-        visited_set = {v.upper() for v in visited}
+        # Only FULLY visited countries hard-drop getaway candidates
+        visited_set = _fully_visited_set(visited)
         home = {req.origin.upper(), req.destination.upper()}
         for row in raw:
             try:
@@ -1064,7 +1126,8 @@ class GrokClient:
         avoid_codes = [str(a).upper() for a in (avoid or []) if a]
         visited_codes = [str(v).upper() for v in (visited or []) if v]
         avoid_set = set(avoid_codes)
-        visited_set = set(visited_codes)
+        # Hard drops only apply to FULLY visited countries (tile-aware)
+        visited_set = _fully_visited_set(visited_codes)
         home = (origin or "").strip().upper()
         if len(home) != 3 or not home.isalpha():
             home = "YVR"
@@ -1157,6 +1220,7 @@ class GrokClient:
                 "\n- User explicitly asked for nearby travel — prefer domestic or "
                 "short-haul destinations; avoid flights longer than 4 hours from origin."
             )
+        system += _domestic_region_hint(home)
         # Knowledge-assisted seeding — optional learned suggestions; AI decides.
         # Refresh-for-novelty (use_cache=False) skips injection: re-suggesting
         # the same learned destinations defeats the point of a refresh.

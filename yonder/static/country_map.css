@@ -747,3 +747,44 @@
   padding-top: 0.85rem;
   border-top: 1px solid var(--line, #d9d0c2);
 }
+
+/* ── Subdivision tiles (km²-unlocked progression) ─────────────────────────
+   States/provinces for US/CA/MX/BR/AU + UK constituent countries. Drawn on
+   top of the country fill: open tiles are transparent with a faint interior
+   boundary so the country underneath shows through; visited tiles fill in. */
+.ymap path.subtile {
+  fill: transparent;
+  stroke: var(--ymap-stroke);
+  stroke-width: 0.4px;
+  stroke-dasharray: 2 1.5;
+  cursor: pointer;
+  transition: fill 0.15s ease, stroke 0.12s ease;
+  vector-effect: non-scaling-stroke;
+}
+
+.ymap path.subtile:not(.visited):not(.avoid):hover {
+  fill: color-mix(in srgb, var(--ymap-land-hover) 60%, transparent);
+  stroke: var(--ymap-accent);
+  stroke-width: 0.85px;
+  stroke-dasharray: none;
+}
+
+.ymap path.subtile.visited {
+  fill: var(--ymap-visited);
+  stroke: color-mix(in srgb, var(--ymap-visited) 65%, #000);
+  stroke-dasharray: none;
+}
+
+.ymap path.subtile.visited:hover {
+  fill: color-mix(in srgb, var(--ymap-visited) 88%, #fff);
+}
+
+.ymap path.subtile.avoid {
+  fill: color-mix(in srgb, var(--ymap-avoid) 55%, transparent);
+  stroke: color-mix(in srgb, var(--ymap-avoid) 65%, #000);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ymap path.subtile { transition: none; }
+}

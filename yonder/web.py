@@ -371,7 +371,7 @@ def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
     vt = vibe_theme(vibe) if vibe else None
     vibes_json, vibes_v = _vibes_data()
     from yonder.xp import compute_xp as _compute_xp
-    _xp = _compute_xp(visited_codes, avoid_codes)
+    _xp = _compute_xp(settings.visited_tile_list(), avoid_codes)
     return {
         "xp_profile": _xp,
         "vibes_json": vibes_json,
@@ -382,6 +382,7 @@ def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
         "countries": COUNTRIES,
         "avoid_defaults": avoid_codes,
         "visited_defaults": visited_codes,
+        "visited_tiles_defaults": settings.visited_tile_list(),
         "budgets": budgets_snapshot(settings),
         "history_count": count_samples(),
         "saved_count": count_saved(),
@@ -740,6 +741,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
     try:
         avoid = settings.avoid_country_list()
         visited = settings.visited_country_list()
+        visited_tiles_l = settings.visited_tile_list()
         aim, _skip = settings.search_timing()
         home_iata = settings.resolve_home_iata()
 
@@ -959,6 +961,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         currency = "USD"
     avoid = settings.avoid_country_list()
     visited = settings.visited_country_list()
+    visited_tiles_l = settings.visited_tile_list()
     min_stop, max_stop, max_cand_settings = settings.detour_stop_defaults()
     # Results criteria bar can override stop window + origin for re-runs
     try:
@@ -1226,6 +1229,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                             prompt=prompt,
                             avoid_countries=avoid,
                             visited_countries=visited,
+                            visited_tiles=visited_tiles_l,
                             trip_kind="getaway",
                         ),
                         exclude_iatas=exclude_iatas,
@@ -1442,6 +1446,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 prompt=prompt,
                 avoid_countries=avoid,
                 visited_countries=visited,
+                visited_tiles=visited_tiles_l,
                 trip_kind="detour" if _route else "getaway",
                 include_direct=False,
                 proximity_mode=_has_proximity(prompt),
@@ -1541,6 +1546,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                         "max_candidates": max_cand,
                         "avoid_countries": avoid,
                         "visited_countries": visited,
+                        "visited_tiles": visited_tiles_l,
                         "vibe": vibe,
                         "prompt": prompt,
                         "trip_kind": trip_kind,
@@ -2616,6 +2622,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
     use_grok = True  # always invent with Grok when key is present
     avoid = settings.avoid_country_list()
     visited = settings.visited_country_list()
+    visited_tiles_l = settings.visited_tile_list()
     min_stop, max_stop, max_cand = settings.detour_stop_defaults()
 
     form = {
@@ -2677,6 +2684,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
                 prompt=prompt,
                 avoid_countries=avoid,
                 visited_countries=visited,
+                visited_tiles=visited_tiles_l,
                 trip_kind="detour" if _route else "getaway",
                 include_direct=False,
             )
@@ -2742,6 +2750,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
                             "max_candidates": max_cand,
                             "avoid_countries": avoid,
                             "visited_countries": visited,
+                            "visited_tiles": visited_tiles_l,
                             "vibe": vibe or req.vibe,
                             "prompt": prompt,
                             "trip_kind": trip_kind,
@@ -4057,19 +4066,32 @@ async def api_travel_map(request: Request) -> JSONResponse:
     except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": "invalid JSON"}, status_code=400)
 
+    from yonder.tiles import (
+        country_of_tile,
+        normalize_tile_list,
+        tile_label,
+        visited_countries_from_tiles,
+    )
+
     s = get_settings()
     if "avoid" in body:
         avoid = normalize_avoid_list(body.get("avoid") or [])
     else:
         avoid = list(s.avoid_country_list())
 
+    # "visited" now carries tile codes: plain ISO2 country tiles and/or
+    # ISO 3166-2 subdivision tiles for the subdivided whitelist countries.
+    # Legacy country-only payloads keep working unchanged.
     if "visited" in body:
-        visited = normalize_country_list(body.get("visited") or [], max_n=250)
+        tiles = normalize_tile_list(body.get("visited") or [])
     else:
-        visited = list(s.visited_country_list())
+        tiles = list(s.visited_tile_list())
 
     avoid_set = set(avoid)
-    visited = [c for c in visited if c not in avoid_set]
+    tiles = [t for t in tiles if country_of_tile(t) not in avoid_set]
+    # Country list stays in sync with tiles (stamp order preserved — the
+    # first stamped country still resolves the traveller's home airport).
+    visited = visited_countries_from_tiles(tiles)
 
     try:
         from yonder.user_prefs import set_prefs as _set_prefs
@@ -4078,6 +4100,7 @@ async def api_travel_map(request: Request) -> JSONResponse:
             {
                 "avoid_countries": ",".join(avoid),
                 "visited_countries": ",".join(visited),
+                "visited_tiles": ",".join(tiles),
             }
         )
         reload_settings()
@@ -4086,14 +4109,16 @@ async def api_travel_map(request: Request) -> JSONResponse:
 
     from yonder.xp import compute_xp as _compute_xp
 
-    xp_profile = _compute_xp(visited, avoid)
+    xp_profile = _compute_xp(tiles, avoid)
     return JSONResponse(
         {
             "ok": True,
             "avoid": avoid,
             "visited": visited,
+            "tiles": tiles,
             "avoid_names": [country_label(c) for c in avoid],
             "visited_names": [country_label(c) for c in visited],
+            "tile_names": [tile_label(t) for t in tiles],
             "xp": xp_profile,
         }
     )
@@ -4124,6 +4149,7 @@ async def api_backup_export() -> JSONResponse:
     # visited/avoid exported as explicit lists under travel_map
     prefs.pop("visited_countries", None)
     prefs.pop("avoid_countries", None)
+    prefs.pop("visited_tiles", None)
     env = _read_env()
     payload = {
         "format": _BACKUP_FORMAT,
@@ -4131,6 +4157,7 @@ async def api_backup_export() -> JSONResponse:
         "exported_at": date.today().isoformat(),
         "travel_map": {
             "visited": list(s.visited_country_list()),
+            "tiles": list(s.visited_tile_list()),
             "avoid": list(s.avoid_country_list()),
         },
         "prefs": prefs,
@@ -4182,10 +4209,22 @@ async def api_backup_import(request: Request) -> JSONResponse:
             if isinstance(c, str) and len(str(c).strip()) == 2 and str(c).strip().isalpha()
         ]
 
-    visited = normalize_country_list(_codes(tm.get("visited")), max_n=250)
+    from yonder.tiles import (
+        country_of_tile as _tile_cc,
+        normalize_tile_list as _norm_tiles,
+        visited_countries_from_tiles as _tiles_to_countries,
+    )
+
     avoid = normalize_avoid_list(_codes(tm.get("avoid")))
     avoid_set = set(avoid)
-    visited = [c for c in visited if c not in avoid_set]
+    # Tile-aware backups carry travel_map.tiles; older backups only have the
+    # country list — each country becomes its country-level tile (documented
+    # migration rule in yonder.tiles).
+    tiles = _norm_tiles(tm.get("tiles") if isinstance(tm.get("tiles"), list) else [])
+    if not tiles:
+        tiles = normalize_country_list(_codes(tm.get("visited")), max_n=250)
+    tiles = [t for t in tiles if _tile_cc(t) not in avoid_set]
+    visited = _tiles_to_countries(tiles)
 
     # Prefs: only known keys, numeric keys sanity-checked
     from yonder.user_prefs import PREF_DEFAULTS, set_prefs as _set_prefs
@@ -4216,6 +4255,7 @@ async def api_backup_import(request: Request) -> JSONResponse:
         v = max(bounds[0], min(bounds[1], v))
         pref_updates[key] = str(int(v)) if v == int(v) else str(round(v, 2))
     pref_updates["visited_countries"] = ",".join(visited)
+    pref_updates["visited_tiles"] = ",".join(tiles)
     pref_updates["avoid_countries"] = ",".join(avoid)
 
     # Settings: only the whitelisted non-secret keys, format-validated
@@ -4263,11 +4303,12 @@ async def api_backup_import(request: Request) -> JSONResponse:
 
     from yonder.xp import compute_xp as _compute_xp
 
-    xp_profile = _compute_xp(visited, avoid)
+    xp_profile = _compute_xp(tiles, avoid)
     return JSONResponse(
         {
             "ok": True,
             "visited": visited,
+            "tiles": tiles,
             "avoid": avoid,
             "trips_imported": trips_imported,
             "trips_skipped": trips_skipped,
@@ -4318,7 +4359,7 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
     view = settings_view()
     view["home_resolved"] = settings.resolve_home_iata()
     xp_profile = compute_xp(
-        settings.visited_country_list(),
+        settings.visited_tile_list(),
         settings.avoid_country_list(),
     )
     byom_url_warning: str | None = None

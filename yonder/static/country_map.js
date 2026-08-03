@@ -20,7 +20,12 @@
   var SCALE_MAX = 14;
   var TOPO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
   var ISO_URL = "/static/iso_numeric_to_a2.json";
+  // First-level subdivision tiles for continent-scale countries
+  // (US/CA/MX/BR/AU + UK constituent countries) — km²-unlocked progression
+  var TILES_URL = "/static/tiles_admin1.json?v=1";
   var SAVE_URL = "/api/travel-map";
+  // Tile codes: plain ISO2 ("FR") or ISO 3166-2 subdivision ("CA-ON", "GB-ENG")
+  var TILE_RE = /^[A-Z]{2}(-[A-Z0-9]{1,3})?$/;
 
   /**
    * Two-click confirm for the Reset Map button.
@@ -62,7 +67,7 @@
           return String(x).trim().toUpperCase();
         })
         .filter(function (x) {
-          return x.length === 2;
+          return TILE_RE.test(x);
         });
     }
     return String(s || "")
@@ -71,8 +76,13 @@
         return x.trim().toUpperCase();
       })
       .filter(function (x) {
-        return x.length === 2;
+        return TILE_RE.test(x);
       });
+  }
+
+  /** ISO2 country of a tile code ("CA-ON" → "CA", "FR" → "FR"). */
+  function tileCountry(code) {
+    return String(code || "").split("-")[0];
   }
 
   function el(tag, cls, text) {
@@ -97,6 +107,8 @@
       }.bind(this)
     );
     this.pathsByCode = {};
+    // Subdivision tile support (km²-unlocked progression)
+    this.subCountries = {}; // cc -> [tile codes] once tiles json loads
     this.zoomBehavior = null;
     this.mapLayer = null;
     this.svg = null;
@@ -331,13 +343,32 @@
   YonderMap.prototype.stateOf = function (code) {
     if (this.avoid.has(code)) return "avoid";
     if (this.visited.has(code)) return "visited";
+    if (code.indexOf("-") > -1 && this.avoid.has(tileCountry(code))) return "avoid";
     return "none";
+  };
+
+  /** Coverage of a subdivided country: "none" | "partial" | "full". */
+  YonderMap.prototype.subCoverage = function (cc) {
+    var subs = this.subCountries[cc] || [];
+    if (!subs.length) return "none";
+    var n = 0;
+    for (var i = 0; i < subs.length; i++) {
+      if (this.visited.has(subs[i])) n++;
+    }
+    if (n === 0) return this.visited.has(cc) ? "partial" : "none";
+    return n === subs.length ? "full" : "partial";
   };
 
   YonderMap.prototype.paint = function (code) {
     var nodes = this.pathsByCode[code] || [];
     var st = this.stateOf(code);
     var vibe = this._vibePreview || null;
+    // Country path of a subdivided country reflects tile coverage:
+    // any tile (or a country-level "some coverage" stamp) → visited fill;
+    // its unvisited subdivisions stay open on top.
+    if (code.indexOf("-") === -1 && this.subCountries[code] && st !== "avoid") {
+      st = this.subCoverage(code) === "none" ? "none" : "visited";
+    }
     nodes.forEach(function (node) {
       node.classList.remove("visited", "avoid", "active", "other", "vibe-preview");
       node.style.removeProperty("fill");
@@ -398,7 +429,7 @@
     var list = visitedOrdered || this.orderedVisited();
     var prim = t.primary_iata || {};
     for (var i = 0; i < list.length; i++) {
-      var iata = prim[list[i]];
+      var iata = prim[tileCountry(list[i])];
       if (iata) return String(iata).toUpperCase();
     }
     // Fall back to server-resolved home, then currency/USA
@@ -502,7 +533,7 @@
         visited_names: (global.FS_TRAVEL && global.FS_TRAVEL.visited_names) || v.slice(),
         avoid_names: (global.FS_TRAVEL && global.FS_TRAVEL.avoid_names) || a.slice(),
         home_iata: homeIata,
-        home_country: v.length ? v[0] : "",
+        home_country: v.length ? tileCountry(v[0]) : "",
       };
       this.root.dispatchEvent(
         new CustomEvent("yonder:mapchange", { bubbles: true, detail: detail })
@@ -529,8 +560,23 @@
 
   /** Same cycle as Settings: none → visited → avoid → clear */
   YonderMap.prototype.cycle = function (code) {
-    if (!code || code.length !== 2) return;
+    if (!code || !TILE_RE.test(code)) return;
     var st = this.stateOf(code);
+
+    // Subdivision tiles are visited-only toggles (avoid stays country-level)
+    if (code.indexOf("-") > -1) {
+      if (st === "visited") {
+        this.visited.delete(code);
+      } else {
+        this.visited.add(code);
+        this.avoid.delete(tileCountry(code));
+      }
+      this.paint(code);
+      this.paint(tileCountry(code));
+      this.syncUi();
+      this.scheduleSave();
+      return;
+    }
 
     if (st === "none") {
       this.visited.add(code);
@@ -544,6 +590,12 @@
       }
       this.visited.delete(code);
       this.avoid.add(code);
+      // Avoiding a country clears its subdivision tiles too
+      var self = this;
+      (this.subCountries[code] || []).forEach(function (t) {
+        self.visited.delete(t);
+        self.paint(t);
+      });
     } else {
       this.avoid.delete(code);
       this.visited.delete(code);
@@ -609,7 +661,9 @@
       });
       if (!r.ok) throw new Error("HTTP " + r.status);
       var j = await r.json();
-      if (j.visited) this.visited = new Set(parseList(j.visited));
+      // Server echoes normalized tiles (subdivisions + country tiles)
+      if (j.tiles) this.visited = new Set(parseList(j.tiles));
+      else if (j.visited) this.visited = new Set(parseList(j.visited));
       if (j.avoid) this.avoid = new Set(parseList(j.avoid));
       this.paintAll();
       this.syncUi();
@@ -777,6 +831,55 @@
         .on("mouseleave", function () {
           self.hideTip();
         });
+
+      // Subdivision tiles overlay: states/provinces for continent-scale
+      // countries + UK constituent countries. Drawn on top of the country
+      // fill so each tile is individually clickable (visited toggle).
+      try {
+        var tilesFc = await d3.json(TILES_URL);
+        var subCountries = {};
+        (tilesFc.features || []).forEach(function (f) {
+          var t = f.properties && f.properties.t;
+          if (!t) return;
+          var cc = tileCountry(t);
+          if (!subCountries[cc]) subCountries[cc] = [];
+          subCountries[cc].push(t);
+          if (f.properties.n && !self.names[t]) self.names[t] = f.properties.n;
+        });
+        self.subCountries = subCountries;
+
+        self.mapLayer
+          .selectAll("path.subtile")
+          .data(tilesFc.features || [])
+          .join("path")
+          .attr("class", "subtile")
+          .attr("d", path)
+          .attr("data-code", function (d) {
+            return d.properties.t;
+          })
+          .each(function (d) {
+            var code = d.properties.t;
+            if (!self.pathsByCode[code]) self.pathsByCode[code] = [];
+            self.pathsByCode[code].push(this);
+          })
+          .on("click", function (event, d) {
+            if (event.defaultPrevented) return;
+            event.stopPropagation();
+            var code = d.properties.t;
+            self.cycle(code);
+            self.showTip(event, code);
+          })
+          .on("mousemove", function (event, d) {
+            event.stopPropagation();
+            self.showTip(event, d.properties.t);
+          })
+          .on("mouseleave", function () {
+            self.hideTip();
+          });
+      } catch (e) {
+        // Tiles overlay is progressive enhancement — country map still works
+        console.error("tiles overlay failed", e);
+      }
 
       this.zoomBehavior = d3
         .zoom()

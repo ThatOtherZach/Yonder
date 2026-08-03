@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     avoid_countries: str = ""
     # Comma-separated ISO2 codes — personal travel passport map (unlimited-ish)
     visited_countries: str = ""
+    # Comma-separated tile codes (ISO2 and/or ISO 3166-2 subdivisions for the
+    # subdivided whitelist countries). Blank → derived from visited_countries.
+    visited_tiles: str = ""
     # Lean day-bag components (default_currency) — legacy split; kept for migration.
     # Settings UI writes only col_expected_daily and zeros these.
     col_hotel: float = 0.0
@@ -213,6 +216,27 @@ class Settings(BaseSettings):
 
         return normalize_country_list(self.visited_countries, max_n=250)
 
+    def visited_tile_list(self) -> list[str]:
+        """Tile-level visited places (stamp order).
+
+        Falls back to the legacy visited-country list when no tiles are
+        stored yet — each legacy country becomes its country-level tile
+        (partial credit for subdivided countries; documented in
+        yonder.tiles).
+        """
+        from yonder.tiles import normalize_tile_list
+
+        tiles = normalize_tile_list(self.visited_tiles)
+        if tiles:
+            return tiles
+        return list(self.visited_country_list())
+
+    def fully_visited_country_list(self) -> set[str]:
+        """Countries counted as completely seen (getaway visited filter)."""
+        from yonder.tiles import fully_visited_countries
+
+        return fully_visited_countries(self.visited_tile_list())
+
     def resolve_home_iata(self) -> str:
         """Home origin for Escape/Detour when the prompt doesn't name one.
 
@@ -324,6 +348,7 @@ def _merge_user_prefs(base: Settings) -> Settings:
             update={
                 "avoid_countries": prefs.get("avoid_countries", ""),
                 "visited_countries": prefs.get("visited_countries", ""),
+                "visited_tiles": prefs.get("visited_tiles", ""),
                 "col_expected_daily": _f(prefs.get("col_expected_daily", "0")),
                 "col_tolerance_pct": _f(prefs.get("col_tolerance_pct", "25"), 25.0),
                 "col_hotel": _f(prefs.get("col_hotel", "0")),
