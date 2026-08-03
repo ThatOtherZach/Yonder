@@ -292,6 +292,16 @@ def _mark_missing_fares_adventure(result, *, forced: bool = True):
 app = FastAPI(title="Yonder", description="Personal travel planner — flights, adventures, itineraries")
 _PKG = Path(__file__).parent
 
+# Startup check: every country code referenced by the airport lookup and
+# seed stopovers must have a COUNTRY_SIZE entry, or size scaling silently
+# degrades to the flat midpoint boost. Logs a one-time warning on misses.
+try:
+    from yonder.country_size import check_size_table_coverage as _check_size_cov
+
+    _check_size_cov()
+except Exception:
+    pass
+
 # One-time migration: move any COL/country values stored in .env into user_prefs.db
 try:
     from yonder.settings_store import read_env as _read_env

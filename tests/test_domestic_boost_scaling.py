@@ -11,7 +11,38 @@ from yonder.country_size import (
     DOMESTIC_BOOST_BASE,
     country_scale,
     domestic_boost_points,
+    missing_size_codes,
 )
+
+
+# ---------------------------------------------------------------------------
+# size-table coverage
+# ---------------------------------------------------------------------------
+
+def test_every_referenced_country_has_size_entry():
+    """Every code in IATA_COUNTRY / SEED_STOPOVERS must be in COUNTRY_SIZE.
+
+    A miss means country_scale() silently falls back to the flat midpoint
+    boost for travelers from that country.
+    """
+    missing = missing_size_codes()
+    assert not missing, (
+        f"COUNTRY_SIZE missing entries for referenced codes: {sorted(missing)}"
+    )
+
+
+def test_unknown_code_warns_once(caplog):
+    import logging
+
+    from yonder import country_size
+
+    country_size._warned_missing.discard("XX")
+    with caplog.at_level(logging.WARNING, logger="yonder.country_size"):
+        assert country_scale("XX") == 0.5
+        assert country_scale("xx") == 0.5  # same code, second call
+    warnings = [r for r in caplog.records if "COUNTRY_SIZE" in r.getMessage()]
+    assert len(warnings) == 1
+    country_size._warned_missing.discard("XX")
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,14 @@ domestic boost behaves like the historical flat boost.
 """
 from __future__ import annotations
 
+import logging
 import math
+
+logger = logging.getLogger(__name__)
+
+# Codes we've already warned about — one warning per code per process, so a
+# missing entry is visible in logs without flooding them on every search.
+_warned_missing: set[str] = set()
 
 # ISO2 -> (land area km², population).  Figures are approximate (rounded,
 # early-2020s vintage); only the order of magnitude matters for the blend.
@@ -229,6 +236,40 @@ def _blend(area_km2: float, population: float) -> float:
     return (a + p) / 2.0
 
 
+def missing_size_codes() -> set[str]:
+    """Country codes referenced by the app but absent from COUNTRY_SIZE.
+
+    Scans the airport lookup (IATA_COUNTRY) and the seed stopover list —
+    the two sources that feed home/origin country codes into
+    country_scale(). Any code returned here would silently degrade to the
+    flat midpoint boost. Imports are local to avoid circular imports.
+    """
+    from yonder.adventure import SEED_STOPOVERS
+    from yonder.countries import IATA_COUNTRY
+
+    referenced = set(IATA_COUNTRY.values())
+    referenced.update(
+        s["country"] for s in SEED_STOPOVERS if isinstance(s.get("country"), str)
+    )
+    return {c.strip().upper() for c in referenced} - set(COUNTRY_SIZE)
+
+
+def check_size_table_coverage() -> set[str]:
+    """Startup check: warn once about any referenced code missing a size entry.
+
+    Returns the set of missing codes (empty when coverage is complete).
+    """
+    missing = missing_size_codes()
+    if missing:
+        logger.warning(
+            "COUNTRY_SIZE is missing entries for country codes referenced by "
+            "IATA_COUNTRY/SEED_STOPOVERS: %s — these fall back to the flat "
+            "midpoint domestic boost",
+            ", ".join(sorted(missing)),
+        )
+    return missing
+
+
 # Historical flat domestic boost — still the exact strength at scale 0.5.
 DOMESTIC_BOOST_BASE = 3
 
@@ -254,8 +295,16 @@ def country_scale(cc: str | None) -> float:
     """
     if not cc:
         return 0.5
-    entry = COUNTRY_SIZE.get(cc.strip().upper())
+    code = cc.strip().upper()
+    entry = COUNTRY_SIZE.get(code)
     if entry is None:
+        if code not in _warned_missing:
+            _warned_missing.add(code)
+            logger.warning(
+                "country_scale: no COUNTRY_SIZE entry for %r; "
+                "falling back to midpoint 0.5 (flat domestic boost)",
+                code,
+            )
         return 0.5
     area, pop = entry
     s = 0.5 + (_blend(area, pop) - _REF_BLEND) / _SPAN
