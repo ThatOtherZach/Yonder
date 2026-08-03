@@ -17,6 +17,7 @@ from yonder.countries import (
     normalize_avoid_list,
     normalize_country_list,
 )
+from yonder.country_size import domestic_boost_points
 from yonder.currency import convert_offer
 from yonder.engine import search_flights
 from yonder.history import record_leg, route_stats
@@ -1171,12 +1172,18 @@ def _sort_by_comfort(
         # for low-XP travellers (at least one stamp but fewer than 25) to nudge
         # them toward home-country options.  Zero-stamp users without proximity
         # intent keep the open "go anywhere" nudge.
+        #
+        # The boost strength scales with the home country's size (area +
+        # population blend): continent-scale homes (US/CA/BR/AU) push harder
+        # toward domestic seeds, small countries graduate to international
+        # suggestions sooner.  A medium country (scale 0.5) keeps the
+        # historical flat +3.
         _prox = getattr(req, "proximity_mode", False)
         if _prox or (req.visited_countries and _comfort < 0.25):
             origin_country = country_for_iata(req.origin or "")
             idea_country = idea.country or ""
             if origin_country and idea_country and origin_country.upper() == idea_country.upper():
-                s += 3
+                s += domestic_boost_points(origin_country)
         # Diversity nudge: decay cities already in recent trip history so
         # results feel fresh instead of surfacing the same top seed each time.
         if _recent and (idea.iata or "").upper() in _recent:
