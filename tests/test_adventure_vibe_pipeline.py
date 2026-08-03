@@ -505,6 +505,46 @@ async def test_low_xp_ord_domestic_stop_survives_pipeline():
     )
 
 
+@pytest.mark.asyncio
+async def test_low_xp_yyz_domestic_stop_survives_pipeline():
+    """End-to-end test for a big-country (CA) home: a low-XP user departing
+    YYZ must see at least one Canadian domestic city in the final
+    plan_adventure() itineraries.
+
+    The domestic boost now scales with home-country size (country_size.py):
+    Canada is continent-scale, so its boost is the strongest tier.  This test
+    confirms the scaled boost carries through the whole pipeline — seeds →
+    filter_ideas → _sort_by_comfort → pricing — and is not lost in later
+    filtering/dedup stages.
+
+    Profile: 1 visited country (GB) → _comfort = 0.01 < 0.25 → boost active.
+    Vibe: 'city' — YUL/YOW/YQB/YEG all carry the 'city' tag.
+    """
+    req = AdventureRequest(
+        origin="YYZ",
+        destination="LHR",
+        depart_date=date(2025, 11, 1),
+        vibe="city",
+        max_candidates=5,
+        include_direct=False,
+        visited_countries=["GB"],  # 1 country → low-XP, domestic boost active
+    )
+    seeds = seed_ideas(req)
+    with patch(
+        "yonder.daily_costs.estimate_batch_for_stops",
+        new=AsyncMock(return_value={}),
+    ):
+        result = await plan_adventure(req, seeds, include_mock=True)
+
+    stop_iatas = {it.stop_iata for it in result.itineraries if it.stop_iata}
+    ca_domestic_in_result = stop_iatas & _CA_DOMESTIC
+    assert ca_domestic_in_result, (
+        f"No Canadian domestic hub found in plan_adventure() itineraries for "
+        f"low-XP YYZ user (vibe='city'). Got stops: {sorted(stop_iatas)}. "
+        f"Check that the size-scaled domestic boost carries through the pipeline."
+    )
+
+
 def test_domestic_boost_inactive_for_zero_visited_countries():
     """With visited_countries=[] the domestic boost must NOT fire.
 
