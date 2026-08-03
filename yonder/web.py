@@ -1509,6 +1509,9 @@ async def explore_run(request: Request) -> HTMLResponse:
                                     "visited_countries": visited,
                                 },
                                 default_currency=currency,
+                                # Refresh wants novelty — learned seed
+                                # candidates would re-suggest the same places
+                                seed_learned=not is_refresh,
                             ),
                             timeout=invent_timeout,
                         )

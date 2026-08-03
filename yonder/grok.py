@@ -644,10 +644,14 @@ class GrokClient:
         form: dict[str, Any],
         default_currency: str = "CAD",
         today: date | None = None,
+        seed_learned: bool = True,
     ) -> tuple[AdventureRequest, list[StopoverIdea]]:
         """ONE Grok call: normalize the trip for APIs + propose detour cities.
 
         Token-efficient: replaces separate parse + propose calls.
+
+        seed_learned: pass False on Refresh-for-novelty — re-suggesting the
+        same learned destinations defeats the point of a refresh.
         """
         today = today or date.today()
         from yonder.countries import country_label
@@ -719,8 +723,12 @@ class GrokClient:
             )
         # Knowledge-assisted seeding: learned candidates the AI may confirm,
         # reorder, or override — the AI stays the decision-maker.
-        learned = _learned_seed_candidates(
-            vibe=str(form.get("vibe") or ""), origin=str(form.get("origin") or "")
+        learned = (
+            _learned_seed_candidates(
+                vibe=str(form.get("vibe") or ""), origin=str(form.get("origin") or "")
+            )
+            if seed_learned
+            else []
         )
         if learned:
             system += (
@@ -1100,7 +1108,11 @@ class GrokClient:
                 "short-haul destinations; avoid flights longer than 4 hours from origin."
             )
         # Knowledge-assisted seeding — optional learned suggestions; AI decides.
-        learned = _learned_seed_candidates(vibe=vibe, origin=home)
+        # Refresh-for-novelty (use_cache=False) skips injection: re-suggesting
+        # the same learned destinations defeats the point of a refresh.
+        learned = (
+            _learned_seed_candidates(vibe=vibe, origin=home) if use_cache else []
+        )
         if learned:
             system += (
                 "\n- learned_candidates are destinations this traveler's past "
