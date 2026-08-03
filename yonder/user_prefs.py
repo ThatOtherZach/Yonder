@@ -22,6 +22,11 @@ PREF_DEFAULTS: dict[str, str] = {
     # country list (each country becomes its country-level tile).
     "visited_tiles": "",
     "avoid_countries": "",
+    # Tile-level avoided regions (ISO 3166-2 subdivision codes for the
+    # subdivided whitelist countries).  When >=80% of a country's regions
+    # are avoided, the whole country behaves as avoided (derived — the
+    # stored per-tile choices are never mutated by that rule).
+    "avoid_tiles": "",
     "col_expected_daily": "0",
     "col_tolerance_pct": "25",
     # Legacy per-category fields — kept so migration from .env works

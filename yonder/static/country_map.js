@@ -347,6 +347,37 @@
     return "none";
   };
 
+  // Share of a subdivided country's regions marked avoid at which the
+  // whole country reads as avoided (mirrors the 80% visited rule).
+  var AVOID_SATURATION = 0.8;
+
+  /**
+   * True when >=80% of a subdivided country's regions are marked avoid.
+   * Visited tiles never count toward the avoid tally (visited wins).
+   */
+  YonderMap.prototype.avoidSaturated = function (cc) {
+    var subs = this.subCountries[cc] || [];
+    if (!subs.length) return false;
+    var n = 0;
+    for (var i = 0; i < subs.length; i++) {
+      if (this.avoid.has(subs[i]) && !this.visited.has(subs[i])) n++;
+    }
+    return n / subs.length >= AVOID_SATURATION - 1e-9;
+  };
+
+  /** Countries avoided outright or via >=80% region saturation. */
+  YonderMap.prototype.avoidCountryCount = function () {
+    var s = new Set();
+    this.avoid.forEach(function (c) {
+      if (c.indexOf("-") === -1) s.add(c);
+    });
+    var self = this;
+    Object.keys(this.subCountries).forEach(function (cc) {
+      if (self.avoidSaturated(cc)) s.add(cc);
+    });
+    return s.size;
+  };
+
   /** Coverage of a subdivided country: "none" | "partial" | "full". */
   YonderMap.prototype.subCoverage = function (cc) {
     var subs = this.subCountries[cc] || [];
@@ -367,7 +398,20 @@
     // any tile (or a country-level "some coverage" stamp) → visited fill;
     // its unvisited subdivisions stay open on top.
     if (code.indexOf("-") === -1 && this.subCountries[code] && st !== "avoid") {
-      st = this.subCoverage(code) === "none" ? "none" : "visited";
+      // Saturated avoid (>=80% of regions) paints the whole country avoided
+      if (this.avoidSaturated(code)) {
+        st = "avoid";
+      } else {
+        st = this.subCoverage(code) === "none" ? "none" : "visited";
+      }
+    }
+    // Remaining unmarked regions of a saturated country read as avoided too
+    if (
+      code.indexOf("-") > -1 &&
+      st === "none" &&
+      this.avoidSaturated(tileCountry(code))
+    ) {
+      st = "avoid";
     }
     nodes.forEach(function (node) {
       node.classList.remove("visited", "avoid", "active", "other", "vibe-preview");
@@ -481,11 +525,23 @@
     // Preserve stamp order — do NOT alphabetize (first visited = Home)
     var v = this.orderedVisited();
     var a = this.orderedAvoid();
+    // Countries avoided outright or via >=80% region saturation
+    var aCountries = a.filter(function (c) {
+      return c.indexOf("-") === -1;
+    });
+    var self0 = this;
+    Object.keys(this.subCountries).forEach(function (cc) {
+      if (self0.avoidSaturated(cc) && aCountries.indexOf(cc) === -1) {
+        aCountries.push(cc);
+      }
+    });
     if (this.visitedCountEl) this.visitedCountEl.textContent = String(v.length);
-    if (this.avoidCountEl) this.avoidCountEl.textContent = String(a.length);
+    if (this.avoidCountEl) {
+      this.avoidCountEl.textContent = String(aCountries.length);
+    }
     if (this.warnEl) {
       this.warnEl.textContent =
-        a.length >= AVOID_MAX
+        aCountries.length >= AVOID_MAX
           ? "Avoid list full — clear one before adding another"
           : "";
     }
@@ -505,13 +561,17 @@
     var homeIata = this.resolveHomeIata(v);
     if (global.FS_TRAVEL) {
       global.FS_TRAVEL.visited = v;
-      global.FS_TRAVEL.avoid = a;
+      // Effective avoid countries (incl. saturation) — tiles kept separately
+      global.FS_TRAVEL.avoid = aCountries;
+      global.FS_TRAVEL.avoid_tiles = a.filter(function (c) {
+        return c.indexOf("-") > -1;
+      });
       global.FS_TRAVEL.visited_names = v.map(
         function (c) {
           return this.names[c] || c;
         }.bind(this)
       );
-      global.FS_TRAVEL.avoid_names = a.map(
+      global.FS_TRAVEL.avoid_names = aCountries.map(
         function (c) {
           return this.names[c] || c;
         }.bind(this)
@@ -529,9 +589,9 @@
     try {
       var detail = {
         visited: v.slice(),
-        avoid: a.slice(),
+        avoid: aCountries.slice(),
         visited_names: (global.FS_TRAVEL && global.FS_TRAVEL.visited_names) || v.slice(),
-        avoid_names: (global.FS_TRAVEL && global.FS_TRAVEL.avoid_names) || a.slice(),
+        avoid_names: (global.FS_TRAVEL && global.FS_TRAVEL.avoid_names) || aCountries.slice(),
         home_iata: homeIata,
         home_country: v.length ? tileCountry(v[0]) : "",
       };
@@ -563,16 +623,32 @@
     if (!code || !TILE_RE.test(code)) return;
     var st = this.stateOf(code);
 
-    // Subdivision tiles are visited-only toggles (avoid stays country-level)
+    // Subdivision tiles cycle none → visited → avoid → clear
     if (code.indexOf("-") > -1) {
+      var cc = tileCountry(code);
       if (st === "visited") {
         this.visited.delete(code);
+        this.avoid.add(code);
+      } else if (st === "avoid") {
+        if (this.avoid.has(code)) {
+          // region-level avoid → clear
+          this.avoid.delete(code);
+        } else {
+          // country-level avoid: un-avoid the country, stamp this region
+          this.visited.add(code);
+          this.avoid.delete(cc);
+        }
       } else {
         this.visited.add(code);
-        this.avoid.delete(tileCountry(code));
+        this.avoid.delete(code);
+        this.avoid.delete(cc);
       }
-      this.paint(code);
-      this.paint(tileCountry(code));
+      // Saturation can flip the whole country's presentation — repaint all
+      var self2 = this;
+      (this.subCountries[cc] || []).forEach(function (t) {
+        self2.paint(t);
+      });
+      this.paint(cc);
       this.syncUi();
       this.scheduleSave();
       return;
@@ -582,7 +658,7 @@
       this.visited.add(code);
       this.avoid.delete(code);
     } else if (st === "visited") {
-      if (this.avoid.size >= AVOID_MAX && !this.avoid.has(code)) {
+      if (this.avoidCountryCount() >= AVOID_MAX && !this.avoid.has(code)) {
         if (this.warnEl) {
           this.warnEl.textContent = "Avoid list full (max " + AVOID_MAX + ")";
         }
@@ -590,10 +666,11 @@
       }
       this.visited.delete(code);
       this.avoid.add(code);
-      // Avoiding a country clears its subdivision tiles too
+      // Avoiding a country clears its region tiles (visited AND avoid)
       var self = this;
       (this.subCountries[code] || []).forEach(function (t) {
         self.visited.delete(t);
+        self.avoid.delete(t);
         self.paint(t);
       });
     } else {
@@ -664,7 +741,11 @@
       // Server echoes normalized tiles (subdivisions + country tiles)
       if (j.tiles) this.visited = new Set(parseList(j.tiles));
       else if (j.visited) this.visited = new Set(parseList(j.visited));
-      if (j.avoid) this.avoid = new Set(parseList(j.avoid));
+      if (j.avoid) {
+        var av = parseList(j.avoid);
+        if (j.avoid_tiles) av = av.concat(parseList(j.avoid_tiles));
+        this.avoid = new Set(av);
+      }
       this.paintAll();
       this.syncUi();
       this.setSaveStatus("saved", "Saved");
@@ -981,7 +1062,9 @@
       opts.visited = global.FS_TRAVEL.visited;
     }
     if (opts.avoid == null && global.FS_TRAVEL) {
-      opts.avoid = global.FS_TRAVEL.avoid;
+      opts.avoid = (global.FS_TRAVEL.avoid || []).concat(
+        global.FS_TRAVEL.avoid_tiles || []
+      );
     }
     var map = new YonderMap(root, opts);
     map.boot();

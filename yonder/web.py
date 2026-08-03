@@ -391,6 +391,7 @@ def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
         "testing": bool(settings.testing),
         "countries": COUNTRIES,
         "avoid_defaults": avoid_codes,
+        "avoid_tiles_defaults": settings.avoid_tile_list(),
         "visited_defaults": visited_codes,
         "visited_tiles_defaults": settings.visited_tile_list(),
         "budgets": budgets_snapshot(settings),
@@ -400,6 +401,7 @@ def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
         # For progress.js fun lines + CRT maps (names only — no secrets)
         "travel_ctx": {
             "avoid": avoid_codes,
+            "avoid_tiles": settings.avoid_tile_list(),
             # visited is stamp order: first country = home when HOME_IATA is blank
             "visited": visited_codes,
             "avoid_names": [country_label(c) for c in avoid_codes],
@@ -749,7 +751,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
         )
 
     try:
-        avoid = settings.avoid_country_list()
+        avoid = settings.effective_avoid_country_list()
         visited = settings.visited_country_list()
         visited_tiles_l = settings.visited_tile_list()
         aim, _skip = settings.search_timing()
@@ -969,7 +971,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     currency = (settings.default_currency or "USD").upper()
     if not currency.isalpha() or len(currency) != 3:
         currency = "USD"
-    avoid = settings.avoid_country_list()
+    avoid = settings.effective_avoid_country_list()
     visited = settings.visited_country_list()
     visited_tiles_l = settings.visited_tile_list()
     min_stop, max_stop, max_cand_settings = settings.detour_stop_defaults()
@@ -2630,7 +2632,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
     # Mock is internal-only: route skeletons when no fare providers configured.
     mock = not settings.configured_providers()
     use_grok = True  # always invent with Grok when key is present
-    avoid = settings.avoid_country_list()
+    avoid = settings.effective_avoid_country_list()
     visited = settings.visited_country_list()
     visited_tiles_l = settings.visited_tile_list()
     min_stop, max_stop, max_cand = settings.detour_stop_defaults()
@@ -3219,7 +3221,7 @@ async def api_save_itinerary(request: Request):
     # Stamp passport context into trip_meta when provided
     settings = reload_settings()
     trip_meta.setdefault("visited", settings.visited_country_list())
-    trip_meta.setdefault("avoid", settings.avoid_country_list())
+    trip_meta.setdefault("avoid", settings.effective_avoid_country_list())
     try:
         saved = save_itinerary(itinerary, trip_meta=trip_meta)
     except Exception as exc:  # noqa: BLE001
@@ -4001,7 +4003,7 @@ async def api_suggest(
         vibe=(vibe or "").strip().lower() or None,
         origin=home,
         visited=settings.visited_country_list(),
-        avoid=settings.avoid_country_list(),
+        avoid=settings.effective_avoid_country_list(),
     )
     return JSONResponse(
         {
@@ -4085,9 +4087,14 @@ async def api_travel_map(request: Request) -> JSONResponse:
 
     s = get_settings()
     if "avoid" in body:
-        avoid = normalize_avoid_list(body.get("avoid") or [])
+        # The avoid payload may mix plain ISO2 country codes and subdivision
+        # tile codes (region-level avoid on the subdivided countries).
+        avoid_entries = normalize_tile_list(body.get("avoid") or [])
+        avoid = normalize_avoid_list([e for e in avoid_entries if "-" not in e])
+        avoid_tiles = [e for e in avoid_entries if "-" in e]
     else:
         avoid = list(s.avoid_country_list())
+        avoid_tiles = list(s.avoid_tile_list())
 
     # "visited" now carries tile codes: plain ISO2 country tiles and/or
     # ISO 3166-2 subdivision tiles for the subdivided whitelist countries.
@@ -4099,6 +4106,14 @@ async def api_travel_map(request: Request) -> JSONResponse:
 
     avoid_set = set(avoid)
     tiles = [t for t in tiles if country_of_tile(t) not in avoid_set]
+    # Region-level avoid: redundant under a country-level avoid, and a tile
+    # marked visited wins over an avoid mark (documented precedence).
+    tile_set = set(tiles)
+    avoid_tiles = [
+        t
+        for t in avoid_tiles
+        if country_of_tile(t) not in avoid_set and t not in tile_set
+    ]
     # Country list stays in sync with tiles (stamp order preserved — the
     # first stamped country still resolves the traveller's home airport).
     visited = visited_countries_from_tiles(tiles)
@@ -4109,6 +4124,7 @@ async def api_travel_map(request: Request) -> JSONResponse:
         _set_prefs(
             {
                 "avoid_countries": ",".join(avoid),
+                "avoid_tiles": ",".join(avoid_tiles),
                 "visited_countries": ",".join(visited),
                 "visited_tiles": ",".join(tiles),
             }
@@ -4124,9 +4140,12 @@ async def api_travel_map(request: Request) -> JSONResponse:
         {
             "ok": True,
             "avoid": avoid,
+            "avoid_tiles": avoid_tiles,
+            "effective_avoid": get_settings().effective_avoid_country_list(),
             "visited": visited,
             "tiles": tiles,
             "avoid_names": [country_label(c) for c in avoid],
+            "avoid_tile_names": [tile_label(t) for t in avoid_tiles],
             "visited_names": [country_label(c) for c in visited],
             "tile_names": [tile_label(t) for t in tiles],
             "xp": xp_profile,
@@ -4160,6 +4179,7 @@ async def api_backup_export() -> JSONResponse:
     prefs.pop("visited_countries", None)
     prefs.pop("avoid_countries", None)
     prefs.pop("visited_tiles", None)
+    prefs.pop("avoid_tiles", None)
     env = _read_env()
     payload = {
         "format": _BACKUP_FORMAT,
@@ -4169,6 +4189,7 @@ async def api_backup_export() -> JSONResponse:
             "visited": list(s.visited_country_list()),
             "tiles": list(s.visited_tile_list()),
             "avoid": list(s.avoid_country_list()),
+            "avoid_tiles": list(s.avoid_tile_list()),
         },
         "prefs": prefs,
         "settings": {k: (env.get(k) or "").strip() for k in _BACKUP_ENV_KEYS},
@@ -4235,6 +4256,16 @@ async def api_backup_import(request: Request) -> JSONResponse:
         tiles = normalize_country_list(_codes(tm.get("visited")), max_n=250)
     tiles = [t for t in tiles if _tile_cc(t) not in avoid_set]
     visited = _tiles_to_countries(tiles)
+    # Region-level avoid tiles (optional section; older backups lack it).
+    avoid_tiles = _norm_tiles(
+        tm.get("avoid_tiles") if isinstance(tm.get("avoid_tiles"), list) else []
+    )
+    _tile_set = set(tiles)
+    avoid_tiles = [
+        t
+        for t in avoid_tiles
+        if "-" in t and _tile_cc(t) not in avoid_set and t not in _tile_set
+    ]
 
     # Prefs: only known keys, numeric keys sanity-checked
     from yonder.user_prefs import PREF_DEFAULTS, set_prefs as _set_prefs
@@ -4267,6 +4298,7 @@ async def api_backup_import(request: Request) -> JSONResponse:
     pref_updates["visited_countries"] = ",".join(visited)
     pref_updates["visited_tiles"] = ",".join(tiles)
     pref_updates["avoid_countries"] = ",".join(avoid)
+    pref_updates["avoid_tiles"] = ",".join(avoid_tiles)
 
     # Settings: only the whitelisted non-secret keys, format-validated
     raw_settings = body.get("settings") or {}
@@ -4575,7 +4607,7 @@ async def api_ask(request: Request) -> dict:
         trip = await grok.parse_natural_language(
             ask,
             default_currency=settings.default_currency,
-            avoid_countries=settings.avoid_country_list(),
+            avoid_countries=settings.effective_avoid_country_list(),
             visited_countries=settings.visited_country_list(),
         )
         query = grok.to_search_query(trip)

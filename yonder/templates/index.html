@@ -1263,7 +1263,7 @@
             data-compact="1"
             data-theme="phosphor"
             data-visited="{{ (visited_tiles_defaults or visited_defaults or [])|join(',') }}"
-            data-avoid="{{ (avoid_defaults or [])|join(',') }}"
+            data-avoid="{{ ((avoid_defaults or []) + (avoid_tiles_defaults or []))|join(',') }}"
           ></div>
         </div>
 
@@ -1323,7 +1323,7 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
-    <script src="/static/country_map.js?v=20"></script>
+    <script src="/static/country_map.js?v=21"></script>
     <script>
     document.addEventListener("DOMContentLoaded", function() {
       var tpl = document.getElementById("xp-badge-tpl");

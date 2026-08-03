@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     home_iata: str = ""
     # Comma-separated ISO2 codes, max 10 (e.g. US,RU,CN)
     avoid_countries: str = ""
+    # Comma-separated ISO 3166-2 subdivision codes marked "avoid" on the map
+    # (subdivided whitelist countries only). >=80% of a country's regions
+    # avoided → the whole country joins effective_avoid_country_list().
+    avoid_tiles: str = ""
     # Comma-separated ISO2 codes — personal travel passport map (unlimited-ish)
     visited_countries: str = ""
     # Comma-separated tile codes (ISO2 and/or ISO 3166-2 subdivisions for the
@@ -211,6 +215,33 @@ class Settings(BaseSettings):
 
         return normalize_avoid_list(self.avoid_countries)
 
+    def avoid_tile_list(self) -> list[str]:
+        """Tile-level avoided regions (subdivision codes, stamp order)."""
+        from yonder.tiles import normalize_tile_list
+
+        return [t for t in normalize_tile_list(self.avoid_tiles) if "-" in t]
+
+    def effective_avoid_country_list(self) -> list[str]:
+        """Avoid list consumed by prompts, filtering, retries and stopovers.
+
+        Stored country-level avoids plus any subdivided country whose
+        avoided regions hit the 80% saturation threshold (see
+        yonder.tiles.avoid_saturated_countries).  Derived only — never
+        written back to the user's stored per-tile choices.
+        """
+        from yonder.tiles import avoid_saturated_countries
+
+        out = list(self.avoid_country_list())
+        seen = set(out)
+        saturated = avoid_saturated_countries(
+            self.avoid_tile_list(), self.visited_tile_list()
+        )
+        for cc in sorted(saturated):
+            if cc not in seen:
+                seen.add(cc)
+                out.append(cc)
+        return out
+
     def visited_country_list(self) -> list[str]:
         from yonder.countries import normalize_country_list
 
@@ -347,6 +378,7 @@ def _merge_user_prefs(base: Settings) -> Settings:
         return base.model_copy(
             update={
                 "avoid_countries": prefs.get("avoid_countries", ""),
+                "avoid_tiles": prefs.get("avoid_tiles", ""),
                 "visited_countries": prefs.get("visited_countries", ""),
                 "visited_tiles": prefs.get("visited_tiles", ""),
                 "col_expected_daily": _f(prefs.get("col_expected_daily", "0")),

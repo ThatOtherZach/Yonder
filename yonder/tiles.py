@@ -304,6 +304,42 @@ def fully_visited_countries(tiles: list[str]) -> set[str]:
     return full
 
 
+# Share of a subdivided country's regions that must be marked "avoid"
+# before the whole country behaves as avoided (mirrors the visited rule).
+AVOID_SATURATION = 0.8
+
+
+def avoid_saturated_countries(
+    avoid_tiles: list[str], visited_tiles: list[str]
+) -> set[str]:
+    """Subdivided countries whose avoided regions hit >=80% (by tile count).
+
+    Precedence (documented decision):
+    * A tile marked visited never counts toward the avoid tally, even if it
+      somehow also appears in the avoid list — visited wins per tile.
+    * Because visited tiles are excluded, a country can never be both fully
+      seen and avoid-saturated: every visited region lowers the avoid share.
+    * The share is avoided regions / ALL regions of the country, so >=80%
+      of the country's total regions must be explicitly avoided.
+
+    Only subdivision tiles count — country-level avoid entries are handled
+    by the existing avoid_countries list, and non-subdivided countries
+    avoid as a whole already.
+    """
+    vset = {str(t or "").strip().upper() for t in visited_tiles or []}
+    by_cc: dict[str, set[str]] = {}
+    for t in avoid_tiles or []:
+        code = str(t or "").strip().upper()
+        if code in SUBDIVISION_TILES and code not in vset:
+            by_cc.setdefault(country_of_tile(code), set()).add(code)
+    out: set[str] = set()
+    for cc, codes in by_cc.items():
+        subs = SUBDIVIDED_COUNTRIES.get(cc)
+        if subs and len(codes) / len(subs) >= AVOID_SATURATION - 1e-9:
+            out.add(cc)
+    return out
+
+
 def unlocked_km2(tiles: list[str]) -> int:
     """Total square kilometres unlocked by a tile list.
 

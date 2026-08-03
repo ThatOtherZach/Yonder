@@ -929,7 +929,7 @@ def filter_ideas(
     ideas: list[StopoverIdea],
     req: AdventureRequest,
 ) -> list[StopoverIdea]:
-    avoid = normalize_avoid_list(req.avoid_countries)
+    avoid = normalize_avoid_list(req.avoid_countries, max_n=16)
     # Getaway suppression works on FULLY visited countries: with tile-level
     # data, partial coverage of a subdivided country (e.g. only Ontario, or
     # a country-level "some coverage" stamp for Canada) keeps that country
@@ -1410,7 +1410,7 @@ def seed_ideas(
 
     origin = req.origin.upper()
     dest = req.destination.upper()
-    avoid = normalize_avoid_list(req.avoid_countries)
+    avoid = normalize_avoid_list(req.avoid_countries, max_n=16)
     visited = _suppressed_countries(req)
     ban = {c.upper() for c in (exclude_iatas or set()) if c}
     getaway = _is_getaway(req)
@@ -1479,7 +1479,7 @@ async def plan_adventure(
             "origin": req.origin.upper(),
             "destination": req.destination.upper(),
             "currency": req.currency.upper(),
-            "avoid_countries": normalize_avoid_list(req.avoid_countries),
+            "avoid_countries": normalize_avoid_list(req.avoid_countries, max_n=16),
             "visited_countries": normalize_country_list(
                 req.visited_countries or [], max_n=250
             ),
