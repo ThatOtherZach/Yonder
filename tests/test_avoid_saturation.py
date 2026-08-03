@@ -23,7 +23,7 @@ from yonder import tiles as T
 from yonder.config import Settings
 
 US = T.SUBDIVIDED_COUNTRIES["US"]  # 51 tiles → 80% = 40.8 → needs 41
-CA = T.SUBDIVIDED_COUNTRIES["CA"]  # 13 tiles → 80% = 10.4 → needs 11
+CA = T.SUBDIVIDED_COUNTRIES["CA"]  # 9 tiles → 80% = 7.2 → needs 8
 GB = T.SUBDIVIDED_COUNTRIES["GB"]  # 4 tiles → needs 4 (3/4 = 75%)
 
 
@@ -34,13 +34,13 @@ GB = T.SUBDIVIDED_COUNTRIES["GB"]  # 4 tiles → needs 4 (3/4 = 75%)
 
 def test_below_threshold_not_saturated():
     assert T.avoid_saturated_countries(list(US[:40]), []) == set()  # 78.4%
-    assert T.avoid_saturated_countries(list(CA[:10]), []) == set()  # 76.9%
+    assert T.avoid_saturated_countries(list(CA[:7]), []) == set()  # 77.8%
     assert T.avoid_saturated_countries(list(GB[:3]), []) == set()  # 75%
 
 
 def test_at_or_above_threshold_saturates():
     assert T.avoid_saturated_countries(list(US[:41]), []) == {"US"}  # 80.4%
-    assert T.avoid_saturated_countries(list(CA[:11]), []) == {"CA"}
+    assert T.avoid_saturated_countries(list(CA[:8]), []) == {"CA"}
     assert T.avoid_saturated_countries(list(GB), []) == {"GB"}
     # Retired region codes (MX/BR/AU) are no longer subdivision tiles and
     # can never saturate — whole-country avoid is direct now.
@@ -57,7 +57,7 @@ def test_visited_tiles_excluded_from_avoid_tally():
 
 
 def test_unmarking_below_threshold_restores_normal_behavior():
-    avoid = list(CA[:11])
+    avoid = list(CA[:8])
     assert T.avoid_saturated_countries(avoid, []) == {"CA"}
     avoid.pop()  # user un-marks one region
     assert T.avoid_saturated_countries(avoid, []) == set()
@@ -67,7 +67,7 @@ def test_country_codes_and_junk_ignored():
     # Country-level codes and unknown tiles never count toward saturation
     assert T.avoid_saturated_countries(["US", "FR", "XX-ZZ", ""], []) == set()
     # Duplicates counted once
-    assert T.avoid_saturated_countries(list(CA[:10]) + [CA[0]] * 5, []) == set()
+    assert T.avoid_saturated_countries(list(CA[:7]) + [CA[0]] * 5, []) == set()
 
 
 def test_fully_visited_country_cannot_saturate():
@@ -86,24 +86,24 @@ def _settings(**kw) -> Settings:
 
 
 def test_effective_avoid_adds_saturated_country():
-    s = _settings(avoid_countries="RU", avoid_tiles=",".join(CA[:11]))
+    s = _settings(avoid_countries="RU", avoid_tiles=",".join(CA[:8]))
     assert s.avoid_country_list() == ["RU"]  # stored list untouched
     assert s.effective_avoid_country_list() == ["RU", "CA"]
 
 
 def test_effective_avoid_below_threshold_unchanged():
-    s = _settings(avoid_countries="RU", avoid_tiles=",".join(CA[:10]))
+    s = _settings(avoid_countries="RU", avoid_tiles=",".join(CA[:7]))
     assert s.effective_avoid_country_list() == ["RU"]
 
 
 def test_effective_avoid_no_duplicate_when_country_already_avoided():
-    s = _settings(avoid_countries="CA", avoid_tiles=",".join(CA[:11]))
+    s = _settings(avoid_countries="CA", avoid_tiles=",".join(CA[:8]))
     assert s.effective_avoid_country_list() == ["CA"]
 
 
 def test_effective_avoid_respects_visited_precedence():
     s = _settings(
-        avoid_tiles=",".join(CA[:11]),
+        avoid_tiles=",".join(CA[:8]),
         visited_tiles=CA[0],  # one avoided region is actually visited
     )
     assert s.effective_avoid_country_list() == []
@@ -200,25 +200,25 @@ def client(tmp_path, monkeypatch):
 
 
 def test_travel_map_saves_avoid_tiles_and_reports_effective(client):
-    payload = {"visited": ["FR"], "avoid": ["RU"] + list(CA[:11])}
+    payload = {"visited": ["FR"], "avoid": ["RU"] + list(CA[:8])}
     r = client.post("/api/travel-map", json=payload)
     assert r.status_code == 200
     j = r.json()
     assert j["ok"] is True
     assert j["avoid"] == ["RU"]  # stored country avoids stay country-level
-    assert set(j["avoid_tiles"]) == set(CA[:11])
+    assert set(j["avoid_tiles"]) == set(CA[:8])
     assert set(j["effective_avoid"]) == {"RU", "CA"}
     assert j["tiles"] == ["FR"]
 
     from yonder.user_prefs import get_pref
 
     assert get_pref("avoid_countries") == "RU"
-    assert set(get_pref("avoid_tiles").split(",")) == set(CA[:11])
+    assert set(get_pref("avoid_tiles").split(",")) == set(CA[:8])
 
 
 def test_travel_map_visited_tile_wins_over_avoid_mark(client):
     # A region marked both visited and avoided: visited wins per tile
-    payload = {"visited": [CA[0]], "avoid": list(CA[:11])}
+    payload = {"visited": [CA[0]], "avoid": list(CA[:8])}
     r = client.post("/api/travel-map", json=payload)
     j = r.json()
     assert CA[0] in j["tiles"]
@@ -236,8 +236,8 @@ def test_travel_map_country_avoid_clears_its_region_avoid_tiles(client):
 
 
 def test_travel_map_unmark_below_threshold_round_trip(client):
-    client.post("/api/travel-map", json={"visited": [], "avoid": list(CA[:11])})
-    r1 = client.post("/api/travel-map", json={"avoid": list(CA[:10])})
+    client.post("/api/travel-map", json={"visited": [], "avoid": list(CA[:8])})
+    r1 = client.post("/api/travel-map", json={"avoid": list(CA[:7])})
     j1 = r1.json()
     assert "CA" not in j1["effective_avoid"]
-    assert set(j1["avoid_tiles"]) == set(CA[:10])
+    assert set(j1["avoid_tiles"]) == set(CA[:7])

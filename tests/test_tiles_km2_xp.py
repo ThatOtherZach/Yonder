@@ -26,7 +26,7 @@ from yonder.xp import RANKS, compute_xp
 def test_whitelist_countries_are_subdivided():
     assert set(T.SUBDIVIDED_COUNTRIES) == {"US", "CA", "GB"}
     assert len(T.SUBDIVIDED_COUNTRIES["US"]) == 51  # 50 states + DC
-    assert len(T.SUBDIVIDED_COUNTRIES["CA"]) == 13
+    assert len(T.SUBDIVIDED_COUNTRIES["CA"]) == 9
     assert set(T.SUBDIVIDED_COUNTRIES["GB"]) == {
         "GB-ENG", "GB-SCT", "GB-WLS", "GB-NIR",
     }
@@ -52,7 +52,7 @@ def test_single_tile_country_area_comes_from_country_size():
 
 def test_country_level_entry_gets_partial_credit():
     # Documented rule: plain "CA" credits ONE average region, not all of Canada
-    mean = round(T.country_total_area("CA") / 13)
+    mean = round(T.country_total_area("CA") / len(T.SUBDIVIDED_COUNTRIES["CA"]))
     assert T.tile_area("CA") == mean
     assert T.tile_area("CA") < T.country_total_area("CA") / 2
 
@@ -218,5 +218,5 @@ def test_unvisited_home_regions():
     regs = T.unvisited_home_regions("CA", ["CA-ON", "CA-QC"])
     codes = {c for c, _ in regs}
     assert "CA-ON" not in codes and "CA-QC" not in codes
-    assert len(regs) == 11
+    assert len(regs) == len(T.SUBDIVIDED_COUNTRIES["CA"]) - 2
     assert T.unvisited_home_regions("FR", ["FR"]) == []

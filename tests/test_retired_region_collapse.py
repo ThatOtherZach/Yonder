@@ -40,7 +40,7 @@ def test_no_home_regions_for_retired_countries():
     assert T.unvisited_home_regions("BR", ["BR"]) == []
     assert T.unvisited_home_regions("AU", []) == []
     # Subdivided countries still report regions
-    assert len(T.unvisited_home_regions("CA", [])) == 13
+    assert len(T.unvisited_home_regions("CA", [])) == 9
 
 
 # ---------------------------------------------------------------------------

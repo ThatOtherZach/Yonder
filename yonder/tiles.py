@@ -45,13 +45,11 @@ SUBDIVISION_TILES: dict[str, tuple[str, int]] = {
     "CA-AB": ("Alberta", 660758),
     "CA-BC": ("British Columbia", 941451),
     "CA-MB": ("Manitoba", 649717),
-    "CA-NB": ("New Brunswick", 72594),
-    "CA-NL": ("Newfoundland and Labrador", 401715),
-    "CA-NS": ("Nova Scotia", 54983),
-    "CA-NT": ("Northwest Territories", 1339513),
-    "CA-NU": ("Nunavut", 2065098),
+    # Atlantic Canada merged tile: NB + NL + NS + PE (see MERGED_TILE_ALIASES)
+    "CA-ATL": ("Atlantic Canada", 535010),
+    # Northern merged tile: NT + NU (see MERGED_TILE_ALIASES)
+    "CA-NTH": ("Northwest Territories & Nunavut", 3404611),
     "CA-ON": ("Ontario", 1073988),
-    "CA-PE": ("Prince Edward Island", 5718),
     "CA-QC": ("Québec", 1499430),
     "CA-SK": ("Saskatchewan", 648059),
     "CA-YT": ("Yukon", 481475),
@@ -117,6 +115,19 @@ SUBDIVISION_TILES: dict[str, tuple[str, int]] = {
 # Formerly subdivided countries whose region tiles are retired: any stored
 # or incoming "CC-XXX" code for these collapses to the plain country tile.
 RETIRED_SUBDIVIDED_COUNTRIES: frozenset[str] = frozenset({"MX", "BR", "AU"})
+
+# Individual region codes merged into combined tiles (documented decision):
+# Canada's Atlantic provinces are one area, and NT + NU are one area.  Any
+# stored or incoming old code maps to its merged tile on normalization, so
+# storage self-heals on the next save.
+MERGED_TILE_ALIASES: dict[str, str] = {
+    "CA-NB": "CA-ATL",
+    "CA-NL": "CA-ATL",
+    "CA-NS": "CA-ATL",
+    "CA-PE": "CA-ATL",
+    "CA-NT": "CA-NTH",
+    "CA-NU": "CA-NTH",
+}
 
 # Countries that are subdivided into tiles (the whitelist)
 SUBDIVIDED_COUNTRIES: dict[str, tuple[str, ...]] = {}
@@ -201,7 +212,10 @@ def normalize_tile_list(raw, max_n: int = 500) -> list[str]:
     seen: set[str] = set()
     for p in parts:
         code = str(p or "").strip().upper()
-        if not code or code in seen or not _TILE_RE.match(code):
+        if not code or not _TILE_RE.match(code):
+            continue
+        code = MERGED_TILE_ALIASES.get(code, code)
+        if code in seen:
             continue
         if "-" in code:
             if code not in SUBDIVISION_TILES:
@@ -367,6 +381,7 @@ def unlocked_km2(tiles: list[str]) -> int:
     seen: set[str] = set()
     for t in tiles or []:
         code = str(t or "").strip().upper()
+        code = MERGED_TILE_ALIASES.get(code, code)
         if code and code not in seen:
             seen.add(code)
             tset.append(code)
@@ -393,7 +408,10 @@ def unvisited_home_regions(home_cc: str | None, tiles: list[str]) -> list[tuple[
     subs = SUBDIVIDED_COUNTRIES.get(cc)
     if not subs:
         return []
-    tset = {str(t or "").strip().upper() for t in tiles or []}
+    tset = {
+        MERGED_TILE_ALIASES.get(c, c)
+        for c in (str(t or "").strip().upper() for t in tiles or [])
+    }
     return [
         (s, SUBDIVISION_TILES[s][0]) for s in subs if s not in tset
     ]
