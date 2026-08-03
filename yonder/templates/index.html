@@ -2823,6 +2823,76 @@
         next();
       }
 
+      // ── Quest sessionStorage persistence ────────────────────────────────────
+      // Key format: "yonder_quest_v1:<prompt>|<origin>"
+      // HTML is stored on success and restored on page load so a refresh does
+      // not re-trigger the AI call.
+      function _questStorageKey(prompt, origin) {
+        return "yonder_quest_v1:" + (prompt || "").trim() + "|" + (origin || "").trim().toUpperCase();
+      }
+      function _saveQuestToStorage(prompt, origin, html) {
+        try {
+          sessionStorage.setItem(_questStorageKey(prompt, origin), html);
+        } catch (e) { /* storage full or private mode — silently skip */ }
+      }
+      function _clearQuestFromStorage(prompt, origin) {
+        try {
+          sessionStorage.removeItem(_questStorageKey(prompt, origin));
+        } catch (e) {}
+      }
+      function _loadQuestFromStorage(prompt, origin) {
+        try {
+          return sessionStorage.getItem(_questStorageKey(prompt, origin)) || null;
+        } catch (e) { return null; }
+      }
+
+      // After successful injection, wire up all the post-render hooks.
+      function _afterQuestInject(questResults) {
+        var questTab = document.getElementById("quest-filter-tab");
+        if (questTab) {
+          questTab.disabled = false;
+          questTab.removeAttribute("disabled");
+        }
+        if (typeof applyResultFilter === "function") applyResultFilter("all");
+        if (typeof bootOutboundLinks === "function") bootOutboundLinks();
+        if (typeof bootSaveAndShare === "function") bootSaveAndShare();
+        if (typeof bindFieldNoteToggles === "function") bindFieldNoteToggles(questResults);
+        if (typeof bootFieldNotes === "function") bootFieldNotes();
+        bootPlanQuestButton();
+      }
+
+      // On page load: restore a previously-planned Quest from sessionStorage
+      // without making a new /api/quest/plan call.
+      function hydrateQuestFromStorage() {
+        var questResults = document.getElementById("quest-results");
+        if (!questResults) return;
+        // Only hydrate when there are search results visible (escape or detour)
+        var hasResults = !!(
+          document.querySelector("#escape-results .boarding-pass") ||
+          document.querySelector("#detour-results .boarding-pass") ||
+          document.querySelector("#escape-results .card:not(#quest-results-card)") ||
+          document.querySelector("#detour-results .card")
+        );
+        if (!hasResults) return;
+        // Don't overwrite an already-injected quest (e.g. from a live Plan call)
+        if (questResults.querySelector(".boarding-pass, .quest-idea-card")) return;
+
+        var prompt = (ta && ta.value || "").trim();
+        if (!prompt) {
+          var criEl = document.querySelector("[data-search-prompt]");
+          if (criEl) prompt = criEl.dataset.searchPrompt || "";
+        }
+        var originEl = document.getElementById("explore-origin");
+        var origin = originEl ? (originEl.value || "").trim().toUpperCase() : "";
+        if (!prompt) return;
+
+        var cached = _loadQuestFromStorage(prompt, origin);
+        if (!cached) return;
+
+        questResults.innerHTML = cached;
+        _afterQuestInject(questResults);
+      }
+
       function bootPlanQuestButton() {
         var btn = document.getElementById("btn-plan-quest");
         if (!btn) return;
@@ -2841,7 +2911,8 @@
             if (cardBody) cardBody.innerHTML = '<p class="muted quest-error" role="alert">Type a search prompt first, then hit Plan a Quest.</p>';
             return;
           }
-          var origin = (document.getElementById("explore-origin") || {}).value || "";
+          var originEl2 = document.getElementById("explore-origin");
+          var origin = originEl2 ? (originEl2.value || "") : "";
           var depart = (document.getElementById("explore-depart") || {}).value || "";
           var vibe = (document.getElementById("explore-vibe") || {}).value || "adventure";
 
@@ -2858,26 +2929,14 @@
               if (!questResults) return;
               if (json.html) {
                 questResults.innerHTML = json.html;
-                // Re-enable the Quest filter tab now that results exist
-                var questTab = document.getElementById("quest-filter-tab");
-                if (questTab) {
-                  questTab.disabled = false;
-                  questTab.removeAttribute("disabled");
-                }
-                // Re-run the results filter so Quest cards are shown/hidden correctly
-                if (typeof applyResultFilter === "function") applyResultFilter("all");
-                // Reinitialise outbound-link tracking for newly injected cards
-                if (typeof bootOutboundLinks === "function") bootOutboundLinks();
-                // Rebind save/share buttons on newly injected quest cards
-                if (typeof bootSaveAndShare === "function") bootSaveAndShare();
-                // Rebind field-note toggles for any injected field note blocks
-                if (typeof bindFieldNoteToggles === "function") bindFieldNoteToggles(questResults);
-                if (typeof bootFieldNotes === "function") bootFieldNotes();
+                // Persist the HTML so a page refresh restores the card without a new AI call
+                _saveQuestToStorage(prompt, origin, json.html);
+                _afterQuestInject(questResults);
               } else {
                 questResults.innerHTML = '<div class="card" id="quest-results-card"><h2>Quest</h2><p class="muted quest-error" role="alert">' + (json.error || "Something went wrong — try again.") + '</p><div id="quest-card-body"><button type="button" class="btn-plan-quest" id="btn-plan-quest">Try again</button></div></div>';
+                // Re-bind the Plan a Quest / retry button for any newly injected button
+                bootPlanQuestButton();
               }
-              // Re-bind the Plan a Quest / retry button for any newly injected button
-              bootPlanQuestButton();
             })
             .catch(function (err) {
               var questResults = document.getElementById("quest-results");
@@ -2898,6 +2957,7 @@
         bootResultsFilter();
         bootCriteriaRefresh();
         bootPlanQuestButton();
+        hydrateQuestFromStorage();
         // Pre-fill visible origin field from hidden explore-origin (set by GPS/settings)
         (function () {
           var hid = document.getElementById("explore-origin");
