@@ -149,6 +149,15 @@ class GrokClient:
         self._owns_client = client is None
         self._usage_log: list[dict] = []
 
+    def _backend_fingerprint(self) -> str:
+        """Cache key fragment: a result from one model/provider must not be
+        served after the user switches models in Settings."""
+        byom_base = getattr(self.settings, "byom_base_url", "").strip().rstrip("/")
+        byom_key = getattr(self.settings, "byom_api_key", "").strip()
+        if byom_base and byom_key:
+            return f"byom:{byom_base}:{getattr(self.settings, 'byom_model', '').strip() or DEFAULT_MODEL}"
+        return f"xai:{self.settings.xai_model or DEFAULT_MODEL}"
+
     def is_configured(self) -> bool:
         byom_on = bool(
             getattr(self.settings, "byom_base_url", "")
@@ -288,12 +297,7 @@ class GrokClient:
 
         # Backend fingerprint: a parse from one model/provider must not be
         # served after the user switches models in Settings.
-        byom_base = getattr(self.settings, "byom_base_url", "").strip().rstrip("/")
-        byom_key = getattr(self.settings, "byom_api_key", "").strip()
-        if byom_base and byom_key:
-            backend = f"byom:{byom_base}:{getattr(self.settings, 'byom_model', '').strip() or DEFAULT_MODEL}"
-        else:
-            backend = f"xai:{self.settings.xai_model or DEFAULT_MODEL}"
+        backend = self._backend_fingerprint()
         cache_k = _parse_cache_key(
             prompt, default_currency, home, avoid, visited, today, backend=backend
         )
@@ -978,6 +982,7 @@ class GrokClient:
         visited: list[str] | None = None,
         exclude_iatas: list[str] | set[str] | None = None,
         today: date | None = None,
+        use_cache: bool = True,
     ) -> dict:
         """ONE Grok call covering all three Find panels on a cold start.
 
@@ -988,6 +993,11 @@ class GrokClient:
            "quest_pairs": list[dict]}
         Any section that comes back missing or invalid is None / [] — the
         caller falls back to the individual per-panel call for that section.
+
+        use_cache: serve an identical prompt+settings repeat from the same
+        short-lived in-process cache the per-panel escape parse uses (no AI
+        call). Pass False on Refresh-for-novelty, where a repeat answer is
+        exactly what the user does NOT want.
         """
         from datetime import timedelta
         from yonder.countries import country_for_iata
@@ -1005,6 +1015,37 @@ class GrokClient:
         outbound_date = depart_date + timedelta(days=days)
         excl = sorted({str(x).upper() for x in (exclude_iatas or []) if x})
         proximity_mode = has_proximity_intent(prompt)
+
+        # ── Unified-plan cache: identical Find within TTL skips the AI call ──
+        # Mirrors _parse_cache_key (prompt/currency/home/avoid/visited/today)
+        # with vibe, depart_date and excluded IATAs folded into the backend
+        # fragment — the "unified|" prefix namespaces entries away from the
+        # per-panel escape-parse cache, and the backend fingerprint busts the
+        # cache when the user switches models in Settings.
+        cache_k = _parse_cache_key(
+            prompt,
+            currency,
+            home,
+            avoid_codes,
+            visited_codes,
+            today,
+            backend="|".join(
+                [
+                    "unified",
+                    self._backend_fingerprint(),
+                    (vibe or "").strip().lower(),
+                    depart_date.isoformat(),
+                    ",".join(excl),
+                ]
+            ),
+        )
+        if use_cache:
+            cached = _parse_cache_get(cache_k)
+            if cached is not None:
+                try:
+                    return self._unified_from_cache(cached)
+                except Exception:  # stale/incompatible entry → live call
+                    _PARSE_CACHE.pop(cache_k, None)
 
         _xp = _compute_xp(visited_codes, avoid_codes)
         system = (
@@ -1190,6 +1231,50 @@ class GrokClient:
         self._capture_quest_interpretations(
             out["quest_pairs"], vibe=vibe, prompt=prompt, home_iata=home
         )
+        # Only cache when at least one section succeeded — an all-empty result
+        # must not make a transient failure "free" for the whole TTL.
+        if use_cache and (out["escape"] or out["detour_cities"] or out["quest_pairs"]):
+            try:
+                _parse_cache_put(
+                    cache_k,
+                    {
+                        "escape": (
+                            out["escape"].model_dump(mode="json")
+                            if out["escape"] is not None
+                            else None
+                        ),
+                        "detour": (
+                            {
+                                "req": out["detour_cities"][0].model_dump(mode="json"),
+                                "ideas": [
+                                    i.model_dump(mode="json")
+                                    for i in out["detour_cities"][1]
+                                ],
+                            }
+                            if out["detour_cities"] is not None
+                            else None
+                        ),
+                        "quest_pairs": out["quest_pairs"],
+                    },
+                )
+            except Exception:
+                pass
+        return out
+
+    @staticmethod
+    def _unified_from_cache(payload: dict) -> dict:
+        """Rebuild a plan_unified result from its cached JSON form."""
+        out: dict = {"escape": None, "detour_cities": None, "quest_pairs": []}
+        esc = payload.get("escape")
+        if esc:
+            out["escape"] = ParsedTrip.model_validate(esc)
+        det = payload.get("detour")
+        if det:
+            out["detour_cities"] = (
+                AdventureRequest.model_validate(det["req"]),
+                [StopoverIdea.model_validate(i) for i in det.get("ideas") or []],
+            )
+        out["quest_pairs"] = list(payload.get("quest_pairs") or [])
         return out
 
     async def estimate_daily_costs_batch(

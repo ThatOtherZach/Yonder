@@ -2084,6 +2084,11 @@ async def explore_run(request: Request) -> HTMLResponse:
                             avoid=avoid,
                             visited=visited,
                             exclude_iatas=exclude_iatas,
+                            # Refresh (novelty) must bypass the repeat-Find
+                            # cache — a repeat answer is exactly what the
+                            # user does NOT want. (This block only runs on
+                            # non-refresh today; the flag keeps that safe.)
+                            use_cache=not is_refresh,
                         ),
                         timeout=34.0,
                     )
