@@ -497,15 +497,19 @@
       container.innerHTML = "";
       list.forEach(function (code, idx) {
         var isHome = markHome && !homeLocked && idx === 0 && code === homeCode;
-        var b = el("button", "chip " + cls + (isHome ? " is-home" : ""), self.chipLabel(code, isHome));
-        b.type = "button";
-        b.title = isHome
-          ? "Home (first stamp) — click to advance state"
-          : "Click to advance state";
-        b.addEventListener("click", function () {
-          self.cycle(code);
+        var span = el("span", "chip " + cls + (isHome ? " is-home" : ""));
+        var nameEl = el("span", "chip-name", self.chipLabel(code, isHome));
+        var xBtn = el("button", "chip-x", "×");
+        xBtn.type = "button";
+        xBtn.title = "Remove " + (self.names[code] || code);
+        xBtn.setAttribute("aria-label", "Remove " + (self.names[code] || code));
+        xBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          self.removeEntry(code);
         });
-        container.appendChild(b);
+        span.appendChild(nameEl);
+        span.appendChild(xBtn);
+        container.appendChild(span);
       });
       if (!list.length) {
         container.appendChild(el("span", "empty", emptyText));
@@ -605,6 +609,42 @@
     } catch (e) {
       /* ignore */
     }
+  };
+
+  /**
+   * Remove a single tile from visited or avoid, repaint, recompute
+   * saturation, and autosave. Used by the X button on each chip.
+   */
+  YonderMap.prototype.removeEntry = function (code) {
+    if (!code) return;
+    var wasVisited = this.visited.has(code);
+    var wasAvoided = this.avoid.has(code);
+    if (!wasVisited && !wasAvoided) return; // nothing to do
+    this.visited.delete(code);
+    this.avoid.delete(code);
+
+    if (code.indexOf("-") > -1) {
+      // Region tile: repaint the tile and its parent country (saturation may change)
+      var cc = tileCountry(code);
+      var self3 = this;
+      (this.subCountries[cc] || []).forEach(function (t) {
+        self3.paint(t);
+      });
+      this.paint(cc);
+    } else {
+      // Country tile: also clear ALL subdivision tile entries from both sets
+      // so removing a country chip never leaves orphan region state behind.
+      var subs = this.subCountries[code] || [];
+      var self4 = this;
+      subs.forEach(function (t) {
+        self4.visited.delete(t);
+        self4.avoid.delete(t);
+        self4.paint(t);
+      });
+      this.paint(code);
+    }
+    this.syncUi();
+    this.scheduleSave();
   };
 
   /** Wipe visited + avoid when the user wants a clean passport map. */
@@ -903,6 +943,9 @@
           if (event.defaultPrevented) return;
           var code = codeFor(d);
           if (!code) return;
+          // For subdivided countries the tile overlay is the single click target;
+          // ignore clicks that land on the country outline beneath the tiles.
+          if (self.subCountries[code]) return;
           self.cycle(code);
           self.showTip(event, code);
         })

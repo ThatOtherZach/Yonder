@@ -2,7 +2,7 @@
 name: Tiled km² progression
 description: Rules for the tile map / km²-unlocked XP system — coverage semantics, migration, and suppression behavior.
 ---
-XP is raw km² of visited tiles (yonder/tiles.py registry + static/tiles_admin1.json geometry). Whitelist US/CA/MX/BR/AU/GB(4 nations) subdivide; everything else is one ISO2 tile.
+XP is raw km² of visited tiles (yonder/tiles.py registry + static/tiles_admin1.json geometry). Only US/CA and GB (4 constituent nations: ENG/SCT/WLS/NIR) have active subdivision tiles; everything else is one ISO2 tile. MX/BR/AU were formerly subdivided — their region codes are now RETIRED (see below).
 
 **Rules to stay consistent with:**
 - Country-level entry on a subdivided country = "some coverage": credits ONE average region's area, never blocks that country from getaway suggestions.

@@ -6,12 +6,12 @@
   --ymap-land: #efe8dc;
   --ymap-land-hover: #e2d6c4;
   --ymap-stroke: #c9bdaa;
-  --ymap-visited: #1a7a52;
-  --ymap-visited-soft: #eef8f2;
-  --ymap-visited-border: #9fd4b8;
-  --ymap-avoid: #b33a3a;
-  --ymap-avoid-soft: #fdf4f4;
-  --ymap-avoid-border: #efc0c0;
+  --ymap-visited: #ffffff;
+  --ymap-visited-soft: #f5f5f5;
+  --ymap-visited-border: #999999;
+  --ymap-avoid: #111111;
+  --ymap-avoid-soft: #1a1a1a;
+  --ymap-avoid-border: #444444;
   --ymap-grid: rgba(30, 77, 123, 0.1);
   --ymap-accent: var(--sky-bright, #2a6fad);
   --ymap-accent-deep: var(--sky, #1e4d7b);
@@ -29,12 +29,12 @@
   --ymap-land: #f3ead8;
   --ymap-land-hover: #e6d7bc;
   --ymap-stroke: #cbb896;
-  --ymap-visited: #1a7a52;
-  --ymap-visited-soft: #eef8f2;
-  --ymap-visited-border: #9fd4b8;
-  --ymap-avoid: #8a6508;
-  --ymap-avoid-soft: var(--brass-mist, #f3e8c8);
-  --ymap-avoid-border: #e5d19a;
+  --ymap-visited: #ffffff;
+  --ymap-visited-soft: #f5f5f5;
+  --ymap-visited-border: #999999;
+  --ymap-avoid: #111111;
+  --ymap-avoid-soft: #1a1a1a;
+  --ymap-avoid-border: #444444;
   --ymap-grid: rgba(184, 134, 11, 0.13);
   --ymap-accent: var(--brass, #b8860b);
   --ymap-accent-deep: var(--brass-deep, #8a6508);
@@ -293,22 +293,23 @@
 
 .ymap path.country.visited {
   fill: var(--ymap-visited);
-  stroke: color-mix(in srgb, var(--ymap-visited) 65%, #000);
+  stroke: #888888;
+  stroke-width: 0.85px;
 }
 
 .ymap path.country.visited:hover {
-  fill: color-mix(in srgb, var(--ymap-visited) 88%, #fff);
-  filter: brightness(1.04);
+  fill: #f0f0f0;
+  filter: brightness(0.97);
 }
 
 .ymap path.country.avoid {
   fill: var(--ymap-avoid);
-  stroke: color-mix(in srgb, var(--ymap-avoid) 65%, #000);
+  stroke: #000000;
 }
 
 .ymap path.country.avoid:hover {
-  fill: color-mix(in srgb, var(--ymap-avoid) 88%, #fff);
-  filter: brightness(1.04);
+  fill: #2a2a2a;
+  filter: brightness(1.2);
 }
 
 /* Vibe tint — presentation attr + var; never bleach on hover */
@@ -414,8 +415,8 @@
 }
 
 .ymap-save.saving { color: var(--ymap-accent) !important; }
-.ymap-save.saved { color: var(--ymap-visited) !important; }
-.ymap-save.err { color: var(--ymap-avoid) !important; }
+.ymap-save.saved { color: #1a7a52 !important; }
+.ymap-save.err { color: #b33a3a !important; }
 
 .ymap-warn {
   display: block;
@@ -466,8 +467,14 @@
   border: 1px solid var(--ymap-stroke);
 }
 
-.ymap-legend .swatch.visited { background: var(--ymap-visited); }
-.ymap-legend .swatch.avoid { background: var(--ymap-avoid); }
+.ymap-legend .swatch.visited {
+  background: var(--ymap-visited);
+  border: 1.5px solid #888888;
+}
+.ymap-legend .swatch.avoid {
+  background: var(--ymap-avoid);
+  border: 1px solid #333;
+}
 
 /* Stamp drawers */
 .ymap-drawers {
@@ -509,12 +516,14 @@
 }
 
 .ymap-chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
   font-size: 0.74rem;
   font-weight: 600;
-  padding: 0.28rem 0.58rem;
+  padding: 0.22rem 0.35rem 0.22rem 0.55rem;
   border-radius: 999px;
   border: 1.5px solid var(--line, #d9d0c2);
-  cursor: pointer;
   background: var(--white, #fffcf7);
   color: var(--ymap-text);
   font-family: inherit;
@@ -524,24 +533,63 @@
 
 .ymap-chips .chip.visited.is-home {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--vibe-now, var(--sky-bright, #22c55e)) 55%, transparent);
-  font-weight: 700;
 }
 .ymap-chips .chip.visited {
-  border-color: var(--ymap-visited-border);
-  color: var(--ymap-visited);
-  background: var(--ymap-visited-soft);
+  border-color: #999999;
+  color: var(--ymap-text);
+  background: #ffffff;
   border-style: solid;
 }
 
 .ymap-chips .chip.avoid {
-  border-color: var(--ymap-avoid-border);
-  color: var(--ymap-avoid);
-  background: var(--ymap-avoid-soft);
+  border-color: #333333;
+  color: #ffffff;
+  background: #111111;
 }
 
 .ymap-chips .chip:hover {
-  border-color: var(--ymap-accent);
   transform: translateY(-1px);
+}
+
+/* X (remove) button inside each chip */
+.chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.14);
+  color: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transition: background 0.1s;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+.chip-x:hover {
+  background: rgba(0, 0, 0, 0.28);
+  filter: none;
+  transform: none;
+}
+.chip-x:active {
+  background: rgba(0, 0, 0, 0.38);
+  transform: scale(0.94);
+  filter: none;
+}
+.ymap-chips .chip.avoid .chip-x {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+.ymap-chips .chip.avoid .chip-x:hover {
+  background: rgba(255, 255, 255, 0.35);
 }
 
 .ymap-chips .muted,
@@ -694,9 +742,9 @@
   margin: 0;
   padding: 0.28rem 0.65rem;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--ymap-avoid, #b33a3a) 45%, var(--line, #d9d0c2));
-  background: color-mix(in srgb, var(--ymap-avoid, #b33a3a) 10%, var(--paper, #f4efe6));
-  color: var(--ymap-avoid, #b33a3a);
+  border: 1px solid color-mix(in srgb, #b33a3a 45%, var(--line, #d9d0c2));
+  background: color-mix(in srgb, #b33a3a 10%, var(--paper, #f4efe6));
+  color: #b33a3a;
   font-family: inherit;
   font-size: 0.78rem;
   font-weight: 700;
@@ -707,8 +755,8 @@
   transform: none;
 }
 .ymap-clear-btn:hover {
-  background: color-mix(in srgb, var(--ymap-avoid, #b33a3a) 18%, var(--paper, #f4efe6));
-  border-color: var(--ymap-avoid, #b33a3a);
+  background: color-mix(in srgb, #b33a3a 18%, var(--paper, #f4efe6));
+  border-color: #b33a3a;
   filter: none;
   transform: none;
 }
@@ -771,18 +819,24 @@
 
 .ymap path.subtile.visited {
   fill: var(--ymap-visited);
-  stroke: color-mix(in srgb, var(--ymap-visited) 65%, #000);
+  stroke: #888888;
+  stroke-width: 0.65px;
   stroke-dasharray: none;
 }
 
 .ymap path.subtile.visited:hover {
-  fill: color-mix(in srgb, var(--ymap-visited) 88%, #fff);
+  fill: #f0f0f0;
 }
 
 .ymap path.subtile.avoid {
-  fill: color-mix(in srgb, var(--ymap-avoid) 55%, transparent);
-  stroke: color-mix(in srgb, var(--ymap-avoid) 65%, #000);
-  pointer-events: none;
+  fill: rgba(17, 17, 17, 0.72);
+  stroke: rgba(0, 0, 0, 0.85);
+  stroke-dasharray: none;
+  /* pointer-events enabled so avoided tiles can be clicked to un-avoid */
+}
+
+.ymap path.subtile.avoid:hover {
+  fill: rgba(17, 17, 17, 0.58);
 }
 
 @media (prefers-reduced-motion: reduce) {
