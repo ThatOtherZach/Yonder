@@ -2211,6 +2211,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         # Reuses direct_price from the detour result (computed as baseline there).
         # Falls back to a Check Fares slot when direct_price is None (common).
         vibe_base: dict | None = None
+        escape_direct_offer = None  # most-direct offer shown on the Escape card
         if has_esc:
             _esc_res = escape_override.get("result")
             _esc_q = getattr(_esc_res, "query", None) if _esc_res else None
@@ -2224,6 +2225,34 @@ async def explore_run(request: Request) -> HTMLResponse:
                     _det_res = detour_override.get("result")
                     if _det_res:
                         _det_direct = getattr(_det_res, "direct_price", None)
+
+                # Derive two offers from the same result set — no extra search.
+                # engine.py already sorts by (price, total_stops), so offers[0]
+                # is the cheapest.  Most-direct = fewest outbound stops, then
+                # shortest outbound duration.
+                _all_offers = list(getattr(_esc_res, "offers", None) or [])
+                _cheap_offer = _all_offers[0] if _all_offers else None
+                _sorted_direct = sorted(
+                    _all_offers,
+                    key=lambda _o: (
+                        _o.stops_out,
+                        _o.duration_out_minutes if _o.duration_out_minutes is not None else 9999,
+                    ),
+                )
+                _direct_offer = _sorted_direct[0] if _sorted_direct else None
+                escape_direct_offer = _direct_offer
+
+                # Suppress vibe card when cheapest == most-direct (same provider
+                # and price) so we never show two identical boarding passes.
+                _vibe_distinct = (
+                    _cheap_offer is not None
+                    and _direct_offer is not None
+                    and not (
+                        _cheap_offer.provider == _direct_offer.provider
+                        and round(_cheap_offer.price, 2) == round(_direct_offer.price, 2)
+                    )
+                )
+
                 vibe_base = {
                     "origin": str(getattr(_esc_q, "origin", "") or ""),
                     "destination": str(getattr(_esc_q, "destination", "") or ""),
@@ -2236,9 +2265,13 @@ async def explore_run(request: Request) -> HTMLResponse:
                     "vibe_emoji": VIBE_EMOJI.get(_vbt["id"], ""),
                     "vibe_color": _vbt["color"],
                     "result": _esc_res,
+                    "cheap_offer": _cheap_offer,
                 }
+                # Suppress vibe panel when it would duplicate the escape card.
+                if not _vibe_distinct:
+                    vibe_base = None
                 # Apply gap label to vibe_base if its return leg fills a gap
-                if trip_gaps:
+                if vibe_base and trip_gaps:
                     try:
                         _vb_dest = vibe_base["destination"].upper()
                         _vb_orig = vibe_base["origin"].upper()
@@ -2425,6 +2458,8 @@ async def explore_run(request: Request) -> HTMLResponse:
         # Quest is on-demand — no quest_panel in the initial search response.
         if vibe_base:
             ctx["vibe_base"] = vibe_base
+        if escape_direct_offer is not None:
+            ctx["escape_direct_offer"] = escape_direct_offer
         ctx["intent_shape"] = decision.shape
         ctx["intent_rationale"] = decision.rationale
         ctx["result_filter"] = "all"

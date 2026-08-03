@@ -1464,13 +1464,10 @@
       <div class="card" id="escape-results-card">
         <h2>Direct Escape{% if escape_result.offers and escape_result.offers|length != 1 %}s{% endif %}</h2>
         <p class="sub">
+          Most direct · {{ route(escape_result.query.origin, escape_result.query.destination) }}
           {% if escape_dest_theme %}
-            {{ escape_dest_theme.label }}
-            · {{ route(escape_result.query.origin, escape_result.query.destination) }}
-          {% else %}
-            {{ route(escape_result.query.origin, escape_result.query.destination) }}
+            · {{ escape_dest_theme.label }}
           {% endif %}
-          · one cheapest fare signal
           · <a href="/saved">Saved</a>
         </p>
         {% if escape_result.results %}
@@ -1492,7 +1489,8 @@
           {% set esc_train_links = train_options(escape_result.query.origin, escape_result.query.destination) %}
           {% set esc_gap_label = ep.escape_gap_label if ep is defined and ep.escape_gap_label is defined else none %}
           {% set esc_anchor_label = ep.escape_anchor_label if ep is defined and ep.escape_anchor_label is defined else none %}
-          {% for o in escape_result.offers[:1] %}
+          {% set _esc_o = escape_direct_offer if (escape_direct_offer is defined and escape_direct_offer) else escape_result.offers[0] %}
+          {% for o in [_esc_o] %}
           {% set esc_theme = escape_dest_theme or {} %}
           {% set share = share_escape(request, escape_result, o, esc_vibe) %}
           {{ bp.escape_card('explore', o, escape_result.query, loop.index0,
@@ -1516,12 +1514,13 @@
       <div class="card" id="vibe-base-results-card">
         <h2>{{ vibe_base.vibe_emoji }} {{ vibe_base.vibe_label }}</h2>
         <p class="sub">
-          Cheapest simple return · {{ route(vibe_base.origin, vibe_base.destination) }}
-          · economy · <a href="/saved">Saved</a>
+          Best price · {{ route(vibe_base.origin, vibe_base.destination) }}
+          · <a href="/saved">Saved</a>
         </p>
         <div class="pass-stack">
           {% set vb_train_links = train_options(vibe_base.origin, vibe_base.destination) %}
-          {% for o in vibe_base.result.offers[:1] %}
+          {% set _vb_o = vibe_base.cheap_offer if (vibe_base.cheap_offer is defined and vibe_base.cheap_offer) else vibe_base.result.offers[0] %}
+          {% for o in [_vb_o] %}
           {% set vb_share = share_escape(request, vibe_base.result, o, esc_vibe) %}
           {{ bp.escape_card('explore', o, vibe_base.result.query, loop.index0,
                             esc_theme=(escape_dest_theme or {}),
