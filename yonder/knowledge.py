@@ -43,6 +43,7 @@ Storage lives in the shared Replit PostgreSQL database (see yonder.db).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import threading
@@ -51,6 +52,8 @@ import uuid
 from typing import Any, Iterable
 
 from yonder.db import Conn, get_conn
+
+logger = logging.getLogger("yonder.knowledge")
 
 # ── Tunables ─────────────────────────────────────────────────────────────────
 # Failed routes are re-checked after this many days (negative-cache TTL).
@@ -547,6 +550,11 @@ def reinforce_from_feedback(
                 ).fetchall()
                 attrs = [r["attribute"] for r in rows]
             if not attrs:
+                logger.warning(
+                    "feedback reinforcement skipped: no attributes known for "
+                    "dest=%s vibe=%s (feedback_id=%s direction=%s)",
+                    dest, v, fid, d,
+                )
                 return False
             contradiction = d == "down"
             for a in attrs:
@@ -580,7 +588,61 @@ def reinforce_from_feedback(
             conn.commit()
         return True
     except Exception:
+        logger.exception(
+            "feedback reinforcement FAILED for dest=%s vibe=%s "
+            "(feedback_id=%s direction=%s) — vote is archived in "
+            "result_feedback and can be replayed via "
+            "backfill_feedback_reinforcement()",
+            dest, v, fid, d,
+        )
         return False
+
+
+def backfill_feedback_reinforcement(*, limit: int = 500) -> dict[str, int]:
+    """Replay archived result_feedback votes that never reinforced the
+    knowledge layer (no attribute_evidence rows with their feedback id).
+
+    Safe to re-run: only rows missing evidence links are replayed, and a
+    replay that still can't find attributes simply stays pending.
+    Returns {"scanned": n, "reinforced": n, "skipped": n, "failed": n}.
+    """
+    stats = {"scanned": 0, "reinforced": 0, "skipped": 0, "failed": 0}
+    if _mock_mode():
+        return stats
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT rf.id, rf.vibe, rf.dest_iata, rf.direction
+                FROM result_feedback rf
+                WHERE rf.dest_iata IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM attribute_evidence ae
+                    WHERE ae.evidence_kind='feedback' AND ae.evidence_id=rf.id
+                  )
+                ORDER BY rf.created_at
+                LIMIT %s
+                """,
+                (int(limit),),
+            ).fetchall()
+    except Exception:
+        logger.exception("feedback backfill: could not scan result_feedback")
+        return stats
+    for r in rows:
+        stats["scanned"] += 1
+        try:
+            ok = reinforce_from_feedback(
+                vibe=r["vibe"],
+                dest_iata=r["dest_iata"],
+                direction=r["direction"],
+                feedback_id=r["id"],
+            )
+            stats["reinforced" if ok else "skipped"] += 1
+        except Exception:
+            stats["failed"] += 1
+    if stats["scanned"]:
+        logger.info("feedback backfill: %s", stats)
+    return stats
 
 
 # ── Reads ────────────────────────────────────────────────────────────────────

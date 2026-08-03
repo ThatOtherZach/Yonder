@@ -3704,7 +3704,7 @@ async def api_result_feedback(request: Request) -> JSONResponse:
     if dest and row_id:
         from yonder.knowledge import reinforce_from_feedback
 
-        await asyncio.get_running_loop().run_in_executor(
+        reinforced = await asyncio.get_running_loop().run_in_executor(
             None,
             lambda: reinforce_from_feedback(
                 vibe=vibe,
@@ -3713,6 +3713,16 @@ async def api_result_feedback(request: Request) -> JSONResponse:
                 feedback_id=row_id,
             ),
         )
+        if not reinforced:
+            # Vote is safely archived in result_feedback (row_id) and can be
+            # replayed later via knowledge.backfill_feedback_reinforcement().
+            import logging as _fb_log
+
+            _fb_log.getLogger("yonder.knowledge").warning(
+                "result-feedback vote archived but NOT reinforced "
+                "(vibe=%s dest=%s direction=%s feedback_id=%s)",
+                vibe, dest, direction, row_id,
+            )
 
     if direction == "up" and dest:
         # Reinforce the vibe+destination match in the signal store

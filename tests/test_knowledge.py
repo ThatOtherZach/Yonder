@@ -399,3 +399,48 @@ async def test_price_leg_live_empty_result_records_failed_route(isolated_db, mon
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+# ── Failed reinforcement is logged; backfill replays archived votes ──────────
+
+def test_reinforce_failure_is_logged(isolated_db, monkeypatch, caplog):
+    import logging
+
+    def _boom():
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(knowledge, "get_conn", _boom)
+    with caplog.at_level(logging.WARNING, logger="yonder.knowledge"):
+        assert reinforce_from_feedback(
+            vibe="chaos", dest_iata="BKK", direction="up", feedback_id="fbX"
+        ) is False
+    assert any("BKK" in r.message and "fbX" in r.message for r in caplog.records)
+
+
+def test_backfill_replays_unreinforced_votes(isolated_db):
+    from yonder.feedback import record_feedback
+    from yonder.knowledge import backfill_feedback_reinforcement, evidence_for
+
+    record_interpretation(
+        vibe="chaos", raw_query="cheap chaos", origin="YVR", dest_iata="BKK",
+        interpretation="cheap street food chaos", tags=["food", "cheap"],
+    )
+    # Archive a vote WITHOUT reinforcing (simulating a silent failure)
+    fid = record_feedback(
+        direction="up", vibe="chaos", dest_iata="BKK", session_hash="s1"
+    )
+    assert fid
+    ev = evidence_for(subject_kind="dest", subject="BKK", attribute="food")
+    assert not any(e["evidence_id"] == fid for e in ev)
+
+    stats = backfill_feedback_reinforcement()
+    assert stats["scanned"] == 1 and stats["reinforced"] == 1
+
+    ev = evidence_for(subject_kind="dest", subject="BKK", attribute="food")
+    assert any(
+        e["evidence_kind"] == "feedback" and e["evidence_id"] == fid for e in ev
+    )
+
+    # Idempotent: already-linked votes are not replayed again
+    stats2 = backfill_feedback_reinforcement()
+    assert stats2["scanned"] == 0
