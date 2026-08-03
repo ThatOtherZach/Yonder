@@ -2183,6 +2183,12 @@ async def plan_quest(
 
     raw_ideas: pre-validated idea rows (e.g. from GrokClient.plan_unified) —
     when provided, the per-panel Grok call is skipped entirely.
+
+    Return contract: an empty list ([]) means the AI ran (or was skipped)
+    and proposed no usable ideas — callers should render a friendly
+    empty state.  Provider/key/network failures raise instead of
+    returning [], so an exception always means "Quest could not run",
+    never "Quest found nothing".
     """
     from yonder.grok import GrokClient
     from yonder.money import format_approx

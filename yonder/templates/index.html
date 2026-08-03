@@ -1356,6 +1356,8 @@
     {% set has_detour = detour_result is defined and detour_result %}
     {% set _qp = quest_panel if quest_panel is defined else {} %}
     {% set has_quest = _qp and _qp.result and _qp.result|length > 0 %}
+    {# result == [] (empty list, not None) → quest ran but found nothing: show a friendly note #}
+    {% set quest_empty = _qp and _qp.result is defined and _qp.result is not none and _qp.result|length == 0 %}
     {% set criteria_origin = none %}
     {% if has_detour and detour_result and detour_result.request is defined and detour_result.request.origin %}
       {% set criteria_origin = detour_result.request.origin %}
@@ -1544,6 +1546,9 @@
           · {{ _qp.result|length }} idea{{ 's' if _qp.result|length != 1 else '' }}
           · 10-day window
         </p>
+        {% if _qp.error is defined and _qp.error %}
+          <p class="muted quest-note" role="note">{{ _qp.error }}</p>
+        {% endif %}
         {% if ai_usage_display %}
         <div class="pills" style="margin-top:0;margin-bottom:0.85rem">
           <span class="pill" style="opacity:0.7">{{ ai_usage_display }}</span>
@@ -1555,6 +1560,14 @@
           {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe, share=share) }}
           {% endfor %}
         </div>
+      </div>
+    {% elif quest_empty %}
+      <div class="card" id="quest-results-card">
+        <h2>Quest</h2>
+        <p class="muted" id="quest-empty-note">
+          {{ _qp.error if _qp.error is defined and _qp.error else 'Quest needs an AI key — add one in Settings' }}
+          · <a href="/settings">Open Settings</a>
+        </p>
       </div>
     {% endif %}
     </div>

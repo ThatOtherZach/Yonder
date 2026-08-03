@@ -191,10 +191,11 @@ class TestQuestCardsRender:
     def test_bad_grok_payload_yields_no_quest_cards_without_crash(
         self, client, monkeypatch
     ):
-        """Grok returning no ideas (bad JSON path) → 0 cards, graceful error page.
+        """Grok returning no ideas (bad JSON path) → 0 cards, friendly empty state.
 
-        With every panel empty the app deliberately renders the compose page
-        with a 400 status ("Nothing priced") — never a 500 / raw traceback.
+        plan_quest returning [] (empty list, not None) renders the quest
+        panel with a friendly "needs an AI key" note instead of a blank
+        card or a raw error page — never a 500 / raw traceback.
         """
         _wire(monkeypatch, priced=False)
 
@@ -212,5 +213,32 @@ class TestQuestCardsRender:
                 "force_mode": "quest",
             },
         )
-        assert resp.status_code == 400  # friendly error page, not a crash
+        assert resp.status_code == 200  # friendly empty state, not a crash
         assert "is-quest" not in resp.text
+        # Empty result ([] not None) → friendly in-card message
+        assert 'id="quest-empty-note"' in resp.text
+        assert "Quest needs an AI key" in resp.text
+
+    def test_missing_ai_key_shows_friendly_quest_note(self, client, monkeypatch):
+        """No Grok/BYOM key at all → quest panel shows the Settings hint."""
+        _wire(monkeypatch, priced=False)
+        # Settings without any AI key: grok_ready() is False
+        settings = Settings(
+            testing=True, xai_api_key="", byom_base_url="", byom_api_key=""
+        )
+        monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": _PROMPT,
+                "origin": "YVR",
+                "depart": _FUTURE,
+                "vibe": "adventure",
+                "force_mode": "quest",
+            },
+        )
+        assert resp.status_code == 200
+        assert "is-quest" not in resp.text
+        assert 'id="quest-empty-note"' in resp.text
+        assert "Quest needs an AI key" in resp.text

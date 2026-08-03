@@ -1764,32 +1764,59 @@ async def explore_run(request: Request) -> HTMLResponse:
             return
         if not settings.grok_ready():
             errors.append("Quest requires AI — add XAI_API_KEY or a BYOM endpoint in Settings")
+            # Empty list (not None) → the quest panel renders a friendly
+            # "needs an AI key" empty state instead of a blank card.
+            quest_override = {
+                "ask": prompt,
+                "result": [],
+                "home_iata": home_iata,
+                "vibe": vibe,
+                "error": "Quest needs an AI key — add one in Settings",
+            }
             return
         try:
             depart_dt = date.fromisoformat(depart)
         except (ValueError, TypeError):
             depart_dt = date.today() + timedelta(days=45)
 
-        quest_ideas = await plan_quest(
-            prompt,
-            vibe,
-            home_iata,
-            depart_dt,
-            settings,
-            quest_days=quest_days,
-            include_mock=mock,
-            avoid=avoid,
-            visited=visited,
-            # Unified cold-start call already proposed pairs — skip the Grok call
-            raw_ideas=_uni_quest if _uni_quest else None,
-        )
+        try:
+            quest_ideas = await plan_quest(
+                prompt,
+                vibe,
+                home_iata,
+                depart_dt,
+                settings,
+                quest_days=quest_days,
+                include_mock=mock,
+                avoid=avoid,
+                visited=visited,
+                # Unified cold-start call already proposed pairs — skip the Grok call
+                raw_ideas=_uni_quest if _uni_quest else None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Surface a human-readable note in the Quest card header too,
+            # then re-raise so _safe still logs "Quest: …" in the error box.
+            quest_override = {
+                "ask": prompt,
+                "result": [],
+                "home_iata": home_iata,
+                "vibe": vibe,
+                "error": f"Quest couldn't reach the AI planner — {str(exc)[:120]}",
+            }
+            raise
         quest_override = {
             "ask": prompt,
             "result": quest_ideas,
             "home_iata": home_iata,
             "vibe": vibe,
+            "error": (
+                None
+                if quest_ideas
+                else "Quest needs an AI key — add one in Settings"
+            ),
         }
-        active_mode = "quest"
+        if quest_ideas:
+            active_mode = "quest"
 
     # When not testing, prefer previously saved (non-mock) trips over AI
     # generation. Recycled results render through the same card pipeline as
@@ -2102,6 +2129,9 @@ async def explore_run(request: Request) -> HTMLResponse:
         has_esc = bool(escape_override.get("result"))
         has_det = bool(detour_override.get("result"))
         has_quest = bool(quest_override.get("result"))
+        # [] (empty list, not None) → quest ran but produced nothing;
+        # the panel still renders with a friendly explanation.
+        quest_empty = quest_override.get("result") == []
 
         # ── Apply gap labels to results that fill a known saved-trip gap ──────
         # Soft constraints only — normal results still appear if nothing matches.
@@ -2378,7 +2408,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         except Exception:
             pass
 
-        if not has_esc and not has_det and not has_quest:
+        if not has_esc and not has_det and not has_quest and not quest_empty:
             raise ValueError(
                 "; ".join(errors) if errors else "Nothing priced — try again or Turbo."
             )
@@ -2419,8 +2449,9 @@ async def explore_run(request: Request) -> HTMLResponse:
         if has_det:
             base_det = ctx.get("detour_panel") if isinstance(ctx.get("detour_panel"), dict) else {}
             ctx["detour_panel"] = {**base_det, **detour_override}
-        if has_quest:
+        if has_quest or quest_empty:
             ctx["quest_panel"] = quest_override
+        if has_quest:
             ctx["mode"] = "quest"
         if vibe_base:
             ctx["vibe_base"] = vibe_base
