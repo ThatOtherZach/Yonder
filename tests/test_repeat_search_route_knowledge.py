@@ -193,6 +193,91 @@ async def test_repeat_search_skips_dead_route_and_prices_next_candidate_first(
     assert r2.itineraries[0].total_price is not None
 
 
+@pytest.mark.anyio
+async def test_aged_out_failed_route_is_retried_and_repriced(
+    isolated_route_knowledge, monkeypatch
+):
+    """A route whose failure window has expired must reach the live API again.
+
+    Scenario
+    --------
+    YVR→HAN was failed and recorded in the DB but the failure is older than
+    FAILED_ROUTE_TTL_DAYS.  On the next full plan_adventure search:
+
+    * route_status must return 'unknown' (not 'failed') so the reorder logic
+      does not park it at the back,
+    * _price_leg must not short-circuit through the negative-cache path,
+    * the live fare API must be called for YVR→HAN and a good offer returned,
+    * the resulting itinerary with stop HAN must be fully priced.
+    """
+    import time
+
+    from yonder.knowledge import FAILED_ROUTE_TTL_DAYS
+
+    # ── Pre-seed: insert an aged-out failure for YVR→HAN ────────────────────
+    aged_ts = time.time() - (FAILED_ROUTE_TTL_DAYS + 2) * 86400.0  # well past TTL
+    with knowledge.get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO route_knowledge
+                (origin_iata, dest_iata, status, fail_count,
+                 last_failed_at, updated_at)
+            VALUES (%s, %s, 'failed', 3, %s, %s)
+            ON CONFLICT (origin_iata, dest_iata) DO UPDATE
+                SET status='failed', fail_count=3,
+                    last_failed_at=EXCLUDED.last_failed_at,
+                    updated_at=EXCLUDED.updated_at
+            """,
+            ("YVR", "HAN", aged_ts, aged_ts),
+        )
+
+    # The TTL has expired — the route must look 'unknown', not 'failed'.
+    assert route_status("YVR", "HAN") == "unknown", (
+        "route_status must return 'unknown' once the failure window has aged out"
+    )
+
+    calls: list[tuple[str, str]] = []
+    # Both routes answer with a good offer so we can confirm repricing.
+    _stub_pipeline(monkeypatch, calls, dead=("__NONE__", "__NONE__"))
+
+    req = AdventureRequest(
+        origin="YVR",
+        destination="NRT",
+        depart_date=date.today() + timedelta(days=45),
+        vibe="chaos",
+        currency="CAD",
+        min_stop_days=2,
+        max_stop_days=3,
+        include_direct=False,
+    )
+    ideas = [
+        StopoverIdea(iata="HAN", city="Hanoi", vibe_tags=["gritty"]),
+        StopoverIdea(iata="BKK", city="Bangkok", vibe_tags=["gritty"]),
+    ]
+    settings = get_settings()
+
+    result = await plan_adventure(
+        req, [i.model_copy() for i in ideas], settings=settings, include_mock=False
+    )
+
+    # The previously dead route must have been tried by the live API.
+    assert ("YVR", "HAN") in calls, (
+        "plan_adventure must call the live fare API for the aged-out failed route"
+    )
+
+    # The itinerary via HAN must be fully priced (offer returned successfully).
+    han_itineraries = [it for it in result.itineraries if it.stop_iata == "HAN"]
+    assert han_itineraries, "an itinerary with stop HAN must exist after recovery"
+    assert han_itineraries[0].total_price is not None, (
+        "the recovered route's itinerary must carry a non-None total price"
+    )
+
+    # The route_knowledge table must now reflect the successful re-verification.
+    assert route_status("YVR", "HAN") == "verified", (
+        "route_status must flip to 'verified' after a successful retry"
+    )
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
