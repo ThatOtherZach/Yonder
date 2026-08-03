@@ -6,20 +6,29 @@ Covers:
 - prompt injection: anchors appear in system + user payload of all 3 planners
 - date-window enforcement in match_anchor (arrive strictly before departure)
 - dead-route filtering of the connecting leg via route knowledge
+- end-to-end: a real /explore search renders the ⚓ anchor badge in HTML when a
+  saved upcoming leg connects, and renders no badge without upcoming saves
 """
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
+from typing import Any
 from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
 
+import yonder.knowledge as knowledge_mod
+import yonder.grok as grok_module
+import yonder.last_search as ls_module
 import yonder.saved as saved_mod
+import yonder.web as web_module
 from yonder.adventure import match_anchor
 from yonder.config import Settings
-from yonder.grok import GrokClient
+from yonder.grok import GrokClient, ParsedTrip
 from yonder.saved import SavedItinerary, upcoming_anchor_legs
+from yonder.types import FlightOffer, SearchQuery, UnifiedSearchResult
 
 TODAY = date(2026, 8, 3)
 
@@ -203,3 +212,90 @@ async def test_plan_unified_injects_anchors_and_forks_cache_key(monkeypatch):
     sys_a, user_a = await _capture("plan_unified", resp, anchor_legs=[ANCHOR], **kwargs)
     assert "saved_anchor_legs" in user_a
     assert "connection targets" in sys_a
+
+
+# ── End-to-end: /explore search renders the ⚓ anchor badge ──────────────────
+
+_E2E_DEPART = date.today() + timedelta(days=30)
+_ANCHOR_DEPART = date.today() + timedelta(days=40)
+
+
+def _saved_upcoming_trip() -> SavedItinerary:
+    """Saved trip with a future NRT → ICN leg — anchor departs from NRT."""
+    return _save("detour", {"legs": [
+        {"from_iata": "NRT", "to_iata": "ICN",
+         "depart_date": _ANCHOR_DEPART.isoformat()},
+    ]}, sid="e2e-anchor")
+
+
+def _mock_offer() -> FlightOffer:
+    return FlightOffer(provider="mock", price=500.0, currency="CAD",
+                       airlines=["AC"], price_kind="mock")
+
+
+def _patch_search_pipeline(monkeypatch) -> None:
+    """MOCK-mode /explore pipeline with all AI + disk IO stubbed out."""
+    settings = Settings(testing=True, xai_api_key="test-key-anchor-e2e")
+    monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
+
+    # No leftover env keys / real AI calls
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("MOCK", raising=False)
+
+    # No last-search disk IO
+    monkeypatch.setattr(ls_module, "save_last", lambda *a, **kw: None)
+    monkeypatch.setattr(ls_module, "load_last", lambda *a, **kw: None)
+    monkeypatch.setattr(ls_module, "load_first", lambda *a, **kw: None)
+
+    # Unified planner never reaches the network — force per-panel fallback
+    async def _no_unified(self, *a: Any, **kw: Any):
+        raise RuntimeError("no network in tests")
+
+    monkeypatch.setattr(grok_module.GrokClient, "plan_unified", _no_unified)
+
+    parsed = ParsedTrip(origin="YVR", destination="NRT",
+                        depart_date=_E2E_DEPART, return_date=None,
+                        currency="CAD")
+
+    async def _fake_parse(self, *a: Any, **kw: Any) -> ParsedTrip:
+        return parsed
+
+    monkeypatch.setattr(grok_module.GrokClient, "parse_natural_language", _fake_parse)
+
+    async def _fake_search(query: SearchQuery, *, settings=None, **kw: Any) -> UnifiedSearchResult:
+        return UnifiedSearchResult(query=query, results=[], offers=[_mock_offer()])
+
+    monkeypatch.setattr(web_module, "search_flights", _fake_search)
+
+    # No saved-trip gaps (gap label would suppress the anchor label)
+    monkeypatch.setattr(web_module, "detect_trip_gaps", lambda **kw: [])
+    # Connecting route is never marked dead
+    monkeypatch.setattr(knowledge_mod, "route_status", lambda o, d: "ok")
+
+
+def _explore(monkeypatch, saves: list[SavedItinerary]) -> str:
+    _patch_search_pipeline(monkeypatch)
+    monkeypatch.setattr(saved_mod, "list_saved", lambda limit=25: saves)
+    client = TestClient(web_module.app, raise_server_exceptions=True)
+    resp = client.post("/explore", data={
+        "prompt": "fly from Vancouver to Tokyo",
+        "origin": "YVR",
+        "depart": _E2E_DEPART.isoformat(),
+        "vibe": "adventure",
+        "force_mode": "escape",
+    })
+    assert resp.status_code == 200
+    return resp.text
+
+
+def test_explore_renders_anchor_badge_for_upcoming_saved_leg(monkeypatch):
+    """Search ending at NRT before the saved NRT → ICN leg departs → ⚓ badge."""
+    html = _explore(monkeypatch, [_saved_upcoming_trip()])
+    assert "Connects to your saved" in html
+    assert "bp-anchor-label" in html
+
+
+def test_explore_renders_no_anchor_badge_without_upcoming_saves(monkeypatch):
+    html = _explore(monkeypatch, [])
+    assert "Connects to your saved" not in html
+    assert "bp-anchor-label" not in html
