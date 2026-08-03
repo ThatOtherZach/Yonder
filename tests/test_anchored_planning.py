@@ -273,7 +273,7 @@ def _patch_search_pipeline(monkeypatch) -> None:
     monkeypatch.setattr(knowledge_mod, "route_status", lambda o, d: "ok")
 
 
-def _explore(monkeypatch, saves: list[SavedItinerary]) -> str:
+def _explore(monkeypatch, saves: list[SavedItinerary], force_mode: str = "escape") -> str:
     _patch_search_pipeline(monkeypatch)
     monkeypatch.setattr(saved_mod, "list_saved", lambda limit=25: saves)
     client = TestClient(web_module.app, raise_server_exceptions=True)
@@ -282,7 +282,7 @@ def _explore(monkeypatch, saves: list[SavedItinerary]) -> str:
         "origin": "YVR",
         "depart": _E2E_DEPART.isoformat(),
         "vibe": "adventure",
-        "force_mode": "escape",
+        "force_mode": force_mode,
     })
     assert resp.status_code == 200
     return resp.text
@@ -297,5 +297,108 @@ def test_explore_renders_anchor_badge_for_upcoming_saved_leg(monkeypatch):
 
 def test_explore_renders_no_anchor_badge_without_upcoming_saves(monkeypatch):
     html = _explore(monkeypatch, [])
+    assert "Connects to your saved" not in html
+    assert "bp-anchor-label" not in html
+
+
+# ── End-to-end: Detour & Quest cards render the ⚓ anchor badge ──────────────
+
+from yonder.adventure import (  # noqa: E402
+    AdventureItinerary,
+    AdventureRequest as AdvRequest,
+    AdventureResult,
+    PricedLeg,
+    QuestIdea,
+)
+
+
+def _stub_itinerary(stop_iata: str, final_iata: str) -> AdventureItinerary:
+    """YVR → stop → final, final leg arriving before the anchor departs."""
+    return AdventureItinerary(
+        kind="stopover", title=f"YVR → {stop_iata} → {final_iata}",
+        stop_city=stop_iata, stop_iata=stop_iata, stay_days=3,
+        legs=[
+            PricedLeg(from_iata="YVR", to_iata=stop_iata, depart_date=_E2E_DEPART),
+            PricedLeg(from_iata=stop_iata, to_iata=final_iata,
+                      depart_date=_E2E_DEPART + timedelta(days=3)),
+        ],
+    )
+
+
+def _stub_quest_ideas() -> list[QuestIdea]:
+    """One idea exits at the anchor's departure city (NRT), one does not."""
+    common = dict(depart_date=_E2E_DEPART,
+                  outbound_date=_E2E_DEPART + timedelta(days=7))
+    return [
+        QuestIdea(entry_iata="KIX", exit_iata="NRT",
+                  entry_city="Osaka", exit_city="Tokyo", **common),
+        QuestIdea(entry_iata="SGN", exit_iata="BKK",
+                  entry_city="Ho Chi Minh City", exit_city="Bangkok", **common),
+    ]
+
+
+def _patch_detour_quest_planners(monkeypatch) -> None:
+    """Stub the Detour/Quest planners so /explore mix mode needs no network."""
+    import yonder.encyclopedia as enc_mod
+
+    async def _fake_translate(self, **kw):
+        return AdvRequest(origin="YVR", destination="NRT",
+                          depart_date=_E2E_DEPART), []
+
+    monkeypatch.setattr(grok_module.GrokClient, "translate_adventure", _fake_translate)
+
+    async def _fake_plan_adventure(req, ideas, **kw) -> AdventureResult:
+        # Final legs: TPE → NRT (matches the anchor) and HKG → BKK (does not)
+        return AdventureResult(request=req, ideas=[], itineraries=[
+            _stub_itinerary("TPE", "NRT"),
+            _stub_itinerary("HKG", "BKK"),
+        ])
+
+    monkeypatch.setattr(web_module, "plan_adventure", _fake_plan_adventure)
+
+    async def _fake_plan_quest(*a, **kw) -> list[QuestIdea]:
+        return _stub_quest_ideas()
+
+    monkeypatch.setattr(web_module, "plan_quest", _fake_plan_quest)
+
+    async def _no_briefs(*a, **kw) -> dict:
+        return {}
+
+    monkeypatch.setattr(enc_mod, "briefs_for_stops", _no_briefs)
+
+
+def _card_with(html: str, marker: str) -> str:
+    cards = [c for c in html.split("<article") if marker in c]
+    assert cards, f"no rendered card contains {marker!r}"
+    return cards[0]
+
+
+def test_explore_renders_anchor_badge_on_detour_and_quest_cards(monkeypatch):
+    """Mix search: Detour itinerary + Quest idea ending at NRT get the ⚓ badge."""
+    _patch_detour_quest_planners(monkeypatch)
+    html = _explore(monkeypatch, [_saved_upcoming_trip()], force_mode="mix")
+
+    assert "Connects to your saved" in html
+
+    # Detour: final leg TPE → NRT connects; HKG → BKK does not
+    det_match = _card_with(html, 'data-stop-iata="TPE"')
+    assert "bp-anchor-label" in det_match
+    assert "Connects to your saved" in det_match
+    det_miss = _card_with(html, 'data-stop-iata="HKG"')
+    assert "bp-anchor-label" not in det_miss
+
+    # Quest: overland exit NRT connects; exit BKK does not
+    q_match = _card_with(html, 'data-quest-exit="NRT"')
+    assert "bp-anchor-label" in q_match
+    assert "Connects to your saved" in q_match
+    q_miss = _card_with(html, 'data-quest-exit="BKK"')
+    assert "bp-anchor-label" not in q_miss
+
+
+def test_explore_mix_renders_no_anchor_badge_without_upcoming_saves(monkeypatch):
+    _patch_detour_quest_planners(monkeypatch)
+    html = _explore(monkeypatch, [], force_mode="mix")
+    assert 'data-stop-iata="TPE"' in html      # detour panel rendered
+    assert 'data-quest-exit="NRT"' in html     # quest panel rendered
     assert "Connects to your saved" not in html
     assert "bp-anchor-label" not in html
