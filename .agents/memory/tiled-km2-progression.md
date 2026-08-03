@@ -13,3 +13,6 @@ XP is raw km² of visited tiles (yonder/tiles.py registry + static/tiles_admin1.
 
 **Why:** explicit product decisions in the tiled-map task; changing any rule silently would corrupt users' XP and filter behavior.
 **How to apply:** any feature touching visited data, XP, or getaway suppression must go through yonder/tiles.py helpers rather than treating visited lists as country sets.
+
+## Retired regions (Aug 2026)
+Subdivision whitelist is US/CA/GB only. MX/BR/AU region tiles are RETIRED: any stored/incoming `MX-*`/`BR-*`/`AU-*` code collapses to the plain country tile (visited → country visited with full km²; avoided → country avoid; visited wins). Collapse lives in `collapse_retired_region_prefs` (yonder/tiles.py), applied lazily+persisted on user_prefs read, and `normalize_tile_list` is read-tolerant of stale codes.

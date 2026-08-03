@@ -24,12 +24,9 @@ from yonder.xp import RANKS, compute_xp
 
 
 def test_whitelist_countries_are_subdivided():
-    assert set(T.SUBDIVIDED_COUNTRIES) == {"US", "CA", "MX", "BR", "AU", "GB"}
+    assert set(T.SUBDIVIDED_COUNTRIES) == {"US", "CA", "GB"}
     assert len(T.SUBDIVIDED_COUNTRIES["US"]) == 51  # 50 states + DC
     assert len(T.SUBDIVIDED_COUNTRIES["CA"]) == 13
-    assert len(T.SUBDIVIDED_COUNTRIES["MX"]) == 32
-    assert len(T.SUBDIVIDED_COUNTRIES["BR"]) == 27
-    assert len(T.SUBDIVIDED_COUNTRIES["AU"]) == 8
     assert set(T.SUBDIVIDED_COUNTRIES["GB"]) == {
         "GB-ENG", "GB-SCT", "GB-WLS", "GB-NIR",
     }

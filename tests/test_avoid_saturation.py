@@ -42,12 +42,9 @@ def test_at_or_above_threshold_saturates():
     assert T.avoid_saturated_countries(list(US[:41]), []) == {"US"}  # 80.4%
     assert T.avoid_saturated_countries(list(CA[:11]), []) == {"CA"}
     assert T.avoid_saturated_countries(list(GB), []) == {"GB"}
-    # Exactly 80%: AU has 8 tiles NO... 8*0.8=6.4→7; use a 5-of-x? Use MX 32 tiles
-    mx = T.SUBDIVIDED_COUNTRIES["MX"]
-    assert len(mx) == 32
-    # 25/32 = 78.1% (below), 26/32 = 81.25% (above)
-    assert T.avoid_saturated_countries(list(mx[:25]), []) == set()
-    assert T.avoid_saturated_countries(list(mx[:26]), []) == {"MX"}
+    # Retired region codes (MX/BR/AU) are no longer subdivision tiles and
+    # can never saturate — whole-country avoid is direct now.
+    assert T.avoid_saturated_countries(["MX-JAL", "BR-SP", "AU-NSW"], []) == set()
 
 
 def test_visited_tiles_excluded_from_avoid_tally():

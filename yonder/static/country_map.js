@@ -21,8 +21,9 @@
   var TOPO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
   var ISO_URL = "/static/iso_numeric_to_a2.json";
   // First-level subdivision tiles for continent-scale countries
-  // (US/CA/MX/BR/AU + UK constituent countries) — km²-unlocked progression
-  var TILES_URL = "/static/tiles_admin1.json?v=1";
+  // (US/CA + UK constituent countries) — km²-unlocked progression.
+  // MX/BR/AU are single-country tiles again (regions retired).
+  var TILES_URL = "/static/tiles_admin1.json?v=2";
   var SAVE_URL = "/api/travel-map";
   // Tile codes: plain ISO2 ("FR") or ISO 3166-2 subdivision ("CA-ON", "GB-ENG")
   var TILE_RE = /^[A-Z]{2}(-[A-Z0-9]{1,3})?$/;

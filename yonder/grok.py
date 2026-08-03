@@ -124,7 +124,7 @@ def _domestic_region_hint(home_iata: str | None) -> str:
     """Prompt line steering domestic picks toward unvisited home regions.
 
     Only fires when the traveller's home country is one of the subdivided
-    whitelist countries (US/CA/MX/BR/AU/GB), they have some coverage
+    whitelist countries (US/CA/GB), they have some coverage
     recorded, and unvisited regions remain.  Empty string otherwise.
     """
     try:

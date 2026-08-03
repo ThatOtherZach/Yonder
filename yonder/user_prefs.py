@@ -69,9 +69,35 @@ def _load_from_db() -> dict[str, str]:
             result.update(
                 {r["key"]: r["value"] for r in rows if r["key"] in PREF_DEFAULTS}
             )
-            return result
+        result = _migrate_retired_region_tiles(result)
+        return result
     except Exception:
         return dict(PREF_DEFAULTS)
+
+
+def _migrate_retired_region_tiles(prefs: dict[str, str]) -> dict[str, str]:
+    """Collapse retired MX/BR/AU region tiles into country-level marks.
+
+    Visited regions collapse to the country tile visited (full-country
+    credit); avoided regions collapse to a country-level avoid; visited
+    wins when both exist (see yonder.tiles.collapse_retired_region_prefs).
+    The collapsed values are persisted so the migration runs once.
+    """
+    try:
+        from yonder.tiles import collapse_retired_region_prefs
+
+        changed = collapse_retired_region_prefs(prefs)
+        if changed:
+            with _connect() as conn:
+                conn.executemany(
+                    "INSERT OR REPLACE INTO prefs (key, value) VALUES (?, ?)",
+                    list(changed.items()),
+                )
+                conn.commit()
+            prefs.update(changed)
+    except Exception:
+        pass
+    return prefs
 
 
 def _invalidate() -> None:

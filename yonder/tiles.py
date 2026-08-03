@@ -2,11 +2,13 @@
 
 The world is carved into "tiles":
 
-* Continent-scale countries — US, CA, MX, BR, AU — are subdivided into
-  their ISO 3166-2 first-level regions (states / provinces / territories);
-  the UK is split into its constituent countries (GB-ENG / GB-SCT /
-  GB-WLS / GB-NIR).  Each subdivision is its own tile.
+* The US and Canada are subdivided into their ISO 3166-2 first-level
+  regions (states / provinces / territories); the UK is split into its
+  constituent countries (GB-ENG / GB-SCT / GB-WLS / GB-NIR).  Each
+  subdivision is its own tile.
 * Every other country is a single tile (its plain ISO2 code).
+  Mexico, Brazil, and Australia were subdivided historically and are now
+  single-country tiles again; see the retired-region collapse rule below.
 
 Visiting a tile credits its full land area (km²) toward the traveller's
 total.  Areas for subdivisions are computed from Natural Earth
@@ -23,6 +25,15 @@ Partial-coverage rule (documented decision):
 * A subdivided country counts as **fully visited** (for the getaway
   visited filter) only when ALL of its subdivision tiles are marked.
   A non-subdivided country is fully visited when its tile is marked.
+
+Retired-region collapse rule (documented decision):
+* MX, BR, and AU used to be subdivided; their region tiles are RETIRED.
+  Any stored/incoming retired region code (e.g. "MX-JAL", "BR-SP",
+  "AU-NSW") collapses to its plain country tile.
+* A retired region that was **visited** makes the country tile visited
+  (full country km² credited).  A retired region that was **avoided**
+  makes the whole country avoided.  If a country has both, **visited
+  wins** and the avoid mark is dropped.
 """
 from __future__ import annotations
 
@@ -30,43 +41,6 @@ import re
 
 # ISO 3166-2 subdivision tiles: code -> (display name, land area km²)
 SUBDIVISION_TILES: dict[str, tuple[str, int]] = {
-    # AU
-    "AU-ACT": ("Australian Capital Territory", 2349),
-    "AU-NSW": ("New South Wales", 802498),
-    "AU-NT": ("Northern Territory", 1352471),
-    "AU-QLD": ("Queensland", 1734426),
-    "AU-SA": ("South Australia", 984968),
-    "AU-TAS": ("Tasmania", 68013),
-    "AU-VIC": ("Victoria", 227867),
-    "AU-WA": ("Western Australia", 2533138),
-    # BR
-    "BR-AC": ("Acre", 154662),
-    "BR-AL": ("Alagoas", 27733),
-    "BR-AM": ("Amazonas", 1572228),
-    "BR-AP": ("Amapá", 139804),
-    "BR-BA": ("Bahia", 562204),
-    "BR-CE": ("Ceará", 150885),
-    "BR-DF": ("Distrito Federal", 5812),
-    "BR-ES": ("Espírito Santo", 45944),
-    "BR-GO": ("Goiás", 342427),
-    "BR-MA": ("Maranhão", 327561),
-    "BR-MG": ("Minas Gerais", 588210),
-    "BR-MS": ("Mato Grosso do Sul", 357060),
-    "BR-MT": ("Mato Grosso", 906626),
-    "BR-PA": ("Pará", 1236106),
-    "BR-PB": ("Paraíba", 56758),
-    "BR-PE": ("Pernambuco", 98041),
-    "BR-PI": ("Piauí", 253083),
-    "BR-PR": ("Paraná", 199094),
-    "BR-RJ": ("Rio de Janeiro", 44091),
-    "BR-RN": ("Rio Grande do Norte", 53042),
-    "BR-RO": ("Rondônia", 238899),
-    "BR-RR": ("Roraima", 225750),
-    "BR-RS": ("Rio Grande do Sul", 272601),
-    "BR-SC": ("Santa Catarina", 95255),
-    "BR-SE": ("Sergipe", 21694),
-    "BR-SP": ("São Paulo", 249274),
-    "BR-TO": ("Tocantins", 280106),
     # CA
     "CA-AB": ("Alberta", 660758),
     "CA-BC": ("British Columbia", 941451),
@@ -86,39 +60,6 @@ SUBDIVISION_TILES: dict[str, tuple[str, int]] = {
     "GB-NIR": ("Northern Ireland", 14130),
     "GB-SCT": ("Scotland", 77933),
     "GB-WLS": ("Wales", 20735),
-    # MX
-    "MX-AGU": ("Aguascalientes", 5562),
-    "MX-BCN": ("Baja California", 72982),
-    "MX-BCS": ("Baja California Sur", 72265),
-    "MX-CAM": ("Campeche", 57319),
-    "MX-CHH": ("Chihuahua", 248321),
-    "MX-CHP": ("Chiapas", 73635),
-    "MX-COA": ("Coahuila", 151228),
-    "MX-COL": ("Colima", 5896),
-    "MX-DIF": ("Distrito Federal", 1379),
-    "MX-DUR": ("Durango", 121279),
-    "MX-GRO": ("Guerrero", 64905),
-    "MX-GUA": ("Guanajuato", 30504),
-    "MX-HID": ("Hidalgo", 21365),
-    "MX-JAL": ("Jalisco", 80226),
-    "MX-MEX": ("México", 21891),
-    "MX-MIC": ("Michoacán", 59060),
-    "MX-MOR": ("Morelos", 5096),
-    "MX-NAY": ("Nayarit", 27236),
-    "MX-NLE": ("Nuevo León", 65113),
-    "MX-OAX": ("Oaxaca", 92466),
-    "MX-PUE": ("Puebla", 34697),
-    "MX-QUE": ("Querétaro", 11733),
-    "MX-ROO": ("Quintana Roo", 44006),
-    "MX-SIN": ("Sinaloa", 57837),
-    "MX-SLP": ("San Luis Potosí", 64362),
-    "MX-SON": ("Sonora", 179392),
-    "MX-TAB": ("Tabasco", 24134),
-    "MX-TAM": ("Tamaulipas", 79760),
-    "MX-TLA": ("Tlaxcala", 3884),
-    "MX-VER": ("Veracruz", 71179),
-    "MX-YUC": ("Yucatán", 38492),
-    "MX-ZAC": ("Zacatecas", 74904),
     # US
     "US-AK": ("Alaska", 1495905),
     "US-AL": ("Alabama", 133909),
@@ -172,6 +113,10 @@ SUBDIVISION_TILES: dict[str, tuple[str, int]] = {
     "US-WV": ("West Virginia", 62689),
     "US-WY": ("Wyoming", 253041),
 }
+
+# Formerly subdivided countries whose region tiles are retired: any stored
+# or incoming "CC-XXX" code for these collapses to the plain country tile.
+RETIRED_SUBDIVIDED_COUNTRIES: frozenset[str] = frozenset({"MX", "BR", "AU"})
 
 # Countries that are subdivided into tiles (the whitelist)
 SUBDIVIDED_COUNTRIES: dict[str, tuple[str, ...]] = {}
@@ -260,7 +205,14 @@ def normalize_tile_list(raw, max_n: int = 500) -> list[str]:
             continue
         if "-" in code:
             if code not in SUBDIVISION_TILES:
-                continue
+                # Retired region codes (MX/BR/AU) collapse to the country tile
+                cc = code.split("-", 1)[0]
+                if cc in RETIRED_SUBDIVIDED_COUNTRIES and cc in valid_cc:
+                    if cc in seen:
+                        continue
+                    code = cc
+                else:
+                    continue
         elif code not in valid_cc and code not in SUBDIVIDED_COUNTRIES:
             continue
         seen.add(code)
@@ -268,6 +220,68 @@ def normalize_tile_list(raw, max_n: int = 500) -> list[str]:
         if len(out) >= max_n:
             break
     return out
+
+
+def collapse_retired_region_prefs(prefs: dict[str, str]) -> dict[str, str]:
+    """One-time collapse of retired MX/BR/AU region tiles in stored prefs.
+
+    Returns only the pref keys whose values changed (empty dict = no-op).
+
+    Rules (documented decision):
+    * A visited retired region → its country tile visited (full-country
+      km² credit, since the country is no longer subdivided).
+    * An avoided retired region → the whole country avoided (moved into
+      avoid_countries; region codes never survive in avoid_tiles).
+    * Visited wins: if a country has both visited and avoided retired
+      regions, it collapses to visited and the avoid mark is dropped.
+    """
+    def _split(raw: str) -> list[str]:
+        out, seen = [], set()
+        for p in re.split(r"[,;\s]+", raw or ""):
+            code = p.strip().upper()
+            if code and code not in seen:
+                seen.add(code)
+                out.append(code)
+        return out
+
+    def _retired(code: str) -> bool:
+        return "-" in code and code.split("-", 1)[0] in RETIRED_SUBDIVIDED_COUNTRIES
+
+    visited_raw = _split(prefs.get("visited_tiles", ""))
+    avoid_tiles_raw = _split(prefs.get("avoid_tiles", ""))
+    avoid_cc_raw = _split(prefs.get("avoid_countries", ""))
+    if not any(_retired(c) for c in visited_raw + avoid_tiles_raw):
+        return {}
+
+    # Visited: retired regions collapse to the country tile (stamp order)
+    visited: list[str] = []
+    vseen: set[str] = set()
+    for c in visited_raw:
+        code = c.split("-", 1)[0] if _retired(c) else c
+        if code not in vseen:
+            vseen.add(code)
+            visited.append(code)
+    visited_cc = {country_of_tile(t) for t in visited}
+
+    # Avoid: retired regions promote the country to avoid_countries,
+    # unless that country is (now) visited — visited wins.
+    avoid_tiles = [c for c in avoid_tiles_raw if not _retired(c)]
+    avoid_cc = list(avoid_cc_raw)
+    for c in avoid_tiles_raw:
+        if _retired(c):
+            cc = c.split("-", 1)[0]
+            if cc not in avoid_cc and cc not in visited_cc:
+                avoid_cc.append(cc)
+
+    changed: dict[str, str] = {}
+    if visited != visited_raw:
+        changed["visited_tiles"] = ",".join(visited)
+        changed["visited_countries"] = ",".join(visited_countries_from_tiles(visited))
+    if avoid_tiles != avoid_tiles_raw:
+        changed["avoid_tiles"] = ",".join(avoid_tiles)
+    if avoid_cc != avoid_cc_raw:
+        changed["avoid_countries"] = ",".join(avoid_cc)
+    return changed
 
 
 def visited_countries_from_tiles(tiles: list[str]) -> list[str]:
