@@ -29,9 +29,8 @@ import yonder.web as web_module
 
 
 @pytest.fixture(autouse=True)
-def isolated_db(tmp_path, monkeypatch):
-    """Each test gets its own fresh SQLite database and no MOCK env var."""
-    monkeypatch.setattr(vs, "DB_PATH", tmp_path / "signals_test.db")
+def isolated_db(pg_schema, monkeypatch):
+    """Each test gets an isolated PG schema and no MOCK env var."""
     monkeypatch.delenv("MOCK", raising=False)
     # Clear the module-level session cache between tests
     web_module._REVIEWED_SEEN.clear()
@@ -75,9 +74,9 @@ class TestSignalEvent:
         sid = data["signal_id"]
         assert sid is not None
         # Verify strength in DB is ≤ 3
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             row = conn.execute(
-                "SELECT signal_strength FROM search_signals WHERE id = ?", (sid,)
+                "SELECT signal_strength FROM search_signals WHERE id = %s", (sid,)
             ).fetchone()
         assert row["signal_strength"] <= 3
 
@@ -88,9 +87,9 @@ class TestSignalEvent:
         )
         assert resp.status_code == 200
         sid = resp.json()["signal_id"]
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             row = conn.execute(
-                "SELECT signal_strength FROM search_signals WHERE id = ?", (sid,)
+                "SELECT signal_strength FROM search_signals WHERE id = %s", (sid,)
             ).fetchone()
         assert row["signal_strength"] == 3
 
@@ -115,9 +114,9 @@ class TestSignalEvent:
             json={"signal_id": sid, "dest_iata": "NRT", "strength": 3},
         )
         assert resp.status_code == 200
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             row = conn.execute(
-                "SELECT signal_strength FROM search_signals WHERE id = ?", (sid,)
+                "SELECT signal_strength FROM search_signals WHERE id = %s", (sid,)
             ).fetchone()
         assert row["signal_strength"] == 3
 
@@ -137,9 +136,9 @@ class TestSignalEvent:
         )
         assert resp.status_code == 200
         sid = resp.json()["signal_id"]
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             row = conn.execute(
-                "SELECT signal_strength FROM search_signals WHERE id = ?", (sid,)
+                "SELECT signal_strength FROM search_signals WHERE id = %s", (sid,)
             ).fetchone()
         assert row["signal_strength"] == 3
 
@@ -251,7 +250,7 @@ class TestSavedPage:
         import time as _time
         _time.sleep(0.1)
 
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             rows = conn.execute(
                 "SELECT signal_strength, dest_iata FROM search_signals WHERE dest_iata = 'NRT'"
             ).fetchall()
@@ -289,9 +288,9 @@ class TestSavedPage:
 
         _time.sleep(0.1)
 
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             rows = conn.execute(
-                "SELECT id FROM search_signals WHERE dest_iata = 'CDG' AND signal_strength = ?",
+                "SELECT id FROM search_signals WHERE dest_iata = 'CDG' AND signal_strength = %s",
                 (vs.REVIEWED,),
             ).fetchall()
 

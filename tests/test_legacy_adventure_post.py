@@ -35,9 +35,8 @@ from yonder.adventure import (
 
 
 @pytest.fixture(autouse=True)
-def _isolated(tmp_path, monkeypatch):
-    """Fresh signal DB, no MOCK env var, no live API keys."""
-    monkeypatch.setattr(vs, "DB_PATH", tmp_path / "signals_test.db")
+def _isolated(pg_schema, monkeypatch):
+    """Isolated PG schema, no MOCK env var, no live API keys."""
     monkeypatch.delenv("MOCK", raising=False)
     monkeypatch.delenv("XAI_API_KEY", raising=False)
     yield

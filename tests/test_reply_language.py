@@ -20,8 +20,8 @@ from yonder.web import app
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(feedback, "DB_PATH", tmp_path / "feedback.db")
+def client(pg_schema, monkeypatch):
+    monkeypatch.delenv("MOCK", raising=False)
     return TestClient(app)
 
 
@@ -29,10 +29,10 @@ def _seed(vibe: str, query: str, suggestion: str, lang: str | None) -> None:
     answer: dict = {"suggestion": suggestion, "dest_iata": None}
     if lang:
         answer["lang"] = lang
-    with feedback._connect() as conn:
+    with feedback.get_conn() as conn:
         conn.execute(
             "INSERT INTO vibe_questions (id, vibe, query_norm, created_at, answer_json, answer_at)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            " VALUES (%s, %s, %s, %s, %s, %s)",
             (
                 uuid.uuid4().hex,
                 vibe,
@@ -42,7 +42,6 @@ def _seed(vibe: str, query: str, suggestion: str, lang: str | None) -> None:
                 time.time(),
             ),
         )
-        conn.commit()
 
 
 def test_detect_lang_basics():

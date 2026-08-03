@@ -9,8 +9,7 @@ Covers:
 
 from __future__ import annotations
 
-import sqlite3
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -19,9 +18,8 @@ from yonder.types import FlightOffer, SearchQuery
 
 
 @pytest.fixture(autouse=True)
-def isolated_db(tmp_path, monkeypatch):
-    """Each test gets its own fresh SQLite database."""
-    monkeypatch.setattr(history, "DB_PATH", tmp_path / "hist_test.db")
+def isolated_db(pg_schema, monkeypatch):
+    """Each test gets its own isolated PG schema."""
     yield
 
 
@@ -88,20 +86,11 @@ def test_record_offers_counts_only_live_offers():
 
 # ---------------------------------------------------------------------------
 # 3. Mock-forced detour search → zero rows in price_samples
-#
-# Simulate what happens when mock=True is forced (no configured providers):
-# the mock provider returns offers tagged price_kind="mock", which are then
-# passed through record_offers.  The table must stay empty.
 # ---------------------------------------------------------------------------
 
 
 def test_mock_forced_detour_leaves_zero_history_rows():
-    """Simulates a multi-leg detour search under forced-mock mode.
-
-    Each leg is searched independently and its offers passed to record_offers.
-    Because every offer carries price_kind="mock", the history table must
-    remain empty after all legs have been processed.
-    """
+    """Simulates a multi-leg detour search under forced-mock mode."""
     legs = [
         ("YVR", "NRT", date(2026, 11, 1)),
         ("NRT", "SIN", date(2026, 11, 8)),
@@ -110,7 +99,6 @@ def test_mock_forced_detour_leaves_zero_history_rows():
 
     for origin, dest, depart in legs:
         q = SearchQuery(origin=origin, destination=dest, depart_date=depart)
-        # Mimic what MockProvider.search() returns
         mock_offers = [
             FlightOffer(
                 provider="mock",
@@ -136,44 +124,18 @@ def test_mock_forced_detour_leaves_zero_history_rows():
 # ---------------------------------------------------------------------------
 
 
-def test_route_stats_excludes_mock_rows():
+def test_route_stats_excludes_mock_rows(pg_schema):
     """route_stats must filter out mock rows via exclude_sandbox=True (default)."""
-    q = SearchQuery(origin="YVR", destination="HND", depart_date=date(2026, 9, 1))
-
-    # Bypass the record_offer guard by inserting directly into the DB
-    conn = sqlite3.connect(history.DB_PATH)
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS price_samples (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            origin TEXT NOT NULL,
-            destination TEXT NOT NULL,
-            depart_date TEXT NOT NULL,
-            return_date TEXT,
-            price REAL NOT NULL,
-            currency TEXT NOT NULL,
-            source TEXT NOT NULL,
-            price_kind TEXT,
-            stops INTEGER,
-            airlines TEXT,
-            duration_minutes INTEGER,
-            notes TEXT,
-            google_flights_url TEXT,
-            deep_link TEXT,
-            raw_id TEXT,
-            observed_at TEXT NOT NULL,
-            model_source TEXT
+    # Bypass the record_offer guard by inserting directly into the PG test schema
+    with pg_schema() as conn:
+        conn.execute(
+            "INSERT INTO price_samples"
+            " (origin, destination, depart_date, price, currency, source,"
+            "  price_kind, observed_at)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            ("YVR", "HND", "2026-09-01", 250.0, "CAD", "mock", "mock",
+             datetime.now(timezone.utc).isoformat()),
         )
-        """
-    )
-    conn.execute(
-        "INSERT INTO price_samples "
-        "(origin, destination, depart_date, price, currency, source, price_kind, observed_at) "
-        "VALUES (?,?,?,?,?,?,?,datetime('now'))",
-        ("YVR", "HND", "2026-09-01", 250.0, "CAD", "mock", "mock"),
-    )
-    conn.commit()
-    conn.close()
 
     stats = history.route_stats("YVR", "HND", currency="CAD")
     assert stats.n == 0, (

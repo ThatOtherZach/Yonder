@@ -26,14 +26,9 @@ from yonder.knowledge import (
 
 
 @pytest.fixture()
-def isolated_db(tmp_path, monkeypatch):
+def isolated_db(pg_schema, monkeypatch):
     monkeypatch.delenv("MOCK", raising=False)
-    monkeypatch.setattr(knowledge, "DB_PATH", tmp_path / "knowledge.db")
-    # Isolate the vibe-signals store too — seed_candidates reads it
-    import yonder.vibe_signals as vibe_signals
-
-    monkeypatch.setattr(vibe_signals, "DB_PATH", tmp_path / "vibe_signals.db")
-    yield tmp_path
+    yield
 
 
 # ── Cold start ───────────────────────────────────────────────────────────────
@@ -73,13 +68,9 @@ def test_failed_route_freshness_window_expires(isolated_db):
     record_route_outcome(origin="YVR", dest="XXA", success=False)
     assert route_status("YVR", "XXA") == "failed"
     # Age the failure past the TTL — route recovers to unknown
-    import sqlite3
-
-    conn = sqlite3.connect(str(knowledge.DB_PATH))
     old = time.time() - (FAILED_ROUTE_TTL_DAYS + 1) * 86400
-    conn.execute("UPDATE route_knowledge SET last_failed_at=?", (old,))
-    conn.commit()
-    conn.close()
+    with knowledge.get_conn() as conn:
+        conn.execute("UPDATE route_knowledge SET last_failed_at = %s", (old,))
     assert route_status("YVR", "XXA") == "unknown"
 
 
@@ -157,15 +148,11 @@ def test_archive_is_append_only(isolated_db):
         )
     assert len(get_interpretations(dest_iata="BKK")) == 3
     # evidence_count grew with repetition
-    import sqlite3
-
-    conn = sqlite3.connect(str(knowledge.DB_PATH))
-    conn.row_factory = sqlite3.Row
-    row = conn.execute(
-        "SELECT * FROM dest_attributes WHERE dest_iata='BKK' AND attribute='food' "
-        "AND source='ai_inference'"
-    ).fetchone()
-    conn.close()
+    with knowledge.get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM dest_attributes WHERE dest_iata='BKK' AND attribute='food' "
+            "AND source='ai_inference'"
+        ).fetchone()
     assert row["evidence_count"] == 3
 
 
@@ -200,16 +187,13 @@ def test_thumbs_up_and_down_shift_attribute_weights(isolated_db):
     assert after_up["food"] > before["food"]  # measurable shift
 
     # user_behavior rows exist independently of ai_inference rows
-    import sqlite3
-
-    conn = sqlite3.connect(str(knowledge.DB_PATH))
-    conn.row_factory = sqlite3.Row
-    srcs = {
-        r["source"]
-        for r in conn.execute(
-            "SELECT source FROM dest_attributes WHERE dest_iata='BKK' AND attribute='food'"
-        )
-    }
+    with knowledge.get_conn() as conn:
+        srcs = {
+            r["source"]
+            for r in conn.execute(
+                "SELECT source FROM dest_attributes WHERE dest_iata='BKK' AND attribute='food'"
+            ).fetchall()
+        }
     assert srcs == {"ai_inference", "user_behavior"}
 
     assert reinforce_from_feedback(
@@ -218,11 +202,11 @@ def test_thumbs_up_and_down_shift_attribute_weights(isolated_db):
     after_down = effective_attributes(dest_iata="BKK")
     assert after_down["food"] < after_up["food"]
     # AI's original claim also contradicted
-    row = conn.execute(
-        "SELECT contradiction_count FROM dest_attributes WHERE dest_iata='BKK' "
-        "AND attribute='food' AND source='ai_inference'"
-    ).fetchone()
-    conn.close()
+    with knowledge.get_conn() as conn:
+        row = conn.execute(
+            "SELECT contradiction_count FROM dest_attributes WHERE dest_iata='BKK' "
+            "AND attribute='food' AND source='ai_inference'"
+        ).fetchone()
     assert row["contradiction_count"] == 1
 
     # Feedback evidence links recorded
@@ -232,22 +216,18 @@ def test_thumbs_up_and_down_shift_attribute_weights(isolated_db):
 
 def test_provenance_trust_ordering(isolated_db):
     # One editorial signal should outweigh one AI mention at equal weight
-    import sqlite3
-
     record_interpretation(
         vibe="zen", raw_query="q", origin="YVR", dest_iata="KIX",
         interpretation="sacred temples", tags=["spiritual"],
     )
     now = time.time()
-    conn = sqlite3.connect(str(knowledge.DB_PATH))
-    conn.execute(
-        "INSERT INTO dest_attributes (dest_iata, attribute, source, weight, "
-        "confidence, evidence_count, contradiction_count, last_reinforced_at, "
-        "updated_at) VALUES ('KIX','spiritual','editorial',1.0,?,1,0,?,?)",
-        (compute_confidence(1, 0, now, now=now), now, now),
-    )
-    conn.commit()
-    conn.close()
+    with knowledge.get_conn() as conn:
+        conn.execute(
+            "INSERT INTO dest_attributes (dest_iata, attribute, source, weight, "
+            "confidence, evidence_count, contradiction_count, last_reinforced_at, "
+            "updated_at) VALUES ('KIX','spiritual','editorial',1.0,%s,1,0,%s,%s)",
+            (compute_confidence(1, 0, now, now=now), now, now),
+        )
     assert SOURCE_MULTIPLIERS["editorial"] > SOURCE_MULTIPLIERS["ai_inference"]
     # Effective score combines both rows
     attrs = effective_attributes(dest_iata="KIX")

@@ -1,8 +1,6 @@
 """Model-source labeling — resolution + round-trip persistence."""
 from __future__ import annotations
 
-import sqlite3
-
 import pytest
 
 from yonder.config import Settings
@@ -59,10 +57,9 @@ def test_grok_client_label_matches_settings():
 
 # ── Saved-trip round trip ────────────────────────────────────────────────────
 
-def test_saved_trip_round_trip(tmp_path, monkeypatch):
+def test_saved_trip_round_trip(pg_schema):
     import yonder.saved as saved
 
-    monkeypatch.setattr(saved, "DB_PATH", tmp_path / "saved.db")
     itin = {"title": "Test trip", "kind": "stopover", "currency": "USD"}
     row = saved.save_itinerary(
         itin, trip_meta={"model_source": "BYOM, m1", "vibe": "chaos"}
@@ -75,10 +72,9 @@ def test_saved_trip_round_trip(tmp_path, monkeypatch):
     assert got.itinerary["model_source"] == "BYOM, m1"
 
 
-def test_saved_trip_legacy_no_label(tmp_path, monkeypatch):
+def test_saved_trip_legacy_no_label(pg_schema):
     import yonder.saved as saved
 
-    monkeypatch.setattr(saved, "DB_PATH", tmp_path / "saved.db")
     row = saved.save_itinerary({"title": "Old trip"})
     got = saved.get(row.id)
     assert got is not None
@@ -87,10 +83,9 @@ def test_saved_trip_legacy_no_label(tmp_path, monkeypatch):
 
 # ── AI usage log round trip ──────────────────────────────────────────────────
 
-def test_usage_log_round_trip(tmp_path, monkeypatch):
+def test_usage_log_round_trip(pg_schema):
     import yonder.ai_usage as au
 
-    monkeypatch.setattr(au, "DB_PATH", tmp_path / "usage.db")
     au._log_sync(
         "escape",
         {
@@ -101,43 +96,36 @@ def test_usage_log_round_trip(tmp_path, monkeypatch):
             "model_source": "Grok (Server)",
         },
     )
-    conn = sqlite3.connect(au.DB_PATH)
-    row = conn.execute("SELECT route, model_source FROM ai_usage").fetchone()
-    conn.close()
-    assert row == ("escape", "Grok (Server)")
+    with pg_schema() as conn:
+        row = conn.execute("SELECT route, model_source FROM ai_usage").fetchone()
+    assert row["route"] == "escape"
+    assert row["model_source"] == "Grok (Server)"
 
 
-def test_usage_log_legacy_db_migrates(tmp_path, monkeypatch):
-    """Old ai_usage.db without model_source gets the column added, old rows NULL."""
+def test_usage_log_legacy_db_migrates(pg_schema):
+    """PG: NULL and labeled model_source rows coexist correctly."""
     import yonder.ai_usage as au
+    from datetime import datetime, timezone
 
-    db = tmp_path / "usage.db"
-    conn = sqlite3.connect(db)
-    conn.execute(
-        """
-        CREATE TABLE ai_usage (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ts TEXT NOT NULL, route TEXT NOT NULL, model TEXT,
-            prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0,
-            total_tokens INTEGER DEFAULT 0, est_cost_usd REAL DEFAULT 0,
-            calls INTEGER DEFAULT 1
+    # Insert a legacy-style row (no model_source) directly via pg_schema
+    with pg_schema() as conn:
+        conn.execute(
+            "INSERT INTO ai_usage"
+            " (ts, route, model, prompt_tokens, completion_tokens,"
+            "  total_tokens, est_cost_usd, calls)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (datetime.now(timezone.utc).isoformat(), "old", "grok", 0, 0, 9, 0.0, 1),
         )
-        """
-    )
-    conn.execute(
-        "INSERT INTO ai_usage (ts, route, total_tokens) VALUES ('t', 'old', 9)"
-    )
-    conn.commit()
-    conn.close()
 
-    monkeypatch.setattr(au, "DB_PATH", db)
+    # New row with model_source via the module API
     au._log_sync("new", {"total_tokens": 3, "model_source": "BYOM"})
-    conn = sqlite3.connect(db)
-    rows = conn.execute(
-        "SELECT route, model_source FROM ai_usage ORDER BY id"
-    ).fetchall()
-    conn.close()
-    assert rows == [("old", None), ("new", "BYOM")]
+
+    with pg_schema() as conn:
+        rows = conn.execute(
+            "SELECT route, model_source FROM ai_usage ORDER BY id"
+        ).fetchall()
+
+    assert [(r["route"], r["model_source"]) for r in rows] == [("old", None), ("new", "BYOM")]
 
 
 def test_merge_usage_keeps_model_source():
@@ -152,29 +140,26 @@ def test_merge_usage_keeps_model_source():
 
 # ── Price history + vibe signals accept the label ────────────────────────────
 
-def test_price_history_model_source(tmp_path, monkeypatch):
+def test_price_history_model_source(pg_schema):
     from datetime import date
 
     import yonder.history as history
     from yonder.types import FlightOffer, SearchQuery
 
-    monkeypatch.setattr(history, "DB_PATH", tmp_path / "hist.db")
     q = SearchQuery(origin="YVR", destination="NRT", depart_date=date(2026, 9, 1))
     offer = FlightOffer(provider="amadeus", price=500.0, currency="USD")
     history.record_offer(q, offer, model_source="Grok (Server)")
     history.record_offer(q, offer)  # legacy/no label
-    conn = sqlite3.connect(history.DB_PATH)
-    rows = conn.execute(
-        "SELECT model_source FROM price_samples ORDER BY id"
-    ).fetchall()
-    conn.close()
-    assert rows == [("Grok (Server)",), (None,)]
+    with pg_schema() as conn:
+        rows = conn.execute(
+            "SELECT model_source FROM price_samples ORDER BY id"
+        ).fetchall()
+    assert [r["model_source"] for r in rows] == ["Grok (Server)", None]
 
 
-def test_vibe_signal_model_source(tmp_path, monkeypatch):
+def test_vibe_signal_model_source(pg_schema, monkeypatch):
     import yonder.vibe_signals as vs
 
-    monkeypatch.setattr(vs, "DB_PATH", tmp_path / "sig.db")
     monkeypatch.delenv("MOCK", raising=False)
     sid = vs.record_search(
         vibe="chaos",
@@ -183,9 +168,8 @@ def test_vibe_signal_model_source(tmp_path, monkeypatch):
         model_source="BYOM, m1",
     )
     assert sid
-    conn = sqlite3.connect(tmp_path / "sig.db")
-    row = conn.execute(
-        "SELECT model_source FROM search_signals WHERE id = ?", (sid,)
-    ).fetchone()
-    conn.close()
-    assert row == ("BYOM, m1",)
+    with pg_schema() as conn:
+        row = conn.execute(
+            "SELECT model_source FROM search_signals WHERE id = %s", (sid,)
+        ).fetchone()
+    assert row["model_source"] == "BYOM, m1"

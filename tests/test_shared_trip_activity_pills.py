@@ -28,11 +28,8 @@ import yonder.web as web_module
 
 
 @pytest.fixture(autouse=True)
-def _isolated(tmp_path, monkeypatch):
-    """Isolated DBs and no live API keys for every test in this module."""
-    monkeypatch.setattr(enc_module, "DB_PATH", tmp_path / "place_book.db")
-    monkeypatch.setattr(share_module, "DB_PATH", tmp_path / "share.db")
-    monkeypatch.setattr(vs, "DB_PATH", tmp_path / "signals.db")
+def _isolated(pg_schema, monkeypatch):
+    """Isolated PG schema and no live API keys for every test in this module."""
     monkeypatch.delenv("MOCK", raising=False)
     monkeypatch.delenv("XAI_API_KEY", raising=False)
     yield

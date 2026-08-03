@@ -21,9 +21,8 @@ from yonder.config import get_settings
 
 
 @pytest.fixture(autouse=True)
-def _isolated_fare_db(tmp_path, monkeypatch):
-    """Point the fare-estimate cache at a fresh temp SQLite file."""
-    monkeypatch.setattr(fare_estimates, "DB_PATH", tmp_path / "fare_estimates.db")
+def _isolated_fare_db(pg_schema, monkeypatch):
+    """Isolate fare-estimate cache in a throwaway PG schema."""
     monkeypatch.delenv("XAI_API_KEY", raising=False)
     monkeypatch.delenv("MOCK", raising=False)
 

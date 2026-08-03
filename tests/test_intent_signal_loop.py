@@ -4,15 +4,13 @@ Verifies that:
 1. record_search accepts intent_confidence + intent_rationale and stores them.
 2. low_confidence_misses() finds zero-result rows with confidence < threshold.
 3. high-confidence rows and rows with results are NOT returned by the audit.
-4. Thumbs-down cross-reference from feedback.db works when the file exists.
+4. Thumbs-down cross-reference from result_feedback works (via PG, not SQLite).
 
-All tests use a temporary SQLite file so they never touch the real database.
+All tests use a throwaway PostgreSQL schema so they never touch real tables.
 """
 from __future__ import annotations
 
-import os
-import sqlite3
-from pathlib import Path
+import time
 
 import pytest
 
@@ -25,9 +23,8 @@ import yonder.vibe_signals as vs
 
 
 @pytest.fixture(autouse=True)
-def isolated_db(tmp_path, monkeypatch):
-    """Each test gets its own fresh vibe_signals database."""
-    monkeypatch.setattr(vs, "DB_PATH", tmp_path / "signals_test.db")
+def isolated_db(pg_schema, monkeypatch):
+    """Each test gets its own isolated PG schema."""
     monkeypatch.delenv("MOCK", raising=False)
     yield
 
@@ -48,9 +45,9 @@ def test_record_search_stores_intent_confidence():
         prompt="somehow going somewhere interesting maybe",
     )
     assert sid is not None
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         row = conn.execute(
-            "SELECT intent_confidence, intent_rationale FROM search_signals WHERE id = ?",
+            "SELECT intent_confidence, intent_rationale FROM search_signals WHERE id = %s",
             (sid,),
         ).fetchone()
     assert row is not None
@@ -68,9 +65,9 @@ def test_record_search_zero_result_stored():
         intent_rationale="test rationale",
     )
     assert sid is not None
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         row = conn.execute(
-            "SELECT result_count, intent_confidence FROM search_signals WHERE id = ?",
+            "SELECT result_count, intent_confidence FROM search_signals WHERE id = %s",
             (sid,),
         ).fetchone()
     assert int(row["result_count"]) == 0
@@ -81,9 +78,9 @@ def test_record_search_intent_fields_nullable():
     """Omitting intent fields must still write a valid row (backwards compat)."""
     sid = vs.record_search(vibe="adventure", origin="YVR", dest_iata="LHR")
     assert sid is not None
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         row = conn.execute(
-            "SELECT intent_confidence, intent_rationale FROM search_signals WHERE id = ?",
+            "SELECT intent_confidence, intent_rationale FROM search_signals WHERE id = %s",
             (sid,),
         ).fetchone()
     assert row is not None
@@ -202,7 +199,7 @@ def test_low_confidence_misses_mock_mode_returns_empty(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 3. Thumbs-down cross-reference (feedback.db integration)
+# 3. Thumbs-down cross-reference (now via PG result_feedback table)
 # ---------------------------------------------------------------------------
 
 
@@ -215,43 +212,24 @@ def test_prompt_hash_is_case_and_space_insensitive():
     assert base is not None
 
 
-def test_low_confidence_misses_thumbs_down_case_spacing_mismatch(tmp_path, monkeypatch):
-    """Thumbs-down match must work even when the stored feedback query differs
-    from the search prompt only by capitalisation or extra whitespace."""
-    import time as _time
-
-    # Search signal recorded with mixed-case prompt
+def test_low_confidence_misses_thumbs_down_case_spacing_mismatch(pg_schema):
+    """Thumbs-down match works even when feedback query differs by case/spacing."""
     raw_prompt = "Pop Into  Tokyo  Then Go To Seoul"
     vs.record_search(
         vibe="adventure", origin="YVR", dest_iata="NRT",
         result_count=0, intent_confidence=0.55, prompt=raw_prompt,
     )
 
-    # Feedback stored with a differently-cased / spaced variant of the same query
+    # Insert thumbs-down with a differently-cased/spaced variant into result_feedback
     feedback_query_variant = "pop into tokyo then go to seoul"
-    fb_path = tmp_path / "feedback_mismatch.db"
-    conn = sqlite3.connect(str(fb_path))
-    conn.execute(
-        """CREATE TABLE result_feedback (
-            id TEXT PRIMARY KEY, session_hash TEXT, vibe TEXT,
-            dest_iata TEXT, query TEXT, direction TEXT, created_at REAL
-        )"""
-    )
-    # feedback.db normalises query via _norm_query before storing
     norm_q = " ".join(feedback_query_variant.lower().split())[:200]
-    conn.execute(
-        "INSERT INTO result_feedback VALUES (?,?,?,?,?,?,?)",
-        ("fbX", None, "adventure", "NRT", norm_q, "down", _time.time()),
-    )
-    conn.commit()
-    conn.close()
-
-    import yonder.config as cfg
-    monkeypatch.setattr(cfg, "ROOT", tmp_path)
-    # Symlink so low_confidence_misses finds the right feedback.db name
-    (tmp_path / "feedback.db").unlink(missing_ok=True)
-    import shutil
-    shutil.copy(str(fb_path), str(tmp_path / "feedback.db"))
+    with pg_schema() as conn:
+        conn.execute(
+            "INSERT INTO result_feedback"
+            " (id, session_hash, vibe, dest_iata, query, direction, created_at)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            ("fbX", None, "adventure", "NRT", norm_q, "down", time.time()),
+        )
 
     misses = vs.low_confidence_misses()
     assert len(misses) == 1
@@ -260,49 +238,24 @@ def test_low_confidence_misses_thumbs_down_case_spacing_mismatch(tmp_path, monke
     )
 
 
-def test_low_confidence_misses_flags_thumbs_down(tmp_path, monkeypatch):
-    """A matching thumbs-down in feedback.db sets thumbs_down=True."""
-    import yonder.vibe_signals as _vs  # re-import to pick up monkeypatched ROOT
-
+def test_low_confidence_misses_flags_thumbs_down(pg_schema):
+    """A matching thumbs-down in result_feedback sets thumbs_down=True."""
     prompt_text = "going nowhere fast maybe"
-    ph = vs.prompt_hash(prompt_text)
 
     vs.record_search(
         vibe="adventure", origin="YVR", dest_iata="NRT",
         result_count=0, intent_confidence=0.55, prompt=prompt_text,
     )
 
-    # Build a minimal feedback.db with a matching thumbs-down
-    fb_path = tmp_path / "feedback.db"
-    conn = sqlite3.connect(str(fb_path))
-    conn.execute(
-        """CREATE TABLE result_feedback (
-            id TEXT PRIMARY KEY, session_hash TEXT, vibe TEXT,
-            dest_iata TEXT, query TEXT, direction TEXT, created_at REAL
-        )"""
-    )
-    # The feedback query is normalized: lower + split join
-    import time
+    # Insert a matching thumbs-down into the PG test schema
     norm_q = " ".join(prompt_text.lower().split())[:200]
-    conn.execute(
-        "INSERT INTO result_feedback VALUES (?,?,?,?,?,?,?)",
-        ("fb1", None, "adventure", "NRT", norm_q, "down", time.time()),
-    )
-    conn.commit()
-    conn.close()
-
-    # Patch ROOT so low_confidence_misses finds our temp feedback.db
-    from yonder.config import ROOT
-    monkeypatch.setattr(vs, "DB_PATH", tmp_path / "signals_test.db")  # already set by autouse
-    # Re-write the record with the correct DB_PATH
-    vs.record_search(
-        vibe="adventure", origin="YVR", dest_iata="NRT",
-        result_count=0, intent_confidence=0.55, prompt=prompt_text,
-    )
-
-    # Patch ROOT in config so _ROOT / "feedback.db" resolves to our file
-    import yonder.config as cfg
-    monkeypatch.setattr(cfg, "ROOT", tmp_path)
+    with pg_schema() as conn:
+        conn.execute(
+            "INSERT INTO result_feedback"
+            " (id, session_hash, vibe, dest_iata, query, direction, created_at)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            ("fb1", None, "adventure", "NRT", norm_q, "down", time.time()),
+        )
 
     misses = vs.low_confidence_misses()
     assert any(m["thumbs_down"] for m in misses), (

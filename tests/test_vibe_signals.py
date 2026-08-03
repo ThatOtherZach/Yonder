@@ -1,14 +1,12 @@
 """Unit tests for yonder/vibe_signals.py.
 
-All tests use a temporary SQLite file (via monkeypatch on DB_PATH) so they
-never touch any real database on disk.
+All tests use an isolated throwaway PostgreSQL schema (via the ``pg_schema``
+conftest fixture) so they never touch real database tables.
 """
 
 from __future__ import annotations
 
-import os
 import time
-from pathlib import Path
 
 import pytest
 
@@ -21,10 +19,8 @@ import yonder.vibe_signals as vs
 
 
 @pytest.fixture(autouse=True)
-def isolated_db(tmp_path, monkeypatch):
-    """Each test gets its own fresh SQLite database."""
-    monkeypatch.setattr(vs, "DB_PATH", tmp_path / "signals_test.db")
-    # Also clear any cached MOCK state by unsetting the env var
+def isolated_db(pg_schema, monkeypatch):
+    """Each test gets its own isolated PG schema."""
     monkeypatch.delenv("MOCK", raising=False)
     yield
 
@@ -59,8 +55,8 @@ def test_mock_db_stays_empty(monkeypatch):
     vs.upsert_signal(dest_iata="NRT", vibe="beach", signal_strength=vs.ENGAGED)
     # Temporarily lift MOCK to inspect the DB
     monkeypatch.delenv("MOCK")
-    with vs._connect() as conn:
-        n = conn.execute("SELECT COUNT(*) FROM search_signals").fetchone()[0]
+    with vs.get_conn() as conn:
+        n = conn.execute("SELECT COUNT(*) AS n FROM search_signals").fetchone()["n"]
     assert n == 0
 
 
@@ -80,13 +76,15 @@ def test_record_search_rejects_invalid_iata():
 
 
 def test_record_search_idempotent_same_id():
-    """INSERT OR IGNORE means re-inserting the same id is silently skipped."""
+    """INSERT … ON CONFLICT DO NOTHING means re-inserting the same id is silently skipped."""
     sid = vs.record_search(vibe="adventure", origin="YVR", dest_iata="CDG", signal_id="abc123")
     sid2 = vs.record_search(vibe="adventure", origin="YVR", dest_iata="CDG", signal_id="abc123")
     assert sid == "abc123"
     assert sid2 == "abc123"
-    with vs._connect() as conn:
-        n = conn.execute("SELECT COUNT(*) FROM search_signals WHERE id = 'abc123'").fetchone()[0]
+    with vs.get_conn() as conn:
+        n = conn.execute(
+            "SELECT COUNT(*) AS n FROM search_signals WHERE id = 'abc123'"
+        ).fetchone()["n"]
     assert n == 1
 
 
@@ -94,9 +92,9 @@ def test_record_search_strength_clamped():
     sid = vs.record_search(
         vibe="adventure", origin="YVR", dest_iata="CDG", signal_strength=99
     )
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         row = conn.execute(
-            "SELECT signal_strength FROM search_signals WHERE id = ?", (sid,)
+            "SELECT signal_strength FROM search_signals WHERE id = %s", (sid,)
         ).fetchone()
     assert row["signal_strength"] == 4  # clamped to max 4
 
@@ -111,9 +109,9 @@ def test_upsert_upgrades_existing_signal():
     sid = vs.record_search(vibe="beach", origin="YVR", dest_iata="NRT", signal_strength=vs.SEARCHED)
     # Upgrade to tier-3
     vs.upsert_signal(signal_id=sid, dest_iata="NRT", signal_strength=vs.ENGAGED)
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         row = conn.execute(
-            "SELECT signal_strength FROM search_signals WHERE id = ?", (sid,)
+            "SELECT signal_strength FROM search_signals WHERE id = %s", (sid,)
         ).fetchone()
     assert row["signal_strength"] == vs.ENGAGED
 
@@ -121,9 +119,9 @@ def test_upsert_upgrades_existing_signal():
 def test_upsert_does_not_downgrade():
     sid = vs.record_search(vibe="beach", origin="YVR", dest_iata="NRT", signal_strength=vs.ENGAGED)
     vs.upsert_signal(signal_id=sid, dest_iata="NRT", signal_strength=vs.SEARCHED)
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         row = conn.execute(
-            "SELECT signal_strength FROM search_signals WHERE id = ?", (sid,)
+            "SELECT signal_strength FROM search_signals WHERE id = %s", (sid,)
         ).fetchone()
     assert row["signal_strength"] == vs.ENGAGED  # unchanged
 
@@ -132,9 +130,9 @@ def test_upsert_same_strength_is_noop():
     sid = vs.record_search(vibe="beach", origin="YVR", dest_iata="NRT", signal_strength=vs.ENGAGED)
     returned = vs.upsert_signal(signal_id=sid, dest_iata="NRT", signal_strength=vs.ENGAGED)
     assert returned == sid
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         row = conn.execute(
-            "SELECT signal_strength FROM search_signals WHERE id = ?", (sid,)
+            "SELECT signal_strength FROM search_signals WHERE id = %s", (sid,)
         ).fetchone()
     assert row["signal_strength"] == vs.ENGAGED
 
@@ -146,12 +144,12 @@ def test_upsert_dest_mismatch_inserts_new_row():
     # Should have created a brand-new row, not touched the original
     assert new_sid is not None
     assert new_sid != sid
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         orig = conn.execute(
-            "SELECT signal_strength FROM search_signals WHERE id = ?", (sid,)
+            "SELECT signal_strength FROM search_signals WHERE id = %s", (sid,)
         ).fetchone()
         new = conn.execute(
-            "SELECT signal_strength, dest_iata FROM search_signals WHERE id = ?", (new_sid,)
+            "SELECT signal_strength, dest_iata FROM search_signals WHERE id = %s", (new_sid,)
         ).fetchone()
     assert orig["signal_strength"] == vs.SEARCHED  # original untouched
     assert new["dest_iata"] == "CDG"
@@ -167,9 +165,9 @@ def test_upsert_standalone_insert_without_prior_row():
     """upsert_signal with only dest_iata (no signal_id) creates a fresh row."""
     sid = vs.upsert_signal(dest_iata="LHR", vibe="culture", signal_strength=vs.ENGAGED)
     assert sid is not None
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         row = conn.execute(
-            "SELECT dest_iata, signal_strength FROM search_signals WHERE id = ?", (sid,)
+            "SELECT dest_iata, signal_strength FROM search_signals WHERE id = %s", (sid,)
         ).fetchone()
     assert row["dest_iata"] == "LHR"
     assert row["signal_strength"] == vs.ENGAGED
@@ -184,12 +182,12 @@ def test_recompute_force_runs_even_when_fresh():
     """force=True always runs even if last_recompute was just now."""
     vs.record_search(vibe="adventure", origin="YVR", dest_iata="NRT")
     # Seed a recent timestamp so lazy would skip
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO signals_meta (key, value) VALUES ('last_recompute', ?)",
+            "INSERT INTO signals_meta (key, value) VALUES ('last_recompute', %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
             (str(time.time()),),
         )
-        conn.commit()
     ran = vs.recompute_scores(force=True)
     assert ran is True
 
@@ -197,12 +195,12 @@ def test_recompute_force_runs_even_when_fresh():
 def test_recompute_lazy_skips_when_fresh():
     vs.record_search(vibe="adventure", origin="YVR", dest_iata="NRT")
     # Set last_recompute to now
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO signals_meta (key, value) VALUES ('last_recompute', ?)",
+            "INSERT INTO signals_meta (key, value) VALUES ('last_recompute', %s)"
+            " ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
             (str(time.time()),),
         )
-        conn.commit()
     ran = vs.recompute_scores(force=False)
     assert ran is False
 
@@ -218,7 +216,7 @@ def test_recompute_populates_scores_table():
     vs.record_search(vibe="adventure", origin="YVR", dest_iata="NRT")
     vs.record_search(vibe="adventure", origin="YVR", dest_iata="CDG")
     vs.recompute_scores(force=True)
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         rows = conn.execute("SELECT dest_iata FROM dest_vibe_scores WHERE vibe = 'adventure'").fetchall()
     iatas = {r["dest_iata"] for r in rows}
     assert "NRT" in iatas
@@ -229,7 +227,7 @@ def test_recompute_score_formula():
     """Score = sum(strength * recency) / count.  With a fresh row the recency ≈ 1."""
     vs.record_search(vibe="surf", origin="YVR", dest_iata="SYD", signal_strength=vs.ENGAGED)
     vs.recompute_scores(force=True)
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         row = conn.execute(
             "SELECT score, search_count FROM dest_vibe_scores WHERE dest_iata='SYD' AND vibe='surf'"
         ).fetchone()
@@ -243,7 +241,7 @@ def test_recompute_save_count():
     vs.record_search(vibe="surf", origin="YVR", dest_iata="SYD", signal_strength=vs.SAVED)
     vs.record_search(vibe="surf", origin="YVR", dest_iata="SYD", signal_strength=vs.SEARCHED)
     vs.recompute_scores(force=True)
-    with vs._connect() as conn:
+    with vs.get_conn() as conn:
         row = conn.execute(
             "SELECT save_count, search_count FROM dest_vibe_scores WHERE dest_iata='SYD' AND vibe='surf'"
         ).fetchone()

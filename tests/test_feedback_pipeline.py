@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sqlite3
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,10 +30,8 @@ import yonder.web as web_module
 
 
 @pytest.fixture(autouse=True)
-def isolated_dbs(tmp_path, monkeypatch):
-    """Each test gets its own fresh SQLite databases, MOCK env cleared."""
-    monkeypatch.setattr(fb, "DB_PATH", tmp_path / "feedback_test.db")
-    monkeypatch.setattr(vs, "DB_PATH", tmp_path / "signals_test.db")
+def isolated_dbs(pg_schema, monkeypatch):
+    """Each test gets its own isolated PG schema, MOCK env cleared."""
     monkeypatch.delenv("MOCK", raising=False)
 
 
@@ -75,7 +72,7 @@ class TestThumbsUp:
     def test_result_feedback_row_has_correct_direction(self):
         fb.record_feedback(direction="up", vibe="adventure", dest_iata="LIS",
                            session_hash="sess_dir_test")
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT direction, vibe, dest_iata FROM result_feedback"
             ).fetchone()
@@ -86,7 +83,7 @@ class TestThumbsUp:
 
     def test_signal_row_written_to_vibe_signals(self, client):
         _post_vote(client, "up", dest="NRT", vibe="culture")
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             rows = conn.execute(
                 "SELECT signal_strength, search_type FROM search_signals"
                 " WHERE dest_iata = 'NRT'"
@@ -98,7 +95,7 @@ class TestThumbsUp:
 
     def test_signal_row_linked_to_correct_vibe(self, client):
         _post_vote(client, "up", dest="CDG", vibe="culture")
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             row = conn.execute(
                 "SELECT vibe FROM search_signals WHERE dest_iata = 'CDG'"
             ).fetchone()
@@ -115,7 +112,7 @@ class TestThumbsUp:
         body = resp.json()
         assert body["ok"] is True
         # Signal store must be empty — no dest to reinforce
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             count = conn.execute(
                 "SELECT COUNT(*) AS c FROM search_signals"
             ).fetchone()["c"]
@@ -143,14 +140,14 @@ class TestThumbsDown:
     def test_result_feedback_direction_is_down(self):
         fb.record_feedback(direction="down", vibe="adventure", dest_iata="LIS",
                            session_hash="sess_down_dir")
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute("SELECT direction FROM result_feedback").fetchone()
         assert row is not None
         assert row["direction"] == "down"
 
     def test_rejection_signal_written_with_strength_zero(self, client):
         _post_vote(client, "down", dest="SYD", vibe="adventure")
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             row = conn.execute(
                 "SELECT signal_strength, search_type FROM search_signals"
                 " WHERE dest_iata = 'SYD'"
@@ -163,9 +160,9 @@ class TestThumbsDown:
         sid = vs.record_rejection(dest_iata="LHR", vibe="culture",
                                   session_hash="sess_reject")
         assert sid is not None
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             row = conn.execute(
-                "SELECT signal_strength, search_type FROM search_signals WHERE id = ?",
+                "SELECT signal_strength, search_type FROM search_signals WHERE id = %s",
                 (sid,),
             ).fetchone()
         assert row["signal_strength"] == 0
@@ -173,7 +170,7 @@ class TestThumbsDown:
 
     def test_vibe_question_row_created(self, client):
         _post_vote(client, "down", vibe="beach", query="Caribbean island hopping")
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT vibe, query_norm FROM vibe_questions"
             ).fetchone()
@@ -196,7 +193,7 @@ class TestThumbsDown:
         assert qid1 == qid2
         assert new1 is True
         assert new2 is False
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             n = conn.execute("SELECT COUNT(*) AS c FROM vibe_questions").fetchone()["c"]
         assert n == 1
 
@@ -339,7 +336,7 @@ class TestGenerateAnswer:
             await asyncio.sleep(0.2)
 
         # Verify answer_json was persisted
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'culture'"
             ).fetchone()
@@ -376,7 +373,7 @@ class TestGenerateAnswer:
                 )
             await asyncio.sleep(0.2)
 
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'offbeat'"
             ).fetchone()
@@ -410,7 +407,7 @@ class TestGenerateAnswer:
                 )
             await asyncio.sleep(0.2)
 
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'culture'"
             ).fetchone()
@@ -446,7 +443,7 @@ class TestGenerateAnswer:
                 )
             await asyncio.sleep(0.2)
 
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'urban'"
             ).fetchone()
@@ -482,7 +479,7 @@ class TestGenerateAnswer:
                 )
             await asyncio.sleep(0.2)
 
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'culture'"
             ).fetchone()
@@ -518,7 +515,7 @@ class TestGenerateAnswer:
                 )
             await asyncio.sleep(0.2)
 
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'food'"
             ).fetchone()
@@ -554,7 +551,7 @@ class TestGenerateAnswer:
                 )
             await asyncio.sleep(0.2)
 
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'wanderer'"
             ).fetchone()
@@ -584,7 +581,7 @@ class TestGenerateAnswer:
             assert resp.status_code == 200
             await asyncio.sleep(0.2)
 
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'adventure'"
             ).fetchone()
@@ -622,7 +619,7 @@ class TestGenerateAnswer:
                 )
             await asyncio.sleep(0.2)
 
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'adventure'"
             ).fetchone()
@@ -661,7 +658,7 @@ class TestGenerateAnswer:
                 )
             await asyncio.sleep(0.2)
 
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'getaway'"
             ).fetchone()
@@ -698,7 +695,7 @@ class TestGenerateAnswer:
                 )
             await asyncio.sleep(0.2)
 
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'sunshine'"
             ).fetchone()
@@ -739,7 +736,7 @@ class TestGenerateAnswer:
                 )
             await asyncio.sleep(0.2)
 
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT answer_json FROM vibe_questions WHERE vibe = 'culture'"
             ).fetchone()
@@ -781,7 +778,7 @@ class TestGenerateAnswer:
         assert chat_mock.call_count == 1
 
         # Only one row in vibe_questions for this vibe+query
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             n = conn.execute(
                 "SELECT COUNT(*) AS c FROM vibe_questions WHERE vibe = 'chaos'"
             ).fetchone()["c"]
@@ -812,7 +809,7 @@ class TestThumbsDownMissingDest:
             "/api/result-feedback",
             json={"direction": "down", "vibe": "adventure", "query": "somewhere warm"},
         )
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             n = conn.execute("SELECT COUNT(*) AS c FROM search_signals").fetchone()["c"]
         assert n == 0, "no signal row should be written when dest_iata is absent"
 
@@ -821,7 +818,7 @@ class TestThumbsDownMissingDest:
             "/api/result-feedback",
             json={"direction": "down", "vibe": "adventure", "query": "somewhere warm"},
         )
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT vibe, query_norm FROM vibe_questions WHERE vibe = 'adventure'"
             ).fetchone()
@@ -851,7 +848,7 @@ class TestThumbsDownMissingDest:
                 "query": "tropical getaway",
             },
         )
-        with vs._connect() as conn:
+        with vs.get_conn() as conn:
             n = conn.execute("SELECT COUNT(*) AS c FROM search_signals").fetchone()["c"]
         assert n == 0, "no signal row should be written for a 2-letter invalid IATA"
 
@@ -865,7 +862,7 @@ class TestThumbsDownMissingDest:
                 "query": "tropical getaway",
             },
         )
-        with fb._connect() as conn:
+        with fb.get_conn() as conn:
             row = conn.execute(
                 "SELECT vibe, query_norm FROM vibe_questions WHERE vibe = 'beach'"
             ).fetchone()

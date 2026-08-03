@@ -18,9 +18,7 @@ import yonder.web as web_module
 
 
 @pytest.fixture(autouse=True)
-def isolated_db(tmp_path, monkeypatch):
-    monkeypatch.setattr(fb, "DB_PATH", tmp_path / "feedback_test.db")
-    monkeypatch.setattr(vs, "DB_PATH", tmp_path / "signals_test.db")
+def isolated_db(pg_schema, monkeypatch):
     monkeypatch.delenv("MOCK", raising=False)
 
 
@@ -84,12 +82,10 @@ class TestDedup:
 
 
 class TestConcurrency:
-    def test_parallel_identical_votes_persist_once(self, tmp_path, monkeypatch):
+    def test_parallel_identical_votes_persist_once(self, monkeypatch):
         """DB-level unique index makes dedup atomic under concurrency."""
         import threading
 
-        monkeypatch.setattr(fb, "DB_PATH", tmp_path / "fb_conc.db")
-        fb._connect().close()  # create schema up front
         results: list[str | None] = []
         barrier = threading.Barrier(8)
 
@@ -120,12 +116,12 @@ class TestConcurrency:
 
 
 class TestRecordFeedbackReturnContract:
-    def test_duplicate_returns_empty_string(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(fb, "DB_PATH", tmp_path / "fb2.db")
+    def test_duplicate_returns_empty_string(self):
         first = fb.record_feedback(direction="up", vibe="calm", dest_iata="LIS", session_hash="s1")
         assert first
         dup = fb.record_feedback(direction="up", vibe="calm", dest_iata="LIS", session_hash="s1")
         assert dup == ""
 
     def test_invalid_direction_returns_none(self):
-        assert fb.record_feedback(direction="sideways", vibe="calm", dest_iata="LIS") is None
+        result = fb.record_feedback(direction="sideways", vibe="calm", dest_iata="LIS")
+        assert result is None
