@@ -178,6 +178,93 @@ def _row_to_saved(row: dict[str, Any]) -> SavedItinerary:
     )
 
 
+def _anchor_city(iata: str) -> str:
+    try:
+        from yonder.countries import city_for_iata
+
+        return city_for_iata(iata) or iata
+    except Exception:
+        return iata
+
+
+def upcoming_anchor_legs(
+    *, today: "datetime.date | None" = None, limit: int = 3
+) -> list[dict[str, Any]]:
+    """Future-dated legs from saved trips, usable as planning anchors.
+
+    Each anchor: {saved_id, title, kind, from_iata, to_iata, from_city,
+    to_city, depart_date (ISO), label}. Sorted soonest-first, capped at
+    ``limit``. Past-dated legs are never returned; users with no upcoming
+    saved trips get []. Never raises.
+    """
+    from datetime import date as _date
+
+    today = today or _date.today()
+    try:
+        saves = list_saved(limit=25)
+    except Exception:
+        return []
+
+    anchors: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def _add(save: SavedItinerary, o: Any, d: Any, dep: Any) -> None:
+        o = str(o or "").strip().upper()
+        d = str(d or "").strip().upper()
+        if len(o) != 3 or not o.isalpha() or len(d) != 3 or not d.isalpha() or o == d:
+            return
+        try:
+            dep_d = _date.fromisoformat(str(dep)[:10])
+        except (TypeError, ValueError):
+            return
+        if dep_d <= today:
+            return  # past-dated saved legs are never anchors
+        key = (o, d, dep_d.isoformat())
+        if key in seen:
+            return
+        seen.add(key)
+        from_city = _anchor_city(o)
+        to_city = _anchor_city(d)
+        anchors.append(
+            {
+                "saved_id": save.id,
+                "title": save.title,
+                "kind": save.kind,
+                "from_iata": o,
+                "to_iata": d,
+                "from_city": from_city,
+                "to_city": to_city,
+                "depart_date": dep_d.isoformat(),
+                "label": f"Connects to your saved {from_city} → {to_city} flight",
+            }
+        )
+
+    for s in saves:
+        try:
+            it = s.itinerary or {}
+            kind = (s.kind or "").lower()
+            if kind == "quest":
+                home = (s.origin or (s.trip_meta or {}).get("origin") or "").upper()
+                entry = (it.get("entry_iata") or "").upper()
+                exit_ = (it.get("exit_iata") or "").upper()
+                _add(s, home, entry, it.get("depart_date"))
+                _add(s, exit_, home, it.get("outbound_date"))
+            else:
+                for leg in it.get("legs") or []:
+                    if isinstance(leg, dict):
+                        _add(
+                            s,
+                            leg.get("from_iata") or leg.get("from"),
+                            leg.get("to_iata") or leg.get("to"),
+                            leg.get("depart_date"),
+                        )
+        except Exception:
+            continue  # a bad save row never breaks anchor extraction
+
+    anchors.sort(key=lambda a: a["depart_date"])
+    return anchors[: max(0, int(limit))]
+
+
 def _legs_origin_dest(it: dict[str, Any]) -> tuple[str | None, str | None]:
     legs = it.get("legs") or []
     if not legs:

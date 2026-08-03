@@ -213,6 +213,8 @@ class AdventureItinerary(BaseModel):
     rescue: bool = False
     # Gap awareness: set when this result fills a saved-trip gap
     gap_label: str | None = None
+    # Anchored planning: set when this result connects into a saved leg
+    anchor_label: str | None = None
     # No-flight fallback CTAs (shown when all legs have errors — flight truly unavailable)
     no_flight_hub_url: str | None = None   # Aviasales "Try nearest hub" affiliate link
     no_flight_hub_iata: str | None = None  # IATA of the suggested nearby hub
@@ -255,6 +257,8 @@ class QuestIdea(BaseModel):
     theme_label: str = "Quest"
     # Gap awareness: set when this result fills a saved-trip gap
     gap_label: str | None = None
+    # Anchored planning: set when this result connects into a saved leg
+    anchor_label: str | None = None
 
 
 def _cheapest(offers: list[FlightOffer]) -> FlightOffer | None:
@@ -1319,6 +1323,47 @@ def detect_trip_gaps(*, last_n: int = 5) -> "list[Any]":
     return gaps
 
 
+def match_anchor(
+    *,
+    dest_iata: str | None,
+    arrive_date: "date | None",
+    anchors: "list[dict] | None",
+    from_iata: str | None = None,
+) -> dict | None:
+    """The saved anchor leg this result connects into, or None.
+
+    A result connects into an anchor when it ends at the anchor's departure
+    city (``dest_iata == anchor.from_iata``) and arrives strictly before the
+    anchor leg departs. When ``from_iata`` is given, the connecting leg
+    (from_iata → dest_iata) is validated against route knowledge — a
+    fresh-failed (dead) route never earns the anchor badge. Never raises.
+    """
+    d = (dest_iata or "").strip().upper()
+    if len(d) != 3 or not anchors:
+        return None
+    for a in anchors:
+        try:
+            if str(a.get("from_iata") or "").upper() != d:
+                continue
+            # Timing: must arrive before the anchor leg departs
+            a_dep = date.fromisoformat(str(a.get("depart_date"))[:10])
+            if arrive_date is None or arrive_date >= a_dep:
+                continue
+            # Route knowledge: skip dead connecting legs
+            if from_iata:
+                try:
+                    from yonder.knowledge import route_status as _rs
+
+                    if _rs(from_iata, d) == "failed":
+                        continue
+                except Exception:
+                    pass
+            return a
+        except Exception:
+            continue
+    return None
+
+
 def seed_ideas(
     req: AdventureRequest,
     *,
@@ -2174,6 +2219,7 @@ async def plan_quest(
     avoid: list[str] | None = None,
     visited: list[str] | None = None,
     raw_ideas: list[dict] | None = None,
+    anchor_legs: list[dict] | None = None,
 ) -> list[QuestIdea]:
     """Propose 1–3 open-jaw Quest itineraries and price both legs per idea.
 
@@ -2212,6 +2258,7 @@ async def plan_quest(
                 quest_days=days,
                 avoid=avoid or [],
                 visited=visited or [],
+                anchor_legs=anchor_legs,
             )
 
     if not raw_ideas:

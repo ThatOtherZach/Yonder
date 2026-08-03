@@ -1512,6 +1512,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                                 # Refresh wants novelty — learned seed
                                 # candidates would re-suggest the same places
                                 seed_learned=not is_refresh,
+                                anchor_legs=anchor_legs,
                             ),
                             timeout=invent_timeout,
                         )
@@ -1795,6 +1796,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 visited=visited,
                 # Unified cold-start call already proposed pairs — skip the Grok call
                 raw_ideas=_uni_quest if _uni_quest else None,
+                anchor_legs=anchor_legs,
             )
         except Exception as exc:  # noqa: BLE001
             # Surface a human-readable note in the Quest card header too,
@@ -2042,6 +2044,16 @@ async def explore_run(request: Request) -> HTMLResponse:
         except Exception:
             trip_gaps = []
 
+        # ── Anchored planning: upcoming saved legs the AI may connect into ────
+        # Users without upcoming saved trips get [] → prompts and results are
+        # byte-identical to today's behavior. Past-dated saves never qualify.
+        try:
+            from yonder.saved import upcoming_anchor_legs as _upcoming_anchors
+
+            anchor_legs = _upcoming_anchors(limit=3)
+        except Exception:
+            anchor_legs = []
+
         # ── Unified cold-start plan: 3 Grok calls → 1 ──────────────────────────
         # When NO panel is recycled (cold-start Find), one combined structured
         # call covers escape-parse + detour-invent + quest-pairs. Sections that
@@ -2092,6 +2104,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                             # user does NOT want. (This block only runs on
                             # non-refresh today; the flag keeps that safe.)
                             use_cache=not is_refresh,
+                            anchor_legs=anchor_legs,
                         ),
                         timeout=34.0,
                     )
@@ -2239,6 +2252,86 @@ async def explore_run(request: Request) -> HTMLResponse:
                         ]
             except Exception:
                 pass  # gap labelling is best-effort — never crash the search
+
+        # ── Anchored planning: badge results that connect into a saved leg ────
+        # A result "connects" when it ends at an anchor's departure city,
+        # arriving before the saved leg departs (see adventure.match_anchor —
+        # dead connecting routes are skipped there via route knowledge).
+        if anchor_legs:
+            try:
+                from yonder.adventure import match_anchor as _match_anchor
+
+                # Escape: destination feeds an anchor's departure city
+                if (
+                    has_esc
+                    and escape_override.get("result")
+                    and not escape_override.get("escape_gap_label")
+                ):
+                    _esc_qa = getattr(escape_override["result"], "query", None)
+                    if _esc_qa:
+                        _a_esc = _match_anchor(
+                            dest_iata=getattr(_esc_qa, "destination", None),
+                            arrive_date=getattr(_esc_qa, "depart_date", None),
+                            anchors=anchor_legs,
+                            from_iata=getattr(_esc_qa, "origin", None),
+                        )
+                        if _a_esc:
+                            escape_override["escape_anchor_label"] = _a_esc["label"]
+
+                # Detour: itinerary's final leg lands at an anchor's departure city
+                if has_det and detour_override.get("result"):
+                    _det_ra = detour_override["result"]
+                    _its_a = list(getattr(_det_ra, "itineraries", None) or [])
+                    _changed_a = False
+                    for _ia, _ita in enumerate(_its_a):
+                        if getattr(_ita, "gap_label", None) or getattr(
+                            _ita, "anchor_label", None
+                        ):
+                            continue
+                        _legs_a = getattr(_ita, "legs", None) or []
+                        if not _legs_a:
+                            continue
+                        _last_a = _legs_a[-1]
+                        _a_det = _match_anchor(
+                            dest_iata=getattr(_last_a, "to_iata", None),
+                            arrive_date=getattr(_last_a, "depart_date", None),
+                            anchors=anchor_legs,
+                            from_iata=getattr(_last_a, "from_iata", None),
+                        )
+                        if _a_det:
+                            _its_a[_ia] = _ita.model_copy(
+                                update={"anchor_label": _a_det["label"]}
+                            )
+                            _changed_a = True
+                    if _changed_a:
+                        detour_override["result"] = _det_ra.model_copy(
+                            update={"itineraries": _its_a}
+                        )
+
+                # Quest: overland exit city is where the anchor flight departs
+                if has_quest and quest_override.get("result"):
+                    _q_ideas_a = list(quest_override["result"])
+                    _changed_qa = False
+                    for _qa_i, _qa_idea in enumerate(_q_ideas_a):
+                        if getattr(_qa_idea, "gap_label", None) or getattr(
+                            _qa_idea, "anchor_label", None
+                        ):
+                            continue
+                        _a_q = _match_anchor(
+                            dest_iata=getattr(_qa_idea, "exit_iata", None),
+                            arrive_date=getattr(_qa_idea, "outbound_date", None),
+                            anchors=anchor_legs,
+                            from_iata=getattr(_qa_idea, "entry_iata", None),
+                        )
+                        if _a_q:
+                            _q_ideas_a[_qa_i] = _qa_idea.model_copy(
+                                update={"anchor_label": _a_q["label"]}
+                            )
+                            _changed_qa = True
+                    if _changed_qa:
+                        quest_override["result"] = _q_ideas_a
+            except Exception:
+                pass  # anchor badging is best-effort — never crash the search
 
         # ── Vibe Base: cheapest return to the escape destination ─────────────
         # Reuses direct_price from the detour result (computed as baseline there).

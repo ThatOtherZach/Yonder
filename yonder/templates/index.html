@@ -1462,6 +1462,7 @@
         <div class="pass-stack">
           {% set esc_train_links = train_options(escape_result.query.origin, escape_result.query.destination) %}
           {% set esc_gap_label = ep.escape_gap_label if ep is defined and ep.escape_gap_label is defined else none %}
+          {% set esc_anchor_label = ep.escape_anchor_label if ep is defined and ep.escape_anchor_label is defined else none %}
           {% for o in escape_result.offers[:1] %}
           {% set esc_theme = escape_dest_theme or {} %}
           {% set share = share_escape(request, escape_result, o, esc_vibe) %}
@@ -1469,7 +1470,8 @@
                             esc_theme=esc_theme, esc_vibe=esc_vibe,
                             escape_parsed=escape_parsed, escape_place_book=escape_place_book,
                             share=share, esc_text=esc_text, ask=ask,
-                            train_links=esc_train_links, gap_label=esc_gap_label) }}
+                            train_links=esc_train_links, gap_label=esc_gap_label,
+                            anchor_label=esc_anchor_label) }}
           {% endfor %}
         </div>
         {% else %}

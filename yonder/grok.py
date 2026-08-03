@@ -83,6 +83,44 @@ def _learned_seed_candidates(*, vibe: str | None, origin: str | None) -> list[di
         return []
 
 
+_ANCHOR_DIRECTIVE = (
+    "\n- saved_anchor_legs are flights the traveler has ALREADY saved and "
+    "intends to take (from_iata → to_iata departing depart_date). They are "
+    "OPTIONAL connection targets: you MAY compose an itinerary that ends at "
+    "an anchor's from_iata city, arriving at least one day BEFORE its "
+    "depart_date, so the traveler connects into that saved flight. Never "
+    "modify, rebook, or duplicate the anchor leg itself; ignore anchors "
+    "that don't fit the request."
+)
+
+
+def _anchor_prompt_rows(anchor_legs: list[dict] | None) -> list[dict]:
+    """Compact anchor rows for prompt JSON (no ids/labels — token-lean)."""
+    rows: list[dict] = []
+    for a in anchor_legs or []:
+        try:
+            rows.append(
+                {
+                    "from_iata": str(a["from_iata"]).upper(),
+                    "to_iata": str(a["to_iata"]).upper(),
+                    "from_city": a.get("from_city"),
+                    "to_city": a.get("to_city"),
+                    "depart_date": str(a["depart_date"])[:10],
+                }
+            )
+        except (KeyError, TypeError):
+            continue
+    return rows[:3]
+
+
+def _anchor_fingerprint(anchor_legs: list[dict] | None) -> str:
+    """Cache-key fragment — anchored and unanchored plans must not collide."""
+    return ";".join(
+        f"{r['from_iata']}-{r['to_iata']}-{r['depart_date']}"
+        for r in _anchor_prompt_rows(anchor_legs)
+    )
+
+
 def _filter_quest_rows(raw: list, home_iata: str, avoid_set: set[str]) -> list[dict]:
     """Validate raw open-jaw quest rows: IATA shape, avoid list, distinct countries."""
     from yonder.countries import country_for_iata
@@ -527,6 +565,7 @@ class GrokClient:
         quest_days: int = 10,
         avoid: list[str] | None = None,
         visited: list[str] | None = None,
+        anchor_legs: list[dict] | None = None,
     ) -> list[dict]:
         """Propose 1–3 open-jaw overland Quest itineraries.
 
@@ -559,8 +598,11 @@ class GrokClient:
             '"transport":["Reunification Express","Mekong slow boat","National Bus Cambodia"],'
             '"highlights":["Hội An","Phnom Penh","Siem Reap"]}'
             "]}"
-            + language_directive(detect_lang(prompt))
         )
+        _anchor_rows = _anchor_prompt_rows(anchor_legs)
+        if _anchor_rows:
+            system += _ANCHOR_DIRECTIVE
+        system += language_directive(detect_lang(prompt))
         user = json.dumps(
             {
                 "prompt": prompt.strip()[:400],
@@ -571,6 +613,7 @@ class GrokClient:
                 "window_days": days,
                 "avoid_countries": avoid_codes,
                 "count": "1 to 3 ideas (prefer 2-3 diverse options)",
+                **({"saved_anchor_legs": _anchor_rows} if _anchor_rows else {}),
             },
             default=str,
         )
@@ -645,6 +688,7 @@ class GrokClient:
         default_currency: str = "CAD",
         today: date | None = None,
         seed_learned: bool = True,
+        anchor_legs: list[dict] | None = None,
     ) -> tuple[AdventureRequest, list[StopoverIdea]]:
         """ONE Grok call: normalize the trip for APIs + propose detour cities.
 
@@ -737,6 +781,9 @@ class GrokClient:
                 "verified rank first). They are OPTIONAL suggestions: confirm, "
                 "reorder, or override them freely — still apply every rule above."
             )
+        _anchor_rows = _anchor_prompt_rows(anchor_legs)
+        if _anchor_rows:
+            system += _ANCHOR_DIRECTIVE
         system += language_directive(detect_lang(prompt))
         # Codes only in the prompt (names bloat tokens / latency for large passport maps)
         _xp = _compute_xp(visited, avoid)
@@ -772,6 +819,7 @@ class GrokClient:
                     "visited_countries and avoid_countries — lean cheap food + safe hubs."
                 ),
                 **({"learned_candidates": learned} if learned else {}),
+                **({"saved_anchor_legs": _anchor_rows} if _anchor_rows else {}),
             },
             default=str,
         )
@@ -991,6 +1039,7 @@ class GrokClient:
         exclude_iatas: list[str] | set[str] | None = None,
         today: date | None = None,
         use_cache: bool = True,
+        anchor_legs: list[dict] | None = None,
     ) -> dict:
         """ONE Grok call covering all three Find panels on a cold start.
 
@@ -1044,6 +1093,7 @@ class GrokClient:
                     (vibe or "").strip().lower(),
                     depart_date.isoformat(),
                     ",".join(excl),
+                    _anchor_fingerprint(anchor_legs),
                 ]
             ),
         )
@@ -1121,6 +1171,9 @@ class GrokClient:
                 "detour/quest sections: confirm, reorder, or override them "
                 "freely — still apply every rule above."
             )
+        _anchor_rows = _anchor_prompt_rows(anchor_legs)
+        if _anchor_rows:
+            system += _ANCHOR_DIRECTIVE
         system += language_directive(detect_lang(prompt))
 
         user = json.dumps(
@@ -1142,6 +1195,7 @@ class GrokClient:
                 "visited_country_count": len(visited_codes),
                 "user_prompt": prompt.strip()[:400],
                 **({"learned_candidates": learned} if learned else {}),
+                **({"saved_anchor_legs": _anchor_rows} if _anchor_rows else {}),
             },
             default=str,
         )

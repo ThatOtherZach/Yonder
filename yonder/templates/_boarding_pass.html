@@ -13,7 +13,7 @@
                      esc_theme=none, esc_vibe=none, escape_parsed=none,
                      escape_place_book=none, share=none,
                      esc_text='', ask='', share_vibe=none, train_links=[],
-                     gap_label=none) %}
+                     gap_label=none, anchor_label=none) %}
 {% set esc_theme = esc_theme or {} %}
 {% set fare = o.display_price_base or o.display_price or (('~' ~ (o.currency or '') ~ ' ' ~ '%.0f'|format(o.price)) if o.price is defined and o.price is not none else '—') %}
 {% set fare_missing = (o.fare_missing or false) or (o.price is not defined) or (o.price is none) %}
@@ -25,6 +25,9 @@
   <div class="bp-main">
     {% if gap_label and mode == 'explore' %}
     <div class="bp-gap-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">✦ {{ gap_label }}</div>
+    {% endif %}
+    {% if anchor_label and mode == 'explore' %}
+    <div class="bp-anchor-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">⚓ {{ anchor_label }}</div>
     {% endif %}
     <div class="bp-top">
       <span class="bp-label">Direct Escape</span>
@@ -242,6 +245,9 @@
   <div class="bp-main">
     {% if it.gap_label is defined and it.gap_label and mode == 'explore' %}
     <div class="bp-gap-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">✦ {{ it.gap_label }}</div>
+    {% endif %}
+    {% if it.anchor_label is defined and it.anchor_label and mode == 'explore' %}
+    <div class="bp-anchor-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">⚓ {{ it.anchor_label }}</div>
     {% endif %}
     <div class="bp-top">
       {% if mode == 'saved' %}
@@ -605,6 +611,9 @@
   <div class="bp-main">
     {% if idea.gap_label is defined and idea.gap_label and mode == 'explore' %}
     <div class="bp-gap-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">✦ {{ idea.gap_label }}</div>
+    {% endif %}
+    {% if idea.anchor_label is defined and idea.anchor_label and mode == 'explore' %}
+    <div class="bp-anchor-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">⚓ {{ idea.anchor_label }}</div>
     {% endif %}
     <div class="bp-top">
       <span class="bp-label">{% if mode == 'share' %}Quest{% elif mode == 'saved' %}Quest{% else %}Quest{% endif %}</span>
