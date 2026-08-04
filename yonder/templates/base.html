@@ -1104,8 +1104,15 @@
     }
     .bp-actions .btn,
     .bp-actions button {
-      padding: 0.45rem 0.85rem;
+      height: 2.1rem;
+      padding-top: 0;
+      padding-bottom: 0;
+      padding-left: 0.85rem;
+      padding-right: 0.85rem;
       font-size: 0.84rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     /* bp-actions form: no margin; inline by default so buttons flow in a row */
     .bp-actions form { margin: 0; display: inline; }
@@ -1115,7 +1122,7 @@
     .rt-date-row { display: inline-flex; align-items: center; gap: 0.4rem; flex-wrap: nowrap; }
     .rt-picker .btn, .rt-picker button,
     .esc-rt-picker .btn, .esc-rt-picker button { white-space: nowrap; flex-shrink: 0; }
-    .rt-date-input { font-size: 0.84rem; padding: 0.45rem 0.5rem; border: 1px solid var(--line); border-radius: 0.3rem; background: var(--paper-2, #fff); color: var(--ink); min-width: 0; box-sizing: border-box; }
+    .rt-date-input { font-size: 0.84rem; height: 2.1rem; padding-top: 0; padding-bottom: 0; padding-left: 0.5rem; padding-right: 0.5rem; border: 1px solid var(--line); border-radius: 0.3rem; background: var(--paper-2, #fff); color: var(--ink); min-width: 0; box-sizing: border-box; }
 
     /* Phones (below the grid's sm breakpoint): comfortable tap targets */
     @media (max-width: 575.98px) {
@@ -1128,9 +1135,10 @@
       }
       .bp-actions .btn,
       .bp-actions button {
-        min-height: 2.75rem;
+        height: 2.75rem;
         width: 100%;
       }
+      .rt-date-input { height: 2.75rem; }
       .rt-picker .btn, .rt-picker button,
       .esc-rt-picker .btn, .esc-rt-picker button { width: auto; white-space: nowrap; }
       .nav-links a {
