@@ -474,3 +474,113 @@ class TestDetourShareButtonLabels:
         assert f"marker={AVIASALES_MARKER}" in resp.text, (
             f"Expected affiliate marker 'marker={AVIASALES_MARKER}' on shared detour page"
         )
+
+
+# ===========================================================================
+# Suite 4 — rt-picker data-rt-segs encodes IATA codes and DDMM dates
+# ===========================================================================
+
+
+class TestDetourRtPickerSegments:
+    """The .rt-picker div's data-rt-segs attribute must encode both legs'
+    IATA codes and depart_date in DDMM form for explore and saved modes.
+    The widget must be suppressed in share mode."""
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _expected_seg(from_iata: str, to_iata: str, d: date) -> str:
+        """Return the HTML-escaped JSON segment as it appears in the attribute.
+
+        Jinja2's ``| e`` (``Markup.escape``) turns ``"`` into ``&#34;``.
+        """
+        ddmm = d.strftime("%d%m")
+        return f'[&#34;{from_iata}&#34;,&#34;{to_iata}&#34;,&#34;{ddmm}&#34;]'
+
+    @staticmethod
+    def _explore_html(it) -> str:
+        return _render_macro(
+            "{% import '_boarding_pass.html' as bp %}"
+            "{{ bp.detour_card('explore', it, 0, det_vibe='adventure', det_text='test') }}",
+            it=it,
+        )
+
+    # ------------------------------------------------------------------
+    # Explore mode
+    # ------------------------------------------------------------------
+
+    def test_explore_two_leg_rt_segs_leg1(self):
+        """data-rt-segs must contain the outbound leg segment (YVR/DXB/DDMM)."""
+        html = self._explore_html(_two_leg_it())
+        seg = self._expected_seg("YVR", "DXB", _DEPART_DATE)
+        assert seg in html, (
+            f"Expected outbound segment {seg!r} in explore data-rt-segs"
+        )
+
+    def test_explore_two_leg_rt_segs_leg2(self):
+        """data-rt-segs must contain the return leg segment (DXB/YVR/DDMM)."""
+        html = self._explore_html(_two_leg_it())
+        seg = self._expected_seg("DXB", "YVR", _RETURN_DATE)
+        assert seg in html, (
+            f"Expected return segment {seg!r} in explore data-rt-segs"
+        )
+
+    def test_explore_two_leg_rt_picker_present(self):
+        """The .rt-picker widget must be rendered for a two-leg explore detour."""
+        html = self._explore_html(_two_leg_it())
+        assert 'class="rt-picker"' in html, (
+            "Expected .rt-picker div in two-leg explore detour"
+        )
+        assert "data-rt-segs" in html, (
+            "Expected data-rt-segs attribute on .rt-picker in two-leg explore detour"
+        )
+
+    def test_explore_single_leg_rt_picker_absent(self):
+        """Single-leg detour must NOT render the rt-picker (only for 2-leg)."""
+        html = self._explore_html(_single_leg_it())
+        assert "data-rt-segs" not in html, (
+            "data-rt-segs must not appear for a single-leg explore detour"
+        )
+
+    # ------------------------------------------------------------------
+    # Saved mode
+    # ------------------------------------------------------------------
+
+    def test_saved_two_leg_rt_segs_leg1(self, client):
+        """Saved two-leg detour page must include the outbound leg segment."""
+        saved_module.save_itinerary(_two_leg_payload()["itinerary"])
+        resp = client.get("/saved")
+        assert resp.status_code == 200
+        seg = self._expected_seg("YVR", "DXB", _DEPART_DATE)
+        assert seg in resp.text, (
+            f"Expected outbound segment {seg!r} in saved page data-rt-segs"
+        )
+
+    def test_saved_two_leg_rt_segs_leg2(self, client):
+        """Saved two-leg detour page must include the return leg segment."""
+        saved_module.save_itinerary(_two_leg_payload()["itinerary"])
+        resp = client.get("/saved")
+        assert resp.status_code == 200
+        seg = self._expected_seg("DXB", "YVR", _RETURN_DATE)
+        assert seg in resp.text, (
+            f"Expected return segment {seg!r} in saved page data-rt-segs"
+        )
+
+    # ------------------------------------------------------------------
+    # Share mode — widget must be suppressed
+    # ------------------------------------------------------------------
+
+    def test_share_rt_picker_absent(self, client):
+        """Share mode must NOT render the rt-picker widget (data-rt-segs absent)."""
+        share = share_module.create_share(
+            kind="detour",
+            title="Dubai Round Trip",
+            payload=_two_leg_payload(),
+        )
+        resp = client.get(f"/t/{share.id}")
+        assert resp.status_code == 200
+        assert "data-rt-segs" not in resp.text, (
+            "rt-picker (data-rt-segs) must not appear on the share page"
+        )
