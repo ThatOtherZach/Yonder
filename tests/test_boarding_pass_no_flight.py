@@ -168,3 +168,69 @@ class TestNoFlightFallbackAbsent:
         assert "bp-legs" in html, (
             "bp-legs block must still render when no no_flight fallback URLs are set"
         )
+
+
+# ---------------------------------------------------------------------------
+# No-flight button label and href correctness
+# ---------------------------------------------------------------------------
+
+
+class TestNoFlightButtonContent:
+    """Tests that the no-flight alternative buttons render with correct text and href."""
+
+    @pytest.fixture(autouse=True)
+    def _no_api_keys(self, monkeypatch):
+        monkeypatch.delenv("XAI_API_KEY", raising=False)
+
+    def test_hub_button_label_contains_iata(self):
+        """'Try {HUB_IATA}' text must appear in the rendered card when hub URL is set."""
+        it = _make_it(
+            no_flight_hub_url="https://aviasales.example.com/hub",
+            no_flight_hub_iata="YYZ",
+        )
+        html = _detour_card_html(it)
+        assert "Try YYZ" in html, (
+            "Hub alternative button must display 'Try YYZ' when no_flight_hub_iata='YYZ'"
+        )
+
+    def test_hub_button_href_matches_url(self):
+        """The hub button href must equal the no_flight_hub_url value."""
+        hub_url = "https://aviasales.example.com/hub?marker=123"
+        it = _make_it(
+            no_flight_hub_url=hub_url,
+            no_flight_hub_iata="YYZ",
+        )
+        html = _detour_card_html(it)
+        assert hub_url in html, (
+            "Hub alternative button href must contain the no_flight_hub_url value"
+        )
+
+    def test_per_leg_buttons_absent_for_no_flight_itinerary(self):
+        """bp-legs and per-leg Check-Fares buttons must not appear when no_flight_hub_url is set."""
+        it = _make_it(
+            no_flight_hub_url="https://aviasales.example.com/hub",
+            no_flight_hub_iata="ORD",
+        )
+        html = _detour_card_html(it)
+        assert "bp-legs" not in html, (
+            "Per-leg bp-legs block must be absent when no_flight_hub_url is set"
+        )
+        assert "btn-check-fares" not in html, (
+            "Per-leg Check Fares buttons must not appear when no_flight_hub_url is set"
+        )
+
+    def test_no_flight_and_per_leg_blocks_mutually_exclusive(self):
+        """bp-no-flight and bp-legs blocks must not coexist in the same card."""
+        it_with_fallback = _make_it(
+            no_flight_hub_url="https://aviasales.example.com/hub",
+            no_flight_hub_iata="YYZ",
+            no_flight_adj_url="https://aviasales.example.com/adj",
+        )
+        html_fallback = _detour_card_html(it_with_fallback)
+        assert "bp-no-flight" in html_fallback, "bp-no-flight must be present with fallback URLs"
+        assert "bp-legs" not in html_fallback, "bp-legs must be absent when no-flight fallback is active"
+
+        it_no_fallback = _make_it()
+        html_normal = _detour_card_html(it_no_fallback)
+        assert "bp-no-flight" not in html_normal, "bp-no-flight must be absent without fallback URLs"
+        assert "bp-legs" in html_normal, "bp-legs must be present without no-flight fallback URLs"
