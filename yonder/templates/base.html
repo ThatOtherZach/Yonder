@@ -1113,7 +1113,9 @@
     .rt-picker,
     .esc-rt-picker { display: inline-flex; align-items: center; gap: 0.4rem; flex-wrap: nowrap; }
     .rt-date-row { display: inline-flex; align-items: center; gap: 0.4rem; flex-wrap: nowrap; }
-    .rt-date-input { font-size: 0.84rem; padding: 0.35rem 0.5rem; border: 1px solid var(--line); border-radius: 0.3rem; background: var(--paper-2, #fff); color: var(--ink); min-width: 0; }
+    .rt-picker .btn, .rt-picker button,
+    .esc-rt-picker .btn, .esc-rt-picker button { white-space: nowrap; flex-shrink: 0; }
+    .rt-date-input { font-size: 0.84rem; padding: 0.45rem 0.5rem; border: 1px solid var(--line); border-radius: 0.3rem; background: var(--paper-2, #fff); color: var(--ink); min-width: 0; box-sizing: border-box; }
 
     /* Phones (below the grid's sm breakpoint): comfortable tap targets */
     @media (max-width: 575.98px) {
@@ -1130,7 +1132,7 @@
         width: 100%;
       }
       .rt-picker .btn, .rt-picker button,
-      .esc-rt-picker .btn, .esc-rt-picker button { width: auto; min-height: unset; }
+      .esc-rt-picker .btn, .esc-rt-picker button { width: auto; white-space: nowrap; }
       .nav-links a {
         display: inline-flex;
         align-items: center;
