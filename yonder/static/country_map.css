@@ -802,9 +802,9 @@
    boundary so the country underneath shows through; visited tiles fill in. */
 .ymap path.subtile {
   fill: transparent;
-  stroke: var(--ymap-stroke);
-  stroke-width: 0.4px;
-  stroke-dasharray: 2 1.5;
+  stroke: #111111;
+  stroke-width: 0.55px;
+  stroke-dasharray: none;
   cursor: pointer;
   transition: fill 0.15s ease, stroke 0.12s ease;
   vector-effect: non-scaling-stroke;
