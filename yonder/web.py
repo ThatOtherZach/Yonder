@@ -374,6 +374,28 @@ templates.env.globals["vibes_v"] = _vv_boot
 app.mount("/static", StaticFiles(directory=str(_PKG / "static")), name="static")
 
 
+def _compute_return_days() -> int:
+    """Effective days-ahead for the Find Return date picker.
+
+    Reads ``return_days`` from user_prefs.db.  When it is 0 / blank the
+    value auto-computes as detour_min_stop_days + detour_max_stop_days
+    (the user's own stopover range), giving a sensible per-user default
+    without any extra configuration.
+    """
+    try:
+        from yonder.user_prefs import get_all_prefs as _gup
+
+        prefs = _gup()
+        rd = int(prefs.get("return_days") or "0")
+        if rd > 0:
+            return max(1, min(365, rd))
+        lo = max(1, int(prefs.get("detour_min_stop_days") or "4"))
+        hi = max(1, int(prefs.get("detour_max_stop_days") or "5"))
+        return lo + hi
+    except Exception:
+        return 9  # absolute fallback (4+5)
+
+
 def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
     settings = settings or get_settings()
     avoid_codes = settings.avoid_country_list()
@@ -424,6 +446,7 @@ def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
         "stop_min_days": settings.detour_stop_defaults()[0],
         "stop_max_days": settings.detour_stop_defaults()[1],
         "home_resolved": settings.resolve_home_iata(),
+        "return_days": _compute_return_days(),
     }
 
 
@@ -4518,11 +4541,16 @@ async def settings_save(request: Request) -> RedirectResponse:
     for legacy in ("COL_HOTEL", "COL_FOOD", "COL_TRANSIT", "COL_CULTURE"):
         updates.pop(legacy, None)
 
-    # Detour stop-length preferences → user_prefs.db
+    # Detour stop-length preferences and return window → user_prefs.db
+    # These are NOT in MANAGED_KEYS (not env vars), so read from form directly.
     for dk, default, lo, hi in (
         ("DETOUR_MIN_STOP_DAYS", "4", 1, 21),
         ("DETOUR_MAX_STOP_DAYS", "5", 1, 30),
+        ("RETURN_DAYS", "0", 0, 365),
     ):
+        raw_dk = form.get(dk)
+        if raw_dk is not None:
+            updates[dk] = str(raw_dk).strip()
         if dk in updates:
             try:
                 v = max(lo, min(hi, int(float(str(updates[dk]).strip() or default))))

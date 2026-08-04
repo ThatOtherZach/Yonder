@@ -1498,7 +1498,8 @@
                             escape_parsed=escape_parsed, escape_place_book=escape_place_book,
                             share=share, esc_text=esc_text, ask=ask,
                             train_links=esc_train_links, gap_label=esc_gap_label,
-                            anchor_label=esc_anchor_label) }}
+                            anchor_label=esc_anchor_label,
+                            return_days=return_days) }}
           {% endfor %}
         </div>
         {% else %}
@@ -1530,7 +1531,8 @@
                             share=vb_share,
                             esc_text=(esc_text or ''), ask=(ask or ''),
                             train_links=vb_train_links,
-                            gap_label=(vibe_base.gap_label if vibe_base.gap_label is defined else none)) }}
+                            gap_label=(vibe_base.gap_label if vibe_base.gap_label is defined else none),
+                            return_days=return_days) }}
           {% endfor %}
         </div>
       </div>
@@ -1562,7 +1564,8 @@
           {% set det_train_links = train_options(it.legs[0].from_iata, (it.legs|last).to_iata) if it.legs else [] %}
           {{ bp.detour_card('explore', it, loop.index0,
                             det_vibe=det_vibe, det_text=det_text,
-                            share=share, pb=pb, train_links=det_train_links) }}
+                            share=share, pb=pb, train_links=det_train_links,
+                            return_days=return_days) }}
           {% endfor %}
         </div>
         {% else %}

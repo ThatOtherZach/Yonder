@@ -446,6 +446,7 @@ def _user_prefs_view() -> dict:
         "col_culture": _f("col_culture", "0"),
         "detour_min_stop_days": _f("detour_min_stop_days", "4"),
         "detour_max_stop_days": _f("detour_max_stop_days", "5"),
+        "return_days": _f("return_days", "0"),
         "visited_countries": prefs.get("visited_countries") or "",
         "avoid_countries": prefs.get("avoid_countries") or "",
         "visited_list": visited_list,

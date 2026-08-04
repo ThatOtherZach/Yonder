@@ -452,6 +452,22 @@
             – <strong id="sl-max-display">{{ view.detour_max_stop_days }}</strong> nights
           </p>
         </fieldset>
+
+        <fieldset class="home-base-card" style="margin-top:0.75rem">
+          <legend>Return window</legend>
+          <div class="home-base-row" style="margin-top:0.35rem">
+            <div>
+              <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.2rem">Days ahead</div>
+              <input id="RETURN_DAYS" name="RETURN_DAYS" type="number" min="0" max="365" step="1"
+                value="{{ view.return_days }}" style="width:80px" placeholder="0" />
+            </div>
+          </div>
+          <p class="home-base-hint" style="margin-top:0.45rem">
+            Days ahead to pre-fill the <em>Find Return</em> date picker.
+            <strong>0</strong> = auto (min + max stop nights =
+            <strong>{{ (view.detour_min_stop_days | int) + (view.detour_max_stop_days | int) }}</strong>)
+          </p>
+        </fieldset>
       </div>
 
       {# ════════════════════════════════════════════════

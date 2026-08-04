@@ -37,6 +37,8 @@ PREF_DEFAULTS: dict[str, str] = {
     # Detour stop-length preferences
     "detour_min_stop_days": "4",
     "detour_max_stop_days": "5",
+    # Days ahead to pre-fill the Find Return date picker (0 = auto: min+max stop days)
+    "return_days": "0",
 }
 
 

@@ -108,7 +108,7 @@
         {{ bp.quest_card('saved', qi, loop.index0, home_iata=s.origin or '', quest_vibe=s.vibe or '', share=card.share, s=s) }}
         {% elif it %}
         {% set train_links = train_options(it.legs[0].from_iata, (it.legs|last).to_iata) if it.legs else [] %}
-        {{ bp.detour_card('saved', it, loop.index0, share=card.share, s=s, train_links=train_links) }}
+        {{ bp.detour_card('saved', it, loop.index0, share=card.share, s=s, train_links=train_links, return_days=return_days) }}
         {% else %}
         <article class="boarding-pass is-adventure">
           <div class="bp-main">

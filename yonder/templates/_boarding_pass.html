@@ -13,7 +13,7 @@
                      esc_theme=none, esc_vibe=none, escape_parsed=none,
                      escape_place_book=none, share=none,
                      esc_text='', ask='', share_vibe=none, train_links=[],
-                     gap_label=none, anchor_label=none) %}
+                     gap_label=none, anchor_label=none, return_days=9) %}
 {% set esc_theme = esc_theme or {} %}
 {% set fare = o.display_price_base or o.display_price or (('~' ~ (o.currency or '') ~ ' ' ~ '%.0f'|format(o.price)) if o.price is defined and o.price is not none else '—') %}
 {% set fare_missing = (o.fare_missing or false) or (o.price is not defined) or (o.price is none) %}
@@ -187,7 +187,8 @@
       {% if mode in ('explore', 'saved') %}
       <div class="rt-picker esc-rt-picker"
            data-esc-origin="{{ query.origin }}"
-           data-esc-dest="{{ query.destination }}">
+           data-esc-dest="{{ query.destination }}"
+           data-rt-days="{{ return_days }}">
         <button type="button" class="btn secondary esc-rt-trigger">Find Return</button>
         <span class="rt-date-row" hidden>
           <input type="date" class="rt-date-input">
@@ -252,6 +253,10 @@
       var tom = new Date();
       tom.setDate(tom.getDate() + 1);
       inp.min = tom.toISOString().split('T')[0];
+      var days = parseInt(picker.dataset.rtDays || '9', 10);
+      var def = new Date();
+      def.setDate(def.getDate() + days);
+      inp.value = def.toISOString().split('T')[0];
       inp.focus();
       return;
     }
@@ -275,7 +280,8 @@
 
 {% macro detour_card(mode, it, idx,
                      det_vibe='', det_text='', share=none, pb=none,
-                     s=none, share_vibe=none, fallback_title='', train_links=[]) %}
+                     s=none, share_vibe=none, fallback_title='', train_links=[],
+                     return_days=9) %}
 {% set accent = ((s.theme_primary if s else none) or it.theme_primary) %}
 {% set cf = namespace(pending=false, base=0.0) %}
 {% for leg in (it.legs or []) %}
@@ -567,7 +573,7 @@
       {% set _l1 = it.legs[1] %}
       {% set _s0 = '["' ~ _l0.from_iata ~ '","' ~ _l0.to_iata ~ '","' ~ _l0.depart_date.strftime('%d%m') ~ '"]' %}
       {% set _s1 = '["' ~ _l1.from_iata ~ '","' ~ _l1.to_iata ~ '","' ~ _l1.depart_date.strftime('%d%m') ~ '"]' %}
-      <div class="rt-picker" data-rt-segs="{{ ('[' ~ _s0 ~ ',' ~ _s1 ~ ']') | e }}">
+      <div class="rt-picker" data-rt-segs="{{ ('[' ~ _s0 ~ ',' ~ _s1 ~ ']') | e }}" data-rt-days="{{ return_days }}">
         <button type="button" class="btn secondary rt-trigger">Find Return</button>
         <span class="rt-date-row" hidden>
           <input type="date" class="rt-date-input">
@@ -652,6 +658,10 @@
       var tom = new Date();
       tom.setDate(tom.getDate() + 1);
       inp.min = tom.toISOString().split('T')[0];
+      var days = parseInt(picker.dataset.rtDays || '9', 10);
+      var def = new Date();
+      def.setDate(def.getDate() + days);
+      inp.value = def.toISOString().split('T')[0];
       inp.focus();
       return;
     }
