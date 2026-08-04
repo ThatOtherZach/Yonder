@@ -1,0 +1,165 @@
+"""Regression: saved escape trips show the correct route label in the booking button.
+
+Escape trips are stored via ``escape_offer_to_itinerary`` + ``save_itinerary``
+and rendered on /saved using the ``detour_card`` macro (not ``escape_card``).
+The booking button in ``detour_card`` reads ``leg.from_iata ➜ leg.to_iata ↗``
+from the first leg's data.  This test confirms that the label survives the
+full round-trip: build → save → reload → GET /saved → HTML.
+"""
+
+from __future__ import annotations
+
+from datetime import date, timedelta
+
+import pytest
+from fastapi.testclient import TestClient
+
+import yonder.saved as saved_module
+import yonder.web as web_module
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_ORIGIN = "YVR"
+_DEST = "NRT"
+_DEPART = (date.today() + timedelta(days=30)).isoformat()
+_AVIA_URL = f"https://www.aviasales.com/search/{_ORIGIN}{_DEST}"
+_EXPECTED_LABEL = f"{_ORIGIN} \u279c {_DEST} \u2197"  # "YVR ➜ NRT ↗"
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _isolated(pg_schema, monkeypatch):
+    """Isolated PG schema and no live API keys for every test in this module."""
+    monkeypatch.delenv("MOCK", raising=False)
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    yield
+
+
+@pytest.fixture()
+def client():
+    return TestClient(web_module.app, raise_server_exceptions=True)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_query() -> dict:
+    return {
+        "origin": _ORIGIN,
+        "destination": _DEST,
+        "depart_date": _DEPART,
+        "return_date": (date.today() + timedelta(days=37)).isoformat(),
+        "adults": 1,
+        "currency": "USD",
+    }
+
+
+def _make_offer(with_url: bool = True) -> dict:
+    return {
+        "provider": "mock",
+        "price": 480.0,
+        "currency": "USD",
+        "price_kind": "mock",
+        "display_price": "~USD 480",
+        "display_price_base": "~USD 480",
+        "google_flights_url": _AVIA_URL if with_url else None,
+    }
+
+
+def _save_escape(with_url: bool = True) -> saved_module.SavedItinerary:
+    """Build an escape itinerary via the canonical helper and persist it."""
+    itinerary = saved_module.escape_offer_to_itinerary(
+        query=_make_query(),
+        offer=_make_offer(with_url=with_url),
+        vibe="adventure",
+    )
+    return saved_module.save_itinerary(itinerary)
+
+
+# ===========================================================================
+# Suite — Saved escape trip booking button label
+# ===========================================================================
+
+
+class TestSavedEscapeBookingButton:
+    """Booking button on /saved for an escape-kind trip must show the IATA route."""
+
+    def test_saved_escape_kind_is_escape(self):
+        """escape_offer_to_itinerary must produce kind='escape'."""
+        s = _save_escape()
+        assert s.kind == "escape", (
+            f"Expected saved kind 'escape', got '{s.kind}'"
+        )
+
+    def test_saved_page_returns_200(self, client):
+        """GET /saved must succeed when an escape trip is saved."""
+        _save_escape()
+        resp = client.get("/saved")
+        assert resp.status_code == 200, (
+            f"Expected 200 from GET /saved with a saved escape trip, got {resp.status_code}"
+        )
+
+    def test_booking_button_label_contains_iata_pair(self, client):
+        """Booking button on /saved must show 'YVR ➜ NRT ↗' for this route."""
+        _save_escape(with_url=True)
+        resp = client.get("/saved")
+        assert resp.status_code == 200
+        assert _EXPECTED_LABEL in resp.text, (
+            f"Expected booking button label '{_EXPECTED_LABEL}' on /saved for "
+            f"a saved escape trip (YVR→NRT); button area: "
+            f"{resp.text[max(0, resp.text.find('bp-actions')):resp.text.find('bp-actions') + 500]!r}"
+        )
+
+    def test_booking_button_label_has_origin_iata(self, client):
+        """Origin IATA must appear in the /saved page HTML."""
+        _save_escape(with_url=True)
+        resp = client.get("/saved")
+        assert resp.status_code == 200
+        assert _ORIGIN in resp.text, (
+            f"Expected origin IATA '{_ORIGIN}' to appear on /saved page"
+        )
+
+    def test_booking_button_label_has_dest_iata(self, client):
+        """Destination IATA must appear in the /saved page HTML."""
+        _save_escape(with_url=True)
+        resp = client.get("/saved")
+        assert resp.status_code == 200
+        assert _DEST in resp.text, (
+            f"Expected destination IATA '{_DEST}' to appear on /saved page"
+        )
+
+    def test_booking_button_absent_when_no_url(self, client):
+        """Without google_flights_url the route-label button must not appear."""
+        _save_escape(with_url=False)
+        resp = client.get("/saved")
+        assert resp.status_code == 200
+        assert _EXPECTED_LABEL not in resp.text, (
+            f"Expected no '{_EXPECTED_LABEL}' button when offer has no google_flights_url"
+        )
+
+    def test_google_flights_url_stored_on_saved(self):
+        """google_flights_url must be stored on the SavedItinerary row."""
+        s = _save_escape(with_url=True)
+        assert s.google_flights_url == _AVIA_URL, (
+            f"Expected google_flights_url='{_AVIA_URL}' on SavedItinerary, "
+            f"got '{s.google_flights_url}'"
+        )
+
+    def test_booking_button_label_does_not_show_reversed_route(self, client):
+        """The button must not display the reversed route (NRT ➜ YVR ↗)."""
+        _save_escape(with_url=True)
+        resp = client.get("/saved")
+        assert resp.status_code == 200
+        reversed_label = f"{_DEST} \u279c {_ORIGIN} \u2197"
+        assert reversed_label not in resp.text, (
+            f"Button must not show reversed route '{reversed_label}' on /saved"
+        )
