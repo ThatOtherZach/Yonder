@@ -188,7 +188,7 @@
       <div class="rt-picker esc-rt-picker"
            data-esc-origin="{{ query.origin }}"
            data-esc-dest="{{ query.destination }}">
-        <button type="button" class="btn secondary esc-rt-trigger">Book Return</button>
+        <button type="button" class="btn secondary esc-rt-trigger">Find Return</button>
         <span class="rt-date-row" hidden>
           <input type="date" class="rt-date-input">
           <button type="button" class="btn secondary esc-rt-go">Go ↗</button>
@@ -568,7 +568,7 @@
       {% set _s0 = '["' ~ _l0.from_iata ~ '","' ~ _l0.to_iata ~ '","' ~ _l0.depart_date.strftime('%d%m') ~ '"]' %}
       {% set _s1 = '["' ~ _l1.from_iata ~ '","' ~ _l1.to_iata ~ '","' ~ _l1.depart_date.strftime('%d%m') ~ '"]' %}
       <div class="rt-picker" data-rt-segs="{{ ('[' ~ _s0 ~ ',' ~ _s1 ~ ']') | e }}">
-        <button type="button" class="btn secondary rt-trigger">Book Return</button>
+        <button type="button" class="btn secondary rt-trigger">Find Return</button>
         <span class="rt-date-row" hidden>
           <input type="date" class="rt-date-input">
           <button type="button" class="btn secondary rt-go">Go ↗</button>

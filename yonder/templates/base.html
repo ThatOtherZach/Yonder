@@ -1110,9 +1110,12 @@
     /* bp-actions form: no margin; inline by default so buttons flow in a row */
     .bp-actions form { margin: 0; display: inline; }
     /* Round-trip picker — sits as a flex item inside bp-actions */
-    .rt-picker { display: inline-flex; align-items: center; gap: 0.3rem; }
-    .rt-date-row { display: inline-flex; align-items: center; gap: 0.3rem; }
-    .rt-date-input { font-size: 0.84rem; padding: 0.35rem 0.5rem; border: 1px solid var(--line); border-radius: 0.3rem; background: var(--paper-2, #fff); color: var(--ink); }
+    .rt-picker,
+    .esc-rt-picker { display: inline-flex; align-items: center; gap: 0.4rem; flex-wrap: nowrap; }
+    .rt-date-row { display: inline-flex; align-items: center; gap: 0.4rem; flex-wrap: nowrap; }
+    .rt-trigger,
+    .esc-rt-trigger { white-space: nowrap; }
+    .rt-date-input { font-size: 0.84rem; padding: 0.35rem 0.5rem; border: 1px solid var(--line); border-radius: 0.3rem; background: var(--paper-2, #fff); color: var(--ink); min-width: 0; }
 
     /* Phones (below the grid's sm breakpoint): comfortable tap targets */
     @media (max-width: 575.98px) {
@@ -1128,6 +1131,8 @@
         min-height: 2.75rem;
         width: 100%;
       }
+      .rt-picker .btn, .rt-picker button,
+      .esc-rt-picker .btn, .esc-rt-picker button { width: auto; min-height: unset; }
       .nav-links a {
         display: inline-flex;
         align-items: center;
