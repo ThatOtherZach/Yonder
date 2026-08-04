@@ -1,4 +1,4 @@
-"""Task 502 — Find Return date-picker pre-fill round-trip.
+"""Find Return date-picker pre-fill round-trip — explore and saved pages.
 
 Verifies the full chain:
   user_prefs.db  →  _compute_return_days()  →  data-rt-days attribute
@@ -7,6 +7,8 @@ Two scenarios:
   1. RETURN_DAYS=21  →  data-rt-days="21"  (explicit setting flows through)
   2. RETURN_DAYS=0   →  data-rt-days = detour_min_stop_days + detour_max_stop_days
                         (zero falls back to the per-user stopover range)
+
+Covers both explore mode (existing) and saved mode (Task 513).
 """
 
 from __future__ import annotations
@@ -302,4 +304,145 @@ class TestSettingsRoundTrip:
         assert f'data-rt-days="{expected}"' in html, (
             f"data-rt-days='{expected}' missing from escape card "
             "after saving return_days=0 with min=4/max=5"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Helper: render detour_card macro in saved mode
+# ---------------------------------------------------------------------------
+
+
+def _detour_html_with_return_days_saved(return_days: int) -> str:
+    """Render the detour_card macro in **saved** mode, injecting return_days.
+
+    Mirrors what saved.html does:
+        bp.detour_card('saved', it, loop.index0, ..., return_days=return_days)
+    """
+    from datetime import date, timedelta
+
+    from yonder.adventure import AdventureItinerary, PricedLeg
+    from yonder.types import FlightOffer
+
+    leg1 = PricedLeg(
+        from_iata="YVR",
+        to_iata="TYO",
+        depart_date=date.today() + timedelta(days=30),
+        offer=FlightOffer(
+            provider="mock",
+            price=450.0,
+            currency="USD",
+            airlines=["JL"],
+            stops_out=0,
+            price_kind="mock",
+        ),
+    )
+    leg2 = PricedLeg(
+        from_iata="TYO",
+        to_iata="YVR",
+        depart_date=date.today() + timedelta(days=37),
+        offer=FlightOffer(
+            provider="mock",
+            price=420.0,
+            currency="USD",
+            airlines=["JL"],
+            stops_out=0,
+            price_kind="mock",
+        ),
+    )
+    it = AdventureItinerary(
+        kind="stopover",
+        title="Tokyo Detour",
+        total_price=870.0,
+        currency="USD",
+        stop_iata="TYO",
+        stop_city="Tokyo",
+        stay_days=7,
+        why="Great city for a stopover",
+        vibe_tags=["adventure"],
+        legs=[leg1, leg2],
+        theme_primary="#e6b450",
+        theme_label="Adventure",
+    )
+    # 'saved' mode — exactly what saved.html calls (no s= or share= needed for
+    # the data-rt-days attribute; the macro emits it regardless).
+    return _render_macro(
+        "{% import '_boarding_pass.html' as bp %}"
+        "{{ bp.detour_card('saved', it, 0, det_vibe='adventure', det_text='test', return_days=return_days) }}",
+        it=it,
+        return_days=return_days,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tests: data-rt-days on the saved-page detour card (Task 513)
+# ---------------------------------------------------------------------------
+
+
+class TestSavedPageDataRtDays:
+    """The data-rt-days attribute must be emitted correctly when detour_card
+    is rendered in saved mode, matching what /saved produces at runtime."""
+
+    def test_saved_detour_card_emits_rt_days_21(self):
+        """detour_card in saved mode must carry data-rt-days="21"."""
+        html = _detour_html_with_return_days_saved(21)
+        assert 'data-rt-days="21"' in html, (
+            "data-rt-days='21' missing from saved detour card when return_days=21"
+        )
+
+    def test_saved_detour_card_emits_rt_days_fallback(self):
+        """detour_card in saved mode carries the fallback value (min+max=9)."""
+        html = _detour_html_with_return_days_saved(9)
+        assert 'data-rt-days="9"' in html, (
+            "data-rt-days='9' missing from saved detour card when return_days=9"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Tests: settings → _compute_return_days() → saved detour card (Task 513)
+# ---------------------------------------------------------------------------
+
+
+class TestSavedPageSettingsRoundTrip:
+    """Saving RETURN_DAYS must flow through to data-rt-days on the saved page."""
+
+    @pytest.fixture()
+    def isolated_prefs(self, tmp_path, monkeypatch):
+        """Redirect user_prefs.db to a throwaway SQLite file."""
+        tmp_db = tmp_path / "user_prefs.db"
+        monkeypatch.setattr(prefs_module, "DB_PATH", tmp_db)
+        prefs_module._invalidate()
+        yield tmp_db
+        prefs_module._invalidate()
+
+    def test_return_days_21_appears_in_saved_detour_card(self, isolated_prefs):
+        """End-to-end (saved mode): return_days=21 produces data-rt-days="21"."""
+        prefs_module.set_prefs({"return_days": "21"})
+        computed = web_module._compute_return_days()
+
+        assert computed == 21, (
+            f"_compute_return_days() returned {computed}, expected 21"
+        )
+        html = _detour_html_with_return_days_saved(computed)
+        assert 'data-rt-days="21"' in html, (
+            "End-to-end (saved): data-rt-days='21' missing from saved detour card "
+            "after saving return_days=21 in user_prefs"
+        )
+
+    def test_return_days_0_fallback_appears_in_saved_detour_card(self, isolated_prefs):
+        """End-to-end (saved mode): return_days=0 produces data-rt-days=min+max."""
+        prefs_module.set_prefs({
+            "return_days": "0",
+            "detour_min_stop_days": "4",
+            "detour_max_stop_days": "5",
+        })
+        computed = web_module._compute_return_days()
+        expected = 9  # 4 + 5
+
+        assert computed == expected, (
+            f"_compute_return_days() returned {computed}, expected {expected}"
+        )
+        html = _detour_html_with_return_days_saved(computed)
+        assert f'data-rt-days="{expected}"' in html, (
+            f"End-to-end (saved): data-rt-days='{expected}' missing from saved "
+            "detour card after saving return_days=0 with min=4/max=5"
         )
