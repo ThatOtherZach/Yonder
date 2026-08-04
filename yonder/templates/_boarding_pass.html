@@ -523,6 +523,19 @@
       {% for tl in train_links %}
       <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
       {% endfor %}
+      {% if mode in ('explore', 'saved') and it.legs|length == 2 %}
+      {% set _l0 = it.legs[0] %}
+      {% set _l1 = it.legs[1] %}
+      {% set _s0 = '["' ~ _l0.from_iata ~ '","' ~ _l0.to_iata ~ '","' ~ _l0.depart_date.strftime('%d%m') ~ '"]' %}
+      {% set _s1 = '["' ~ _l1.from_iata ~ '","' ~ _l1.to_iata ~ '","' ~ _l1.depart_date.strftime('%d%m') ~ '"]' %}
+      <div class="rt-picker" data-rt-segs="{{ ('[' ~ _s0 ~ ',' ~ _s1 ~ ']') | e }}">
+        <button type="button" class="btn secondary rt-trigger">Book Return</button>
+        <span class="rt-date-row" hidden>
+          <input type="date" class="rt-date-input">
+          <button type="button" class="btn secondary rt-go">Go ↗</button>
+        </span>
+      </div>
+      {% endif %}
       {% if mode == 'saved' %}
       <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form" style="margin-left: auto;">
         <button type="button" class="danger js-remove-confirm">Remove</button>
@@ -585,6 +598,41 @@
     {% endif %}
   </div>
 </article>
+<script>
+(function(){
+  if(window._rtPickerReady) return;
+  window._rtPickerReady = true;
+  document.addEventListener('click', function(e){
+    var trigger = e.target.closest('.rt-trigger');
+    if(trigger){
+      var picker = trigger.closest('.rt-picker');
+      trigger.hidden = true;
+      var row = picker.querySelector('.rt-date-row');
+      row.hidden = false;
+      var inp = row.querySelector('.rt-date-input');
+      var tom = new Date();
+      tom.setDate(tom.getDate() + 1);
+      inp.min = tom.toISOString().split('T')[0];
+      inp.focus();
+      return;
+    }
+    var go = e.target.closest('.rt-go');
+    if(go){
+      var picker = go.closest('.rt-picker');
+      var inp = picker.querySelector('.rt-date-input');
+      if(!inp.value){ inp.focus(); return; }
+      var segs = JSON.parse(picker.dataset.rtSegs);
+      var parts = inp.value.split('-');
+      var ddmm = parts[2] + parts[1];
+      var home = segs[0][0];
+      var dest = segs[segs.length - 1][1];
+      segs.push([dest, home, ddmm]);
+      var path = segs.map(function(s){ return s[0] + s[2] + s[1]; }).join('');
+      window.open('https://www.aviasales.com/search/' + path + '1?marker=756039.Zza75700ced74b488c8090948-756039&sub_id=YonderFlights', '_blank');
+    }
+  });
+})();
+</script>
 {% endmacro %}
 
 

@@ -1109,6 +1109,10 @@
     }
     /* bp-actions form: no margin; inline by default so buttons flow in a row */
     .bp-actions form { margin: 0; display: inline; }
+    /* Round-trip picker — sits as a flex item inside bp-actions */
+    .rt-picker { display: inline-flex; align-items: center; gap: 0.3rem; }
+    .rt-date-row { display: inline-flex; align-items: center; gap: 0.3rem; }
+    .rt-date-input { font-size: 0.84rem; padding: 0.35rem 0.5rem; border: 1px solid var(--line); border-radius: 0.3rem; background: var(--paper-2, #fff); color: var(--ink); }
 
     /* Phones (below the grid's sm breakpoint): comfortable tap targets */
     @media (max-width: 575.98px) {

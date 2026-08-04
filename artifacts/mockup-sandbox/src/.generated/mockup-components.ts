@@ -3,10 +3,10 @@ type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/business-card/Back.tsx": () => import("../components/mockups/business-card/Back.tsx"),
   "./components/mockups/business-card/Front.tsx": () => import("../components/mockups/business-card/Front.tsx"),
-  "./components/mockups/linkedin-ads/AdA.tsx": () => import("../components/mockups/linkedin-ads/AdA.tsx"),
-  "./components/mockups/linkedin-ads/AdB.tsx": () => import("../components/mockups/linkedin-ads/AdB.tsx"),
-  "./components/mockups/linkedin-ads/AdC.tsx": () => import("../components/mockups/linkedin-ads/AdC.tsx"),
   "./components/mockups/social-ads/CassieStory.tsx": () => import("../components/mockups/social-ads/CassieStory.tsx"),
   "./components/mockups/social-ads/IGSquare.tsx": () => import("../components/mockups/social-ads/IGSquare.tsx"),
-  "./components/mockups/social-ads/XPost.tsx": () => import("../components/mockups/social-ads/XPost.tsx")
+  "./components/mockups/social-ads/XPost.tsx": () => import("../components/mockups/social-ads/XPost.tsx"),
+  "./components/mockups/linkedin-ads/AdA.tsx": () => import("../components/mockups/linkedin-ads/AdA.tsx"),
+  "./components/mockups/linkedin-ads/AdB.tsx": () => import("../components/mockups/linkedin-ads/AdB.tsx"),
+  "./components/mockups/linkedin-ads/AdC.tsx": () => import("../components/mockups/linkedin-ads/AdC.tsx")
 };
