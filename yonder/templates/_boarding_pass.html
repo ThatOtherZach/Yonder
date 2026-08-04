@@ -509,17 +509,12 @@
         <button type="submit" class="refresh-btn">Refresh fares</button>
       </form>
       {% endif %}
-      {% if it.google_flights_url %}
-      <a class="btn secondary" href="{{ it.google_flights_url }}" target="_blank" rel="noopener">Aviasales ↗</a>
-      {% endif %}
       {% for leg in (it.legs or []) %}
-      {% if leg.google_flights_url %}
-      <a class="btn secondary" href="{{ leg.google_flights_url }}" target="_blank" rel="noopener">Aviasales ↗</a>
+      {% set _leg_url = leg.google_flights_url or (leg.offer and leg.offer.google_flights_url) %}
+      {% if _leg_url %}
+      <a class="btn secondary" href="{{ _leg_url }}" target="_blank" rel="noopener">{{ leg.from_iata }} ➜ {{ leg.to_iata }} ↗</a>
       {% endif %}
       {% endfor %}
-      {% if mode == 'explore' and it.kayak_url %}
-      <a class="btn secondary" href="{{ it.kayak_url }}" target="_blank" rel="noopener">Kayak (leg 1) ↗</a>
-      {% endif %}
       {% for tl in train_links %}
       <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
       {% endfor %}

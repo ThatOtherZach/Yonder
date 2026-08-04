@@ -195,14 +195,14 @@ class TestEscapeCardAviasalesLink:
 class TestDetourCardAviasalesLink:
     """detour_card rendered in share mode carries the correct Aviasales button."""
 
-    def test_button_label_is_aviasales(self, client):
-        """Button text must be 'Aviasales ↗'."""
+    def test_button_label_is_route(self, client):
+        """Button text must be 'FROM ➜ TO ↗' using the leg's IATA codes."""
         share = _detour_share_with_avia_url()
         resp = client.get(f"/t/{share.id}")
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
-        assert "Aviasales ↗" in resp.text, (
-            "Expected 'Aviasales ↗' button label on detour shared-trip page"
+        assert "YVR ➜ DXB ↗" in resp.text, (
+            "Expected 'YVR ➜ DXB ↗' route-labelled button on detour shared-trip page"
         )
 
     def test_href_points_to_aviasales_search(self, client):
