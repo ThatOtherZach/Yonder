@@ -1399,11 +1399,11 @@
     {% if has_escape or has_detour or has_quest %}
     <div class="results-toolbar" id="results-toolbar" data-clear-with-results>
       <div class="results-filter mode-tabs" id="results-filter" role="tablist" aria-label="Filter results">
-        <button type="button" class="active" data-filter="all" role="tab" aria-selected="true">All</button>
-        <button type="button" data-filter="escape" role="tab" aria-selected="false"{% if not has_escape %} disabled{% endif %}>Escape</button>
-        <button type="button" data-filter="vibe-base" role="tab" aria-selected="false"{% if not (vibe_base is defined and vibe_base) %} disabled{% endif %}>{% if vibe_base is defined and vibe_base %}{{ vibe_base.vibe_emoji }} {{ vibe_base.vibe_label }}{% else %}Vibe{% endif %}</button>
-        <button type="button" data-filter="detour" role="tab" aria-selected="false"{% if not has_detour %} disabled{% endif %}>Detour</button>
-        <button type="button" data-filter="quest" role="tab" aria-selected="false" id="quest-filter-tab">Quest</button>
+        <button type="button" class="active" data-filter="all" role="tab" aria-selected="true">≡ All</button>
+        <button type="button" data-filter="escape" role="tab" aria-selected="false"{% if not has_escape %} disabled{% endif %}>➜ Escape</button>
+        <button type="button" data-filter="vibe-base" role="tab" aria-selected="false"{% if not (vibe_base is defined and vibe_base) %} disabled{% endif %}>{% if vibe_base is defined and vibe_base %}{{ vibe_base.vibe_emoji }} {{ vibe_base.vibe_label }}{% else %}✦ Vibe{% endif %}</button>
+        <button type="button" data-filter="detour" role="tab" aria-selected="false"{% if not has_detour %} disabled{% endif %}>↝ Detour</button>
+        <button type="button" data-filter="quest" role="tab" aria-selected="false" id="quest-filter-tab">⚑ Quest</button>
         <button type="button" data-filter="clear" role="tab" aria-selected="false" title="Clear results and return to compose">Clear</button>
       </div>
       <div class="results-criteria" id="results-criteria" aria-label="Re-run criteria">
