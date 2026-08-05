@@ -1187,6 +1187,15 @@
       padding: 1.25rem;
     }
     #fs-progress-overlay.show { display: flex; }
+    /* Same card, mounted inline (e.g. inside the Quest card) */
+    .fs-progress-inline {
+      display: flex;
+      justify-content: center;
+      margin-top: 0.9rem;
+    }
+    .fs-progress-inline .fs-progress-card {
+      box-shadow: 0 8px 24px rgba(20, 28, 40, 0.08);
+    }
     .fs-progress-card {
       width: min(400px, 100%);
       background: var(--white);
@@ -1484,7 +1493,7 @@
     window.FS_TRAVEL = {{ (travel_ctx or {"avoid": [], "visited": [], "avoid_names": [], "visited_names": [], "country_names": {}, "primary_iata": {}, "home_iata": "JFK", "home_iata_setting": "", "home_iata_fallback": "JFK"}) | tojson }};
     window.FS_PROMO = {{ (promo_offers() or None) | tojson }};
   </script>
-  <script src="/static/progress.js" defer></script>
+  <script src="/static/progress.js?v=2" defer></script>
   <script>window.__VIBES__ = {{ vibes_json|safe }};</script>
   <script src="/static/vibe_slider.js?v={{ vibes_v }}" defer></script>
   <script>window.AVIASALES_MARKER = "756039.Zza75700ced74b488c8090948-756039";</script>

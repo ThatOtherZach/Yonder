@@ -190,13 +190,8 @@
     return mixed.length ? mixed : base;
   }
 
-  function ensureOverlay() {
-    var el = document.getElementById("fs-progress-overlay");
-    if (el) return el;
-    el = document.createElement("div");
-    el.id = "fs-progress-overlay";
-    el.setAttribute("aria-live", "polite");
-    el.innerHTML =
+  function cardMarkup() {
+    return (
       '<div class="fs-progress-card">' +
       '  <div class="fs-progress-emoji" id="fs-progress-emoji">✈️</div>' +
       '  <div class="fs-progress-title" id="fs-progress-title">Working…</div>' +
@@ -210,7 +205,40 @@
       '  <div class="fs-progress-promo" id="fs-progress-promo"></div>' +
       '  <div class="fs-progress-hint" id="fs-progress-hint">Aiming for a quick search — APIs may take longer.</div>' +
       '  <button type="button" class="fs-progress-skip" id="fs-progress-skip" hidden>Skip</button>' +
-      "</div>";
+      "</div>"
+    );
+  }
+
+  function removeInlineMount() {
+    var el = document.getElementById("fs-progress-inline");
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+
+  /** Mount the same progress card inline inside a container (no overlay). */
+  function ensureInline(container) {
+    // The card ids must stay unique — drop any leftover overlay first
+    var ov = document.getElementById("fs-progress-overlay");
+    if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+    var el = document.getElementById("fs-progress-inline");
+    if (el) return el;
+    el = document.createElement("div");
+    el.id = "fs-progress-inline";
+    el.className = "fs-progress-inline";
+    el.setAttribute("aria-live", "polite");
+    el.innerHTML = cardMarkup();
+    container.appendChild(el);
+    return el;
+  }
+
+  function ensureOverlay() {
+    // The card ids must stay unique — drop any leftover inline mount first
+    removeInlineMount();
+    var el = document.getElementById("fs-progress-overlay");
+    if (el) return el;
+    el = document.createElement("div");
+    el.id = "fs-progress-overlay";
+    el.setAttribute("aria-live", "polite");
+    el.innerHTML = cardMarkup();
     document.body.appendChild(el);
     return el;
   }
@@ -248,6 +276,8 @@
           ? opts.maxMs
           : 42000;
     this.searchId = opts.searchId || "";
+    // When set, mount the same progress card inline inside this element instead of the overlay
+    this.container = opts.container || null;
     this.onSkip = typeof opts.onSkip === "function" ? opts.onSkip : null;
     this.lines = opts.lines || buildLines(this.mode);
     this.stages = opts.stages || (this.mode === "adventure" ? STAGES_ADV : STAGES_SEARCH);
@@ -261,9 +291,13 @@
   }
 
   ProgressController.prototype.start = function () {
-    var overlay = ensureOverlay();
-    overlay.classList.add("show");
-    document.body.classList.add("fs-progress-active");
+    if (this.container) {
+      ensureInline(this.container);
+    } else {
+      var overlay = ensureOverlay();
+      overlay.classList.add("show");
+      document.body.classList.add("fs-progress-active");
+    }
     document.getElementById("fs-progress-title").textContent = this.title;
     document.getElementById("fs-progress-fill").style.width = "0%";
     document.getElementById("fs-progress-pct").textContent = "0%";
@@ -428,7 +462,14 @@
     var overlay = document.getElementById("fs-progress-overlay");
     if (overlay) overlay.classList.remove("show");
     document.body.classList.remove("fs-progress-active");
+    removeInlineMount();
     if (errMsg) alert(errMsg);
+  };
+
+  /** Remove an inline mount (no-op for overlay mode). */
+  ProgressController.prototype.remove = function () {
+    this._clearTimers();
+    removeInlineMount();
   };
 
   ProgressController.prototype._clearTimers = function () {

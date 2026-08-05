@@ -273,9 +273,10 @@ class GrokClient:
 
     async def __aenter__(self) -> GrokClient:
         if self._client is None:
-            # Connect fast; allow enough read time for invent/parse (fallback still catches stalls)
+            # Connect fast; allow enough read time for invent/parse (fallback still catches stalls).
+            # read=50 s ensures the 45 s asyncio.wait_for fires before httpx cuts the connection.
             self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(connect=8.0, read=22.0, write=10.0, pool=8.0)
+                timeout=httpx.Timeout(connect=8.0, read=50.0, write=10.0, pool=8.0)
             )
         return self
 

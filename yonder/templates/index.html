@@ -2910,7 +2910,6 @@
         if (!btn) return;
         btn.addEventListener("click", function () {
           var cardBody = document.getElementById("quest-card-body");
-          var subEl = document.getElementById("quest-card-sub");
 
           // Gather context from the search form
           var prompt = (ta && ta.value || "").trim();
@@ -2928,16 +2927,41 @@
           var depart = (document.getElementById("explore-depart") || {}).value || "";
           var vibe = (document.getElementById("explore-vibe") || {}).value || "adventure";
 
-          // Show loading state
+          // Same progress card as a search, mounted inline in the Quest card
           btn.disabled = true;
-          btn.textContent = "Planning your Quest…";
-          if (subEl) subEl.textContent = "Talking to the AI — this takes a moment…";
+          var aborter = (typeof AbortController !== "undefined") ? new AbortController() : null;
+          var progress = null;
+          if (window.YonderProgress && window.YonderProgress.ProgressController) {
+            progress = new window.YonderProgress.ProgressController({
+              mode: "adventure",
+              title: "Planning your Quest\u2026",
+              expectedMs: 30000,
+              skipAfterMs: 8000, // show Skip after 8s — cancels the Quest call
+              container: cardBody || document.getElementById("quest-results"),
+              onSkip: function () {
+                if (aborter) aborter.abort();
+              },
+            });
+            progress.start();
+          }
+
+          function _removeLoading() {
+            if (progress) progress.remove();
+          }
+
+          function _restoreQuestCard() {
+            var questResults = document.getElementById("quest-results");
+            if (!questResults) return;
+            questResults.innerHTML = '<div class="card" id="quest-results-card"><h2>Quest</h2><p class="sub" id="quest-card-sub">Open-jaw overland adventures \u00b7 fly into one city, travel overland, fly home from another</p><div id="quest-card-body"><button type="button" class="btn-plan-quest" id="btn-plan-quest">\ud83d\uddfa\ufe0f Plan a Quest</button></div></div>';
+            bootPlanQuestButton();
+          }
 
           var data = new URLSearchParams({ prompt: prompt, origin: origin, depart: depart, vibe: vibe, quest_days: "10" });
-          fetch("/api/quest/plan", { method: "POST", body: data, headers: { "Content-Type": "application/x-www-form-urlencoded" } })
+          fetch("/api/quest/plan", { method: "POST", body: data, headers: { "Content-Type": "application/x-www-form-urlencoded" }, signal: aborter ? aborter.signal : undefined })
             .then(function (r) { return r.json(); })
             .then(function (json) {
               var questResults = document.getElementById("quest-results");
+              _removeLoading();
               if (!questResults) return;
               if (json.html) {
                 questResults.innerHTML = json.html;
@@ -2951,6 +2975,12 @@
               }
             })
             .catch(function (err) {
+              _removeLoading();
+              if (err && err.name === "AbortError") {
+                // User hit Skip — put the original Quest button back
+                _restoreQuestCard();
+                return;
+              }
               var questResults = document.getElementById("quest-results");
               if (questResults) {
                 questResults.innerHTML = '<div class="card" id="quest-results-card"><h2>Quest</h2><p class="muted quest-error" role="alert">Network error — check connection and try again.</p><div id="quest-card-body"><button type="button" class="btn-plan-quest" id="btn-plan-quest">Try again</button></div></div>';

@@ -2624,6 +2624,9 @@ async def quest_plan_api(request: Request):
             if _attempt == 0:
                 continue  # retry
             break
+        except asyncio.CancelledError:
+            _last_err = "timeout"
+            break
         except Exception as _exc:  # noqa: BLE001
             _last_err = str(_exc)[:200]
             break
