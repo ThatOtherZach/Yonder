@@ -56,3 +56,7 @@ externalPort = 3000
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 60000
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "-w=4", "-k=uvicorn.workers.UvicornWorker", "yonder.web:app"]
