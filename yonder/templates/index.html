@@ -31,6 +31,91 @@
       color: var(--muted);
       font-size: 0.9rem;
     }
+    /* Quest initial-card criteria strip */
+    .quest-criteria-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.6rem;
+      margin-bottom: 0.85rem;
+    }
+    .quest-vibe-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0 0.45rem 0 0.6rem;
+      height: 2.75rem;
+      border-radius: 999px;
+      border: 1.5px solid color-mix(in srgb, var(--vibe-now, var(--sky-bright)) 45%, var(--line));
+      background: color-mix(in srgb, var(--vibe-now, var(--sky-bright)) 10%, var(--paper));
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+    .quest-vibe-emoji { font-size: 1.1em; line-height: 1; }
+    .quest-vibe-label { color: var(--ink); }
+    .quest-vibe-shuffle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.6em;
+      height: 1.6em;
+      padding: 0;
+      border: none;
+      border-radius: 50%;
+      background: none;
+      color: var(--vibe-now, var(--sky-bright));
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: color 0.12s, transform 0.15s;
+      margin-left: 0.05rem;
+    }
+    .quest-vibe-shuffle svg { display: block; width: 1em; height: 1em; }
+    .quest-vibe-shuffle:hover { opacity: 0.8; }
+    .quest-vibe-shuffle.did-shuffle { transform: scaleX(-1); }
+    label.quest-origin-label,
+    label.quest-date-label { height: 2.75rem; }
+    .quest-days-label {
+      display: inline-flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 0.4rem;
+      margin: 0;
+      padding: 0 0.35rem 0 0.65rem;
+      height: 2.75rem;
+      border-radius: 999px;
+      border: 1.5px solid var(--line);
+      background: var(--paper);
+      font-size: inherit;
+      font-weight: 500;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .quest-days-label > span {
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .quest-days-select {
+      height: 2.5rem;
+      margin: 0;
+      padding: 0 0.5rem 0 0.1rem;
+      border: none;
+      background: transparent;
+      box-shadow: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      color: var(--ink);
+    }
+    @media (max-width: 575px) {
+      .quest-criteria-strip { gap: 0.4rem 0.5rem; }
+      .quest-vibe-badge,
+      label.quest-origin-label,
+      label.quest-date-label,
+      .quest-days-label { height: 2.5rem; }
+    }
     /* Compose: one card, prompt + map + actions */
     .compose-card {
       position: relative;
@@ -1583,6 +1668,37 @@
       <div class="card" id="quest-results-card">
         <h2>Quest</h2>
         <p class="sub" id="quest-card-sub">Open-jaw overland adventures · fly into one city, travel overland, fly home from another</p>
+        <div class="quest-criteria-strip" id="quest-criteria-strip">
+          <span class="quest-vibe-badge" id="quest-vibe-badge">
+            <span class="quest-vibe-emoji" id="quest-vibe-emoji"></span>
+            <span class="quest-vibe-label" id="quest-vibe-label"></span>
+            <button type="button" class="quest-vibe-shuffle" id="quest-vibe-shuffle" title="Shuffle vibe" aria-label="Shuffle vibe">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 17 C6 17 9 7 22 7"/>
+                <polyline points="18.5,4 22,7 18.5,10"/>
+                <path d="M2 7 C6 7 9 17 22 17" stroke-dasharray="2.5 1.8"/>
+                <polyline points="18.5,14 22,17 18.5,20"/>
+              </svg>
+            </button>
+          </span>
+          <label class="origin-field quest-origin-label" title="Departure airport (3-letter IATA)">
+            <span>From</span>
+            <input id="quest-origin" type="text" maxlength="3" placeholder="YVR" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="date-field quest-date-label" title="Departure date">
+            <span>Depart</span>
+            <input id="quest-depart" type="date" />
+          </label>
+          <label class="quest-days-label" title="Trip length in days">
+            <span>Days</span>
+            <select id="quest-days" class="quest-days-select">
+              <option value="7">7</option>
+              <option value="10" selected>10</option>
+              <option value="14">14</option>
+              <option value="21">21</option>
+            </select>
+          </label>
+        </div>
         <div id="quest-card-body">
           <button type="button" class="btn-plan-quest" id="btn-plan-quest">
             🗺️ Plan a Quest
@@ -2907,6 +3023,139 @@
         _afterQuestInject(questResults);
       }
 
+      // Returns the redesigned Quest initial card HTML string (used for static + restore).
+      function _questCardHTML() {
+        var SHUFFLE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 17 C6 17 9 7 22 7"/><polyline points="18.5,4 22,7 18.5,10"/><path d="M2 7 C6 7 9 17 22 17" stroke-dasharray="2.5 1.8"/><polyline points="18.5,14 22,17 18.5,20"/></svg>';
+        return '<div class="card" id="quest-results-card">' +
+          '<h2>Quest</h2>' +
+          '<p class="sub" id="quest-card-sub">Open-jaw overland adventures \u00b7 fly into one city, travel overland, fly home from another</p>' +
+          '<div class="quest-criteria-strip" id="quest-criteria-strip">' +
+            '<span class="quest-vibe-badge" id="quest-vibe-badge">' +
+              '<span class="quest-vibe-emoji" id="quest-vibe-emoji"></span>' +
+              '<span class="quest-vibe-label" id="quest-vibe-label"></span>' +
+              '<button type="button" class="quest-vibe-shuffle" id="quest-vibe-shuffle" title="Shuffle vibe" aria-label="Shuffle vibe">' + SHUFFLE_SVG + '</button>' +
+            '</span>' +
+            '<label class="origin-field quest-origin-label" title="Departure airport (3-letter IATA)">' +
+              '<span>From</span>' +
+              '<input id="quest-origin" type="text" maxlength="3" placeholder="YVR" autocomplete="off" spellcheck="false" />' +
+            '</label>' +
+            '<label class="date-field quest-date-label" title="Departure date">' +
+              '<span>Depart</span>' +
+              '<input id="quest-depart" type="date" />' +
+            '</label>' +
+            '<label class="quest-days-label" title="Trip length in days">' +
+              '<span>Days</span>' +
+              '<select id="quest-days" class="quest-days-select">' +
+                '<option value="7">7</option>' +
+                '<option value="10">10</option>' +
+                '<option value="14">14</option>' +
+                '<option value="21">21</option>' +
+              '</select>' +
+            '</label>' +
+          '</div>' +
+          '<div id="quest-card-body">' +
+            '<button type="button" class="btn-plan-quest" id="btn-plan-quest">\ud83d\uddfa\ufe0f Plan a Quest</button>' +
+          '</div>' +
+        '</div>';
+      }
+
+      // Initialises the criteria strip controls: vibe badge, shuffle, origin, date, trip-length.
+      // Call once after the strip is in the DOM (both on first load and after _restoreQuestCard).
+      function bootQuestCriteriaStrip() {
+        var vibeEmojiEl  = document.getElementById("quest-vibe-emoji");
+        var vibeLabelEl  = document.getElementById("quest-vibe-label");
+        var shuffleBtn   = document.getElementById("quest-vibe-shuffle");
+        var vibeHidden   = document.getElementById("explore-vibe");
+
+        // Resolve a vibe object by id from the slider API or global list.
+        function _resolveVibe(id) {
+          var host = document.querySelector("[data-vibe-slider]");
+          var api  = host && host._vibeSlider;
+          var list = (api && api.vibes) || (window.YonderVibe && window.YonderVibe.VIBES) || [];
+          for (var i = 0; i < list.length; i++) {
+            if (list[i].id === id) return list[i];
+          }
+          return list[0] || null;
+        }
+
+        function _applyVibeBadge(id) {
+          var v = _resolveVibe(id);
+          if (!v) return;
+          if (vibeEmojiEl) vibeEmojiEl.textContent = v.emoji || "";
+          if (vibeLabelEl) vibeLabelEl.textContent  = v.label || "";
+        }
+
+        // Initialise badge from current slider value.
+        _applyVibeBadge((vibeHidden && vibeHidden.value) || "adventure");
+
+        // Live sync: the vibe slider fires yonder:vibechange on document.
+        document.addEventListener("yonder:vibechange", function (e) {
+          if (e.detail && e.detail.id) _applyVibeBadge(e.detail.id);
+        });
+
+        // Shuffle button — advance to next vibe in the slider's list.
+        if (shuffleBtn) {
+          shuffleBtn.addEventListener("click", function () {
+            var host = document.querySelector("[data-vibe-slider]");
+            var api  = host && host._vibeSlider;
+            if (!api || !api.vibes || api.vibes.length < 2) return;
+            var current = (vibeHidden && vibeHidden.value) || "";
+            var vibes   = api.vibes;
+            var idx     = -1;
+            for (var i = 0; i < vibes.length; i++) {
+              if (vibes[i].id === current) { idx = i; break; }
+            }
+            var next = vibes[(idx + 1) % vibes.length];
+            api.setById(next.id);
+            shuffleBtn.classList.add("did-shuffle");
+            setTimeout(function () { shuffleBtn.classList.remove("did-shuffle"); }, 250);
+          });
+        }
+
+        // Origin — initialise from main input and write back on edit.
+        var questOriginEl   = document.getElementById("quest-origin");
+        var exploreOriginEl = document.getElementById("explore-origin");
+        if (questOriginEl && exploreOriginEl) {
+          if (exploreOriginEl.value) questOriginEl.value = exploreOriginEl.value;
+          questOriginEl.addEventListener("input", function () {
+            var v = questOriginEl.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
+            questOriginEl.value = v;
+            exploreOriginEl.value = v;
+            var disp = document.getElementById("origin-display");
+            if (disp) disp.value = v;
+          });
+        }
+
+        // Date — initialise from main input and write back on change.
+        var questDepartEl   = document.getElementById("quest-depart");
+        var exploreDepartEl = document.getElementById("explore-depart");
+        if (questDepartEl && exploreDepartEl) {
+          questDepartEl.value = exploreDepartEl.value || "";
+          questDepartEl.addEventListener("change", function () {
+            exploreDepartEl.value = questDepartEl.value;
+          });
+        }
+
+        // Trip length — snap sum of min+max stop days to nearest allowed value.
+        var questDaysEl = document.getElementById("quest-days");
+        if (questDaysEl) {
+          var minStopEl = document.getElementById("explore-min-stop");
+          var maxStopEl = document.getElementById("explore-max-stop");
+          var minV = parseInt((minStopEl && minStopEl.value) || "0", 10) || 0;
+          var maxV = parseInt((maxStopEl && maxStopEl.value) || "0", 10) || 0;
+          var sum = minV + maxV;
+          if (sum > 0) {
+            var ALLOWED = [7, 10, 14, 21];
+            var best = ALLOWED[0], bestDist = Math.abs(sum - best);
+            for (var j = 1; j < ALLOWED.length; j++) {
+              var d = Math.abs(sum - ALLOWED[j]);
+              if (d < bestDist) { bestDist = d; best = ALLOWED[j]; }
+            }
+            questDaysEl.value = String(best);
+          }
+        }
+      }
+
       function bootPlanQuestButton() {
         var btn = document.getElementById("btn-plan-quest");
         if (!btn) return;
@@ -2924,10 +3173,15 @@
             if (cardBody) cardBody.innerHTML = '<p class="muted quest-error" role="alert">Type a search prompt first, then hit Plan a Quest.</p>';
             return;
           }
-          var originEl2 = document.getElementById("explore-origin");
-          var origin = originEl2 ? (originEl2.value || "") : "";
-          var depart = (document.getElementById("explore-depart") || {}).value || "";
-          var vibe = (document.getElementById("explore-vibe") || {}).value || "adventure";
+          // Read from quest criteria strip controls; fall back to main explore inputs.
+          var questOriginEl = document.getElementById("quest-origin");
+          var originEl2     = document.getElementById("explore-origin");
+          var origin        = (questOriginEl && questOriginEl.value) || (originEl2 ? originEl2.value : "") || "";
+          var questDepartEl = document.getElementById("quest-depart");
+          var depart        = (questDepartEl && questDepartEl.value) || (document.getElementById("explore-depart") || {}).value || "";
+          var vibe          = (document.getElementById("explore-vibe") || {}).value || "adventure";
+          var questDaysEl   = document.getElementById("quest-days");
+          var questDays     = (questDaysEl && questDaysEl.value) || "10";
 
           // Same progress card as a search, mounted inline in the Quest card
           btn.disabled = true;
@@ -2954,11 +3208,12 @@
           function _restoreQuestCard() {
             var questResults = document.getElementById("quest-results");
             if (!questResults) return;
-            questResults.innerHTML = '<div class="card" id="quest-results-card"><h2>Quest</h2><p class="sub" id="quest-card-sub">Open-jaw overland adventures \u00b7 fly into one city, travel overland, fly home from another</p><div id="quest-card-body"><button type="button" class="btn-plan-quest" id="btn-plan-quest">\ud83d\uddfa\ufe0f Plan a Quest</button></div></div>';
+            questResults.innerHTML = _questCardHTML();
+            bootQuestCriteriaStrip();
             bootPlanQuestButton();
           }
 
-          var data = new URLSearchParams({ prompt: prompt, origin: origin, depart: depart, vibe: vibe, quest_days: "10" });
+          var data = new URLSearchParams({ prompt: prompt, origin: origin, depart: depart, vibe: vibe, quest_days: questDays });
           fetch("/api/quest/plan", { method: "POST", body: data, headers: { "Content-Type": "application/x-www-form-urlencoded" }, signal: aborter ? aborter.signal : undefined })
             .then(function (r) { return r.json(); })
             .then(function (json) {
@@ -3001,6 +3256,7 @@
         bootResultsFilter();
         bootCriteriaRefresh();
         bootPlanQuestButton();
+        bootQuestCriteriaStrip();
         hydrateQuestFromStorage();
         // Pre-fill visible origin field from hidden explore-origin (set by GPS/settings)
         (function () {
