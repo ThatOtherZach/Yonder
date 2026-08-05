@@ -2935,8 +2935,8 @@
             progress = new window.YonderProgress.ProgressController({
               mode: "adventure",
               title: "Planning your Quest\u2026",
-              expectedMs: 30000,
-              skipAfterMs: 8000, // show Skip after 8s — cancels the Quest call
+              expectedMs: 65000, // grok-4.5 typically needs 50-70s to draft quest ideas
+              skipAfterMs: 45000, // show Skip only once the run is genuinely slow — cancels the Quest call
               container: cardBody || document.getElementById("quest-results"),
               onSkip: function () {
                 if (aborter) aborter.abort();

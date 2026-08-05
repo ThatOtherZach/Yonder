@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import httpx
 import os
 import json
 from datetime import date
@@ -2594,7 +2595,9 @@ async def quest_plan_api(request: Request):
     except (ValueError, TypeError):
         depart_dt = date.today() + timedelta(days=45)
 
-    # Run plan_quest with 45 s read timeout; one automatic retry on timeout.
+    # Run plan_quest with an 80 s budget — grok-4.5 regularly needs 50-70 s
+    # to draft 3 open-jaw itineraries, so a shorter budget makes Quest fail
+    # while Detour/Escape (faster unified/cached paths) still work.
     async def _run_quest() -> list:
         return await asyncio.wait_for(
             plan_quest(
@@ -2609,27 +2612,19 @@ async def quest_plan_api(request: Request):
                 visited=visited,
                 anchor_legs=anchor_legs,
             ),
-            timeout=45.0,
+            timeout=80.0,
         )
 
     quest_ideas = None
     _last_err: str | None = None
-    for _attempt in range(2):  # first try + one retry on timeout
-        try:
-            quest_ideas = await _run_quest()
-            _last_err = None
-            break
-        except asyncio.TimeoutError:
-            _last_err = "timeout"
-            if _attempt == 0:
-                continue  # retry
-            break
-        except asyncio.CancelledError:
-            _last_err = "timeout"
-            break
-        except Exception as _exc:  # noqa: BLE001
-            _last_err = str(_exc)[:200]
-            break
+    try:
+        quest_ideas = await _run_quest()
+    except (asyncio.TimeoutError, asyncio.CancelledError, httpx.TimeoutException):
+        _last_err = "timeout"
+    except httpx.HTTPError as _exc:  # network/protocol errors: str() often empty
+        _last_err = repr(_exc)[:200]
+    except Exception as _exc:  # noqa: BLE001
+        _last_err = (str(_exc) or repr(_exc))[:200]
 
     if _last_err == "timeout":
         error_text = "The AI took too long — try again."
