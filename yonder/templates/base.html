@@ -1411,13 +1411,17 @@
       border-radius: var(--radius-sm);
       padding: 0.9rem 1rem 0.8rem;
       display: flex;
-      flex-direction: column;
-      gap: 0.65rem;
+      flex-direction: row;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
     }
     .pack-ad-body {
       display: flex;
       align-items: flex-start;
       gap: 0.75rem;
+      flex: 1;
+      min-width: 0;
     }
     .pack-ad-emoji {
       font-size: 1.9rem;
