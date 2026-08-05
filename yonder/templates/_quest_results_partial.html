@@ -4,6 +4,7 @@
 {% set quest_empty = _qp and _qp.result is defined and _qp.result is not none and _qp.result|length == 0 %}
 {% set q_home = (_qp.home_iata if _qp and _qp.home_iata is defined else none) or home_iata_fallback or 'YVR' %}
 {% set q_vibe = (_qp.vibe if _qp and _qp.vibe is defined else none) or vibe_fallback or 'adventure' %}
+{% set _place_books = place_books if place_books is defined else {} %}
 {% if has_quest %}
 <div class="card" id="quest-results-card">
   <h2>Quest</h2>
@@ -18,7 +19,7 @@
   <div class="pass-stack">
     {% for idea in _qp.result %}
     {% set share = share_quest(request, idea, q_home) %}
-    {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe, share=share) }}
+    {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe, share=share, place_books=_place_books) }}
     {% endfor %}
   </div>
 </div>

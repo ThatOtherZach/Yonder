@@ -675,7 +675,7 @@
 {% endmacro %}
 
 
-{% macro quest_card(mode, idea, idx, home_iata='', quest_vibe='', share=none, s=none) %}
+{% macro quest_card(mode, idea, idx, home_iata='', quest_vibe='', share=none, s=none, place_books=none) %}
 {# ── Quest: open-jaw overland adventure card ──────────────────────────────────
    idea: QuestIdea Pydantic model or dict
    home_iata: the traveler's home airport IATA
@@ -714,7 +714,7 @@
       <span class="bp-iata">{{ home_iata or '—' }}</span>
       <span class="bp-plane" aria-hidden="true">✈</span>
       <span class="bp-iata bp-iata-mid" style="font-size:1.35rem;opacity:0.85">{{ idea.entry_iata }}</span>
-      <span class="bp-plane" aria-hidden="true" style="opacity:0.45;font-style:normal;letter-spacing:-0.05em">⟿</span>
+      <span class="bp-plane" aria-hidden="true" style="opacity:0.45;font-style:normal;letter-spacing:-0.05em">🚶</span>
       <span class="bp-iata bp-iata-mid" style="font-size:1.35rem;opacity:0.85">{{ idea.exit_iata }}</span>
       <span class="bp-plane" aria-hidden="true">✈</span>
       <span class="bp-iata">{{ home_iata or '—' }}</span>
@@ -738,6 +738,67 @@
     <div class="pb-fast-facts" aria-label="Highlights" style="margin-top:0.25rem">
       {% for h in idea.highlights %}<span class="pb-fact" style="background:color-mix(in srgb, {{ accent }} 12%, var(--paper-2,#f4f1ea))">📍 {{ h }}</span>{% endfor %}
     </div>
+    {% endif %}
+
+    {# Field notes for entry and exit cities #}
+    {% if place_books is not none %}
+    {% for fn_iata, fn_city in [(idea.entry_iata, idea.entry_city), (idea.exit_iata, idea.exit_city)] %}
+    {% if fn_iata %}
+    {% set fn_code = fn_iata | upper %}
+    {% set pb = place_books.get(fn_code) if place_books else none %}
+    {% set pb_airport_trains = airport_train_for(fn_iata) %}
+    {% set pb_transfers = ground_transfer_for(fn_iata) %}
+    {% set has_more = (pb and (pb.culture or pb.food or pb.caution)) %}
+    <div
+      class="place-book field-note-inset field-note-slot{% if not pb %} is-loading{% endif %}"
+      data-iata="{{ fn_code }}"
+      data-city="{{ fn_city or '' }}"
+      data-role="quest"
+    >
+      <div class="pb-story-body{% if not pb %} is-loading{% endif %}">
+        {% if pb %}
+        <span class="pb-tag">Field note · {{ fn_city or fn_code }}</span>
+        {% set pb_tagline = pb.tagline or pb.era_note or pb.vibe %}
+        <div class="pb-title-line">
+          <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
+          {% if pb_tagline %}<p class="pb-closer">{{ pb_tagline }}</p>{% endif %}
+        </div>
+        {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
+        {% set pb_acts = pb.activity_links or [] %}
+        {% if (pb.facts or []) or pb_acts or pb_airport_trains or pb_transfers %}
+        <div class="pb-fast-facts" aria-label="Fast facts">
+          {% for f in (pb.facts or [])[:2 if pb_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
+          {% for l in pb_acts %}<a class="pb-fact pb-fact-link" href="{{ l.url }}" target="_blank" rel="noopener sponsored">{{ l.emoji }} {{ l.title }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+          {% for t in pb_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+          {% for tr in pb_transfers %}<a class="pb-fact pb-fact-link" href="{{ tr.url }}" target="_blank" rel="noopener sponsored">{{ tr.emoji }} {{ tr.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+        </div>
+        {% endif %}
+        {% else %}
+        <span class="pb-tag">Field note · {{ fn_city or fn_code }}</span>
+        <div class="pb-fn-loading">
+          <div class="pb-fn-bar-track"><div class="pb-fn-bar-fill"></div></div>
+          <div class="pb-fn-promo"></div>
+        </div>
+        {% endif %}
+      </div>
+      {% if has_more or (not pb) %}
+      <button type="button" class="pb-toggle" aria-expanded="false"{% if not pb %} hidden{% endif %}>
+        <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
+        <span class="pb-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="pb-details" hidden>
+        <div class="pb-grid pb-mesh-grid">
+          {% if pb %}
+            {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
+            {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
+            {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
     {% endif %}
 
     {# Saved-mode metadata #}

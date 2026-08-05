@@ -2597,7 +2597,11 @@ async def quest_plan_api(request: Request):
     except Exception:
         anchor_legs = []
 
-    def _render_quest(quest_panel_dict: dict, error_message: str | None = None) -> str:
+    def _render_quest(
+        quest_panel_dict: dict,
+        error_message: str | None = None,
+        place_books: dict | None = None,
+    ) -> str:
         """Render the quest results partial template to an HTML string."""
         tpl = templates.env.get_template("_quest_results_partial.html")
         return tpl.render(
@@ -2606,6 +2610,7 @@ async def quest_plan_api(request: Request):
             home_iata_fallback=home_iata,
             vibe_fallback=vibe,
             error_message=error_message,
+            place_books=place_books or {},
         )
 
     if not prompt:
@@ -2675,8 +2680,39 @@ async def quest_plan_api(request: Request):
             else "Quest needs an AI key — add one in Settings"
         ),
     }
+
+    # Fetch field-note briefs for all entry + exit IATAs in the ideas.
+    # Matches Detour: cache-first, live Grok fetch when not cached (max_n=3),
+    # result saved to DB so later requests are instant.
+    place_books: dict = {}
+    if quest_ideas:
+        try:
+            from yonder.encyclopedia import briefs_for_stops
+
+            _q_stops: list[tuple[str | None, str | None, str | None]] = []
+            _q_seen: set[str] = set()
+            for _qi in quest_ideas:
+                for _iata, _city in [
+                    (getattr(_qi, "entry_iata", None), getattr(_qi, "entry_city", None)),
+                    (getattr(_qi, "exit_iata", None), getattr(_qi, "exit_city", None)),
+                ]:
+                    _code = (_iata or "").upper()
+                    if _code and _code not in _q_seen:
+                        _q_seen.add(_code)
+                        _q_stops.append((_code, None, _city))
+            place_books = await briefs_for_stops(
+                settings,
+                _q_stops,
+                max_n=3,
+                cache_only=not settings.grok_ready(),
+                user_prompt=prompt,
+                trip_vibe=vibe,
+            )
+        except Exception:
+            place_books = {}
+
     try:
-        html = _render_quest(quest_panel)
+        html = _render_quest(quest_panel, place_books=place_books)
     except Exception as _render_exc:
         return JSONResponse({"ok": False, "error": f"Render error: {_render_exc}", "html": ""})
 
@@ -3192,6 +3228,35 @@ async def saved_list_page(
                 )
         except Exception:
             card["share"] = None
+
+    # Fetch cached field-note briefs for Quest cards (cache-only, no live Grok).
+    for card in cards:
+        qi = card.get("quest_idea")
+        s = card.get("saved")
+        if qi is None:
+            continue
+        try:
+            from yonder.encyclopedia import briefs_for_stops
+
+            _sq_stops: list[tuple[str | None, str | None, str | None]] = []
+            _sq_seen: set[str] = set()
+            for _iata, _city in [
+                (getattr(qi, "entry_iata", None), getattr(qi, "entry_city", None)),
+                (getattr(qi, "exit_iata", None), getattr(qi, "exit_city", None)),
+            ]:
+                _code = (_iata or "").upper()
+                if _code and _code not in _sq_seen:
+                    _sq_seen.add(_code)
+                    _sq_stops.append((_code, None, _city))
+            card["place_books"] = await briefs_for_stops(
+                settings,
+                _sq_stops,
+                max_n=0,
+                cache_only=True,
+                trip_vibe=(s.vibe if s else None),
+            )
+        except Exception:
+            card["place_books"] = {}
 
     # Vibe-learning: visiting /saved is a tier-2 "reviewed" re-engagement signal
     # for the saved destinations — gated to once per session per destination.
