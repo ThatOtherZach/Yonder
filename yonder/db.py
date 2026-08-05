@@ -272,6 +272,14 @@ CREATE TABLE IF NOT EXISTS vibe_attributes (
     PRIMARY KEY (vibe, attribute, source)
 );
 
+CREATE TABLE IF NOT EXISTS last_search (
+    session_id TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    saved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (session_id, mode)
+);
+
 CREATE TABLE IF NOT EXISTS attribute_evidence (
     id TEXT PRIMARY KEY,
     subject_kind TEXT NOT NULL,

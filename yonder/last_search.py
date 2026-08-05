@@ -1,4 +1,8 @@
-"""Persist last Escape / Detour search payloads on disk (local personal use).
+"""Persist last Escape / Detour search payloads per browser session (Postgres).
+
+Snapshots are keyed by the ``yv_sess`` cookie value so each browser session
+only ever sees its own last search. An empty/missing session_id is a no-op on
+write and returns None on read — never another session's data.
 
 Survives mode switches and page reloads until a new search overwrites that mode.
 """
@@ -6,16 +10,28 @@ Survives mode switches and page reloads until a new search overwrites that mode.
 from __future__ import annotations
 
 import json
-import threading
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from yonder.config import ROOT
+from yonder.db import get_conn
 
-STORE_PATH = ROOT / ".last_search.json"
-_LOCK = threading.Lock()
 MODES = ("escape", "detour")
+
+# Legacy single-user store — deleted on startup so no stale shared data lingers.
+_LEGACY_STORE_PATH = ROOT / ".last_search.json"
+
+
+def _remove_legacy_store() -> None:
+    for p in (_LEGACY_STORE_PATH, _LEGACY_STORE_PATH.with_suffix(".json.tmp")):
+        try:
+            if p.exists():
+                p.unlink()
+        except Exception:
+            pass
+
+
+_remove_legacy_store()
 
 
 def _now() -> str:
@@ -36,27 +52,40 @@ def _dump(obj: Any) -> Any:
     return obj
 
 
-def _read_store() -> dict[str, Any]:
-    if not STORE_PATH.exists():
-        return {}
+def _norm_sess(session_id: str | None) -> str:
+    return (session_id or "").strip()[:64]
+
+
+def _norm_mode(mode: str | None) -> str:
+    m = (mode or "").strip().lower()
+    return m if m in MODES else ""
+
+
+def _get_payload(sess: str, mode_key: str) -> dict[str, Any] | None:
     try:
-        raw = json.loads(STORE_PATH.read_text(encoding="utf-8"))
-        return raw if isinstance(raw, dict) else {}
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT payload FROM last_search WHERE session_id = %s AND mode = %s",
+                (sess, mode_key),
+            ).fetchone()
     except Exception:
-        return {}
-
-
-def _write_store(data: dict[str, Any]) -> None:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    tmp = STORE_PATH.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=0), encoding="utf-8")
-    tmp.replace(STORE_PATH)
+        return None
+    if not row:
+        return None
+    raw = row["payload"]
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except Exception:
+            return None
+    return raw if isinstance(raw, dict) else None
 
 
 def save_last(
     mode: str,
     payload: dict[str, Any],
     *,
+    session_id: str,
     pin_first: bool = False,
 ) -> None:
     """Save a successful search snapshot for mode ('escape' | 'detour').
@@ -64,67 +93,79 @@ def save_last(
     pin_first: also store as the session's first result set for this mode
     (used when Refresh finds nothing new and should roll back).
     """
-    m = (mode or "").strip().lower()
-    if m not in MODES:
+    m = _norm_mode(mode)
+    sess = _norm_sess(session_id)
+    if not m or not sess:
         return
     snap = {k: _dump(v) for k, v in payload.items()}
     snap["saved_at"] = _now()
-    first_key = f"first_{m}"
-    with _LOCK:
-        store = _read_store()
-        store[m] = snap
-        if pin_first and first_key not in store:
-            store[first_key] = snap
-        try:
-            _write_store(store)
-        except Exception:
-            pass
+    blob = json.dumps(snap, ensure_ascii=False)
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO last_search (session_id, mode, payload, saved_at)
+                VALUES (%s, %s, %s::jsonb, now())
+                ON CONFLICT (session_id, mode)
+                DO UPDATE SET payload = EXCLUDED.payload, saved_at = now()
+                """,
+                (sess, m, blob),
+            )
+            if pin_first:
+                conn.execute(
+                    """
+                    INSERT INTO last_search (session_id, mode, payload, saved_at)
+                    VALUES (%s, %s, %s::jsonb, now())
+                    ON CONFLICT (session_id, mode) DO NOTHING
+                    """,
+                    (sess, f"first_{m}", blob),
+                )
+    except Exception:
+        pass
 
 
-def load_last(mode: str) -> dict[str, Any] | None:
-    m = (mode or "").strip().lower()
-    if m not in MODES:
+def load_last(mode: str, *, session_id: str) -> dict[str, Any] | None:
+    m = _norm_mode(mode)
+    sess = _norm_sess(session_id)
+    if not m or not sess:
         return None
-    with _LOCK:
-        store = _read_store()
-    raw = store.get(m)
-    return raw if isinstance(raw, dict) else None
+    return _get_payload(sess, m)
 
 
-def load_first(mode: str) -> dict[str, Any] | None:
+def load_first(mode: str, *, session_id: str) -> dict[str, Any] | None:
     """Original result set for this mode (first successful search after Clear)."""
-    m = (mode or "").strip().lower()
-    if m not in MODES:
+    m = _norm_mode(mode)
+    sess = _norm_sess(session_id)
+    if not m or not sess:
         return None
-    with _LOCK:
-        store = _read_store()
-    raw = store.get(f"first_{m}")
-    return raw if isinstance(raw, dict) else None
+    return _get_payload(sess, f"first_{m}")
 
 
-def clear_last(mode: str | None = None) -> None:
-    """Drop last-search snapshot(s) and first-set pins. mode=None clears all."""
-    with _LOCK:
-        if mode is None:
-            try:
-                if STORE_PATH.exists():
-                    STORE_PATH.unlink()
-            except Exception:
-                pass
-            return
-        m = (mode or "").strip().lower()
-        if m not in MODES:
-            return
-        store = _read_store()
-        store.pop(m, None)
-        store.pop(f"first_{m}", None)
+def clear_last(mode: str | None = None, *, session_id: str) -> None:
+    """Drop this session's snapshot(s) and first-set pins. mode=None clears all."""
+    sess = _norm_sess(session_id)
+    if not sess:
+        return
+    if mode is None:
         try:
-            if store:
-                _write_store(store)
-            elif STORE_PATH.exists():
-                STORE_PATH.unlink()
+            with get_conn() as conn:
+                conn.execute(
+                    "DELETE FROM last_search WHERE session_id = %s", (sess,)
+                )
         except Exception:
             pass
+        return
+    m = _norm_mode(mode)
+    if not m:
+        return
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "DELETE FROM last_search WHERE session_id = %s AND mode IN (%s, %s)",
+                (sess, m, f"first_{m}"),
+            )
+    except Exception:
+        pass
 
 
 def hydrate_escape(snap: dict[str, Any]) -> dict[str, Any]:

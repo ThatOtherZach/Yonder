@@ -476,7 +476,12 @@ def _empty_escape_form(settings) -> dict:
     }
 
 
-def _escape_panel(settings, override: dict | None = None) -> dict:
+def _req_sess(request: Request) -> str:
+    """Server-trusted session id for last-search scoping (yv_sess cookie)."""
+    return (request.cookies.get("yv_sess") or "").strip()[:64]
+
+
+def _escape_panel(settings, session_id: str, override: dict | None = None) -> dict:
     """Last Escape search (or live override) for the unified toggle UI."""
     base = {
         "ask": "",
@@ -488,7 +493,7 @@ def _escape_panel(settings, override: dict | None = None) -> dict:
         "place_book": None,
         "error": None,
     }
-    snap = load_last("escape")
+    snap = load_last("escape", session_id=session_id)
     if snap:
         try:
             base.update(hydrate_escape(snap))
@@ -502,7 +507,7 @@ def _escape_panel(settings, override: dict | None = None) -> dict:
     return base
 
 
-def _detour_panel(settings, override: dict | None = None) -> dict:
+def _detour_panel(settings, session_id: str, override: dict | None = None) -> dict:
     """Last Detour search (or live override) for the unified toggle UI."""
     base = {
         "form": _adventure_form_defaults(settings),
@@ -511,7 +516,7 @@ def _detour_panel(settings, override: dict | None = None) -> dict:
         "place_books": {},
         "error": None,
     }
-    snap = load_last("detour")
+    snap = load_last("detour", session_id=session_id)
     if snap:
         try:
             base.update(hydrate_detour(snap))
@@ -553,6 +558,7 @@ def _compose_page_ctx(
     settings,
     *,
     mode: str,
+    session_id: str,
     error: str | None = None,
     escape_override: dict | None = None,
     detour_override: dict | None = None,
@@ -564,8 +570,8 @@ def _compose_page_ctx(
     the client picks a random vibe for the compose card.
     """
     mode = _home_mode(mode)
-    esc = _escape_panel(settings, escape_override)
-    det = _detour_panel(settings, detour_override)
+    esc = _escape_panel(settings, session_id, escape_override)
+    det = _detour_panel(settings, session_id, detour_override)
     if lock_vibe is None:
         # Live Escape/Detour POST always passes an override panel
         lock_vibe = escape_override is not None or detour_override is not None
@@ -625,8 +631,17 @@ def _compose_page_ctx(
 async def home(request: Request) -> HTMLResponse:
     settings = reload_settings()
     mode = _home_mode(request.query_params.get("mode"))
-    ctx = _compose_page_ctx(settings, mode=mode)
-    return templates.TemplateResponse(request, "index.html", ctx)
+    sess = _req_sess(request)
+    need_cookie = not sess
+    if need_cookie:
+        import uuid as _uuid
+
+        sess = _uuid.uuid4().hex[:32]
+    ctx = _compose_page_ctx(settings, mode=mode, session_id="" if need_cookie else sess)
+    response = templates.TemplateResponse(request, "index.html", ctx)
+    if need_cookie:
+        response.set_cookie("yv_sess", sess, httponly=True, samesite="lax")
+    return response
 
 
 @app.get("/search", response_class=HTMLResponse)
@@ -711,6 +726,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
     """
     # Always re-read .env so a key saved mid-session is picked up
     settings = reload_settings()
+    sess = _req_sess(request)
 
     if request.method == "GET":
         ask = str(request.query_params.get("ask") or "").strip()[:280]
@@ -754,6 +770,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
             "index.html",
             _compose_page_ctx(
                 settings,
+                session_id=sess,
                 mode="escape",
                 error="Type a trip in plain English first.",
                 escape_override={"ask": "", "form": empty_form},
@@ -767,6 +784,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
             "index.html",
             _compose_page_ctx(
                 settings,
+                session_id=sess,
                 mode="escape",
                 error="No AI model configured — add XAI_API_KEY in Settings (console.x.ai) or set a BYOM endpoint, then Save.",
                 escape_override={"ask": ask, "form": empty_form},
@@ -871,7 +889,8 @@ async def ask_grok(request: Request) -> HTMLResponse:
         form["vibe_color"] = vt["color"]
         save_last(
             "escape",
-            {
+            session_id=sess,
+            payload={
                 "ask": ask,
                 "form": form,
                 "result": result,
@@ -883,6 +902,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
         )
         _esc_ctx = _compose_page_ctx(
             settings,
+            session_id=sess,
             mode="escape",
             escape_override={
                 "ask": ask,
@@ -905,6 +925,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
             "index.html",
             _compose_page_ctx(
                 settings,
+                session_id=sess,
                 mode="escape",
                 error=f"Grok search failed: {exc}",
                 escape_override={"ask": ask, "form": empty_form},
@@ -946,6 +967,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     from datetime import timedelta
 
     settings = reload_settings()
+    sess = _req_sess(request)
     form_data = await request.form()
 
     def _s(key: str, fallback: str = "") -> str:
@@ -1121,6 +1143,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             "index.html",
             _compose_page_ctx(
                 settings,
+                session_id=sess,
                 mode="escape",
                 error="Type a trip in plain English first.",
                 escape_override={"ask": "", "form": empty_esc},
@@ -1403,7 +1426,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         }
         # Escape refresh got nothing useful → first set
         if is_refresh and (not result or not result.offers):
-            first_snap = load_first("escape")
+            first_snap = load_first("escape", session_id=sess)
             if first_snap and first_snap.get("result"):
                 from yonder.last_search import hydrate_escape
 
@@ -1432,7 +1455,8 @@ async def explore_run(request: Request) -> HTMLResponse:
 
         save_last(
             "escape",
-            {
+            session_id=sess,
+            payload={
                 "ask": prompt,
                 "form": form,
                 "result": result,
@@ -1700,7 +1724,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         result = _mark_missing_fares_adventure(result)
         # Refresh found nothing new → restore first result set
         if is_refresh and not (result.itineraries or []):
-            first_snap = load_first("detour")
+            first_snap = load_first("detour", session_id=sess)
             if first_snap and first_snap.get("result"):
                 from yonder.last_search import hydrate_detour
 
@@ -1793,7 +1817,8 @@ async def explore_run(request: Request) -> HTMLResponse:
         }
         save_last(
             "detour",
-            {
+            session_id=sess,
+            payload={
                 "form": form,
                 "result": result,
                 "trip_meta": trip_meta,
@@ -1900,7 +1925,8 @@ async def explore_run(request: Request) -> HTMLResponse:
             }
             save_last(
                 "detour",
-                {
+                session_id=sess,
+                payload={
                     "form": form,
                     "result": result,
                     "trip_meta": trip_meta,
@@ -1979,7 +2005,8 @@ async def explore_run(request: Request) -> HTMLResponse:
                     resolved_route = (_ro_re, _rd_re)
                 save_last(
                     "escape",
-                    {
+                    session_id=sess,
+                    payload={
                         "ask": prompt,
                         "form": _re_form,
                         "result": _recycled_esc,
@@ -2466,6 +2493,7 @@ async def explore_run(request: Request) -> HTMLResponse:
 
         ctx = _compose_page_ctx(
             settings,
+            session_id=sess,
             mode=active_mode,
             error=None if has_esc or has_det else err_msg,
             escape_override=escape_override if has_esc or escape_override.get("ask") else None,
@@ -2501,6 +2529,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             "index.html",
             _compose_page_ctx(
                 settings,
+                session_id=sess,
                 mode="escape",
                 error=str(exc),
                 escape_override={"ask": prompt, "form": empty_esc},
@@ -2662,6 +2691,7 @@ async def adventure_home(request: Request) -> RedirectResponse:
 @app.post("/adventure", response_class=HTMLResponse)
 async def adventure_run(request: Request) -> HTMLResponse:
     settings = reload_settings()
+    sess = _req_sess(request)
     form_data = await request.form()
     defaults = _adventure_form_defaults(settings)
 
@@ -2925,7 +2955,8 @@ async def adventure_run(request: Request) -> HTMLResponse:
 
         save_last(
             "detour",
-            {
+            session_id=sess,
+            payload={
                 "form": form,
                 "result": result,
                 "trip_meta": trip_meta,
@@ -2934,6 +2965,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
         )
         _adv_ctx = _compose_page_ctx(
             settings,
+            session_id=sess,
             mode="detour",
             detour_override={
                 "form": form,
@@ -2954,6 +2986,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
             "index.html",
             _compose_page_ctx(
                 settings,
+                session_id=sess,
                 mode="detour",
                 error=str(exc),
                 detour_override={"form": form},
@@ -3418,12 +3451,13 @@ async def api_clear_saves(request: Request) -> HTMLResponse:
             status_code=302,
         )
 @app.post("/api/results-clear")
-async def api_results_clear() -> JSONResponse:
+async def api_results_clear(request: Request) -> JSONResponse:
     """Clear last Escape + Detour result snapshots (UI Clear filter)."""
     from yonder.last_search import clear_last
 
+    sess = _req_sess(request)
     try:
-        clear_last(None)
+        clear_last(None, session_id=sess)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
     return JSONResponse({"ok": True})
