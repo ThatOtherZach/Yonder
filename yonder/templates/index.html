@@ -1464,11 +1464,10 @@
       <div class="card" id="escape-results-card">
         <h2>Direct Escape{% if escape_result.offers and escape_result.offers|length != 1 %}s{% endif %}</h2>
         <p class="sub">
-          Most direct · {{ route(escape_result.query.origin, escape_result.query.destination) }}
+          {{ route_short(escape_result.query.origin, escape_result.query.destination) }}
           {% if escape_dest_theme %}
             · {{ escape_dest_theme.label }}
           {% endif %}
-          · <a href="/saved">Saved</a>
         </p>
         {% if escape_result.results %}
         <div class="pills" style="margin-top:0;margin-bottom:0.85rem">
@@ -1515,8 +1514,7 @@
       <div class="card" id="vibe-base-results-card">
         <h2>{{ vibe_base.vibe_emoji }} {{ vibe_base.vibe_label }}</h2>
         <p class="sub">
-          Best price · {{ route(vibe_base.origin, vibe_base.destination) }}
-          · <a href="/saved">Saved</a>
+          Best price · {{ route_short(vibe_base.origin, vibe_base.destination) }}
         </p>
         <div class="pass-stack">
           {% set vb_train_links = train_options(vibe_base.origin, vibe_base.destination) %}
@@ -1545,11 +1543,15 @@
       <div class="card" id="adv-results" data-trip-meta='{{ (detour_trip_meta or {}) | tojson }}'>
         <h2>Detour</h2>
         <p class="sub">
+          {{ detour_result.ideas|length }} idea{{ 's' if detour_result.ideas|length != 1 else '' }}
+          {% if detour_result.itineraries|length < detour_result.ideas|length %}
+            · {{ detour_result.itineraries|length }} priced
+          {% endif %}
           {% if detour_result.direct_price is not none %}
-            Direct-ish baseline <strong style="color:var(--good)">{{ detour_result.request.currency }} {{ '%.0f'|format(detour_result.direct_price) }}</strong>
-          {% else %}No direct baseline{% endif %}
-          · {{ detour_result.itineraries|length }} of {{ detour_result.ideas|length }} ideas priced
-          · <a href="/saved">Saved</a>
+            · baseline <strong style="color:var(--good)">{{ detour_result.request.currency }} {{ '%.0f'|format(detour_result.direct_price) }}</strong>
+          {% else %}
+            · no direct baseline
+          {% endif %}
         </p>
         {% if ai_usage_display %}
         <div class="pills" style="margin-top:0;margin-bottom:0.85rem">

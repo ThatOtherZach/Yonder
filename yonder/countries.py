@@ -547,11 +547,12 @@ def format_route(
     origin_city: str | None = None,
     dest_city: str | None = None,
     sep: str = " → ",
+    with_country: bool = True,
 ) -> str:
     return (
-        f"{format_place(origin, origin_city)}"
+        f"{format_place(origin, origin_city, with_country=with_country)}"
         f"{sep}"
-        f"{format_place(destination, dest_city)}"
+        f"{format_place(destination, dest_city, with_country=with_country)}"
     )
 
 
