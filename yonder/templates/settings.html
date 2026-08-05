@@ -17,6 +17,27 @@
     .field-row .clear-wrap {
       grid-column: 2;
       padding-bottom: 0.15rem;
+      display: flex;
+      align-items: flex-end;
+    }
+    .btn-clear-field {
+      background: transparent;
+      border: 1.5px solid var(--err, #c0392b);
+      color: var(--err, #c0392b);
+      border-radius: var(--radius-sm, 6px);
+      padding: 0.3rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .btn-clear-field.active {
+      background: var(--err, #c0392b);
+      color: #fff;
+    }
+    .btn-clear-field:hover:not(.active) {
+      background: color-mix(in srgb, var(--err, #c0392b) 12%, transparent);
     }
     .help {
       font-size: 0.78rem;
@@ -479,7 +500,7 @@
           Leave all three blank to use the default.</p>
 
         <div class="hint-box">
-          Leave the API key blank to keep the existing value. Check <strong>Clear</strong> to wipe it.
+          Leave the API key blank to keep the existing value. Click <strong>Clear</strong> to wipe it.
           Masked values show only the last 4 characters.
         </div>
 
@@ -511,7 +532,8 @@
               />
             </div>
             <div class="clear-wrap">
-              <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+              <input type="checkbox" name="clear_{{ f.key }}" value="1" style="display:none" />
+              <button type="button" class="btn-clear-field" onclick="var cb=this.previousElementSibling;cb.checked=!cb.checked;this.classList.toggle('active',cb.checked)">Clear</button>
             </div>
           </div>
           {% endfor %}
@@ -539,6 +561,9 @@
           All AI calls are routed to your endpoint.
         </p>
         {% endif %}
+        <p class="sub" style="margin-top:0.75rem;margin-bottom:0">
+          Having issues? Check the <a href="https://github.com/ThatOtherZach/Yonder/issues" target="_blank" rel="noopener">GitHub issue tracker</a> for known problems or to report a new one.
+        </p>
       </div>
 
       {# ════════════════════════════════════════════════
@@ -566,7 +591,7 @@
         </p>
 
         <div class="hint-box" style="margin-top:1rem">
-          Leave secret fields blank to keep the existing value. Check <strong>Clear</strong> to wipe a key.
+          Leave secret fields blank to keep the existing value. Click <strong>Clear</strong> to wipe a key.
           Masked values show only the last 4 characters.
         </div>
 
@@ -660,7 +685,8 @@
                   value="" spellcheck="false" />
               </div>
               <div class="clear-wrap">
-                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+                <input type="checkbox" name="clear_{{ f.key }}" value="1" style="display:none" />
+              <button type="button" class="btn-clear-field" onclick="var cb=this.previousElementSibling;cb.checked=!cb.checked;this.classList.toggle('active',cb.checked)">Clear</button>
               </div>
             </div>
             {% endfor %}
@@ -688,7 +714,8 @@
                   value="" spellcheck="false" />
               </div>
               <div class="clear-wrap">
-                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+                <input type="checkbox" name="clear_{{ f.key }}" value="1" style="display:none" />
+              <button type="button" class="btn-clear-field" onclick="var cb=this.previousElementSibling;cb.checked=!cb.checked;this.classList.toggle('active',cb.checked)">Clear</button>
               </div>
             </div>
             {% endfor %}
@@ -717,7 +744,8 @@
                   value="" spellcheck="false" />
               </div>
               <div class="clear-wrap">
-                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+                <input type="checkbox" name="clear_{{ f.key }}" value="1" style="display:none" />
+              <button type="button" class="btn-clear-field" onclick="var cb=this.previousElementSibling;cb.checked=!cb.checked;this.classList.toggle('active',cb.checked)">Clear</button>
               </div>
             </div>
             {% endfor %}
@@ -743,7 +771,8 @@
                   value="" spellcheck="false" />
               </div>
               <div class="clear-wrap">
-                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+                <input type="checkbox" name="clear_{{ f.key }}" value="1" style="display:none" />
+              <button type="button" class="btn-clear-field" onclick="var cb=this.previousElementSibling;cb.checked=!cb.checked;this.classList.toggle('active',cb.checked)">Clear</button>
               </div>
             </div>
             {% endfor %}
@@ -765,7 +794,8 @@
                   value="" spellcheck="false" />
               </div>
               <div class="clear-wrap">
-                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+                <input type="checkbox" name="clear_{{ f.key }}" value="1" style="display:none" />
+              <button type="button" class="btn-clear-field" onclick="var cb=this.previousElementSibling;cb.checked=!cb.checked;this.classList.toggle('active',cb.checked)">Clear</button>
               </div>
             </div>
             {% endfor %}
@@ -787,7 +817,8 @@
                   value="" spellcheck="false" />
               </div>
               <div class="clear-wrap">
-                <label class="check"><input type="checkbox" name="clear_{{ f.key }}" value="1" /> Clear</label>
+                <input type="checkbox" name="clear_{{ f.key }}" value="1" style="display:none" />
+              <button type="button" class="btn-clear-field" onclick="var cb=this.previousElementSibling;cb.checked=!cb.checked;this.classList.toggle('active',cb.checked)">Clear</button>
               </div>
             </div>
             {% endfor %}
