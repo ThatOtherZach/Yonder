@@ -6,6 +6,20 @@
   <title>{% block title %}Yonder{% endblock %}</title>
   <meta name="description" content="{% block meta_description %}Find spontaneous last-minute flights by vibe. Type where you feel like going, pick a mood, and Yonder finds the fares.{% endblock %}" />
   <link rel="canonical" href="{% block canonical_url %}https://yonder.city/{% endblock %}" />
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="Yonder.City" />
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}" />
+  <meta property="og:title" content="{% block og_title %}Yonder.City — Spontaneous Flight Finder by Vibe{% endblock %}" />
+  <meta property="og:description" content="{% block og_description %}Find last-minute flights based on how you feel. Pick a vibe, type a destination, and Yonder finds the fares.{% endblock %}" />
+  <meta property="og:url" content="{% block og_url %}https://yonder.city/{% endblock %}" />
+  <meta property="og:locale" content="en_US" />
+  {% if og_image %}<meta property="og:image" content="{{ og_image }}" />{% endif %}
+  <!-- Twitter / X Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@yondercity" />
+  <meta name="twitter:title" content="{% block twitter_title %}Yonder.City — Spontaneous Flight Finder by Vibe{% endblock %}" />
+  <meta name="twitter:description" content="{% block twitter_description %}Find last-minute flights based on how you feel. Pick a vibe and go.{% endblock %}" />
+  {% if og_image %}<meta name="twitter:image" content="{{ og_image }}" />{% endif %}
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
