@@ -585,6 +585,11 @@
         </span>
       </div>
       {% endif %}
+      {% if mode == 'saved' %}
+      <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form">
+        <button type="submit" class="refresh-btn">Refresh fares</button>
+      </form>
+      {% endif %}
       {% for leg in (it.legs or []) %}
       {% set _leg_url = leg.google_flights_url or (leg.offer and leg.offer.google_flights_url) %}
       {% if _leg_url %}
