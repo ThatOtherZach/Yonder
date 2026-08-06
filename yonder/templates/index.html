@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% import "_boarding_pass.html" as bp %}
-{% block title %}{% if mode == 'detour' %}Detour · Yonder{% else %}Escape · Yonder{% endif %}{% endblock %}
+{% block title %}Yonder.City — Find Spontaneous Last-Minute Flights by Vibe{% endblock %}
+{% block canonical_url %}https://yonder.city/{% endblock %}
+{% block meta_description %}Search flights by vibe. Tell Yonder how you feel, pick Escape or Detour mode, and discover spontaneous trips departing soon.{% endblock %}
 {% block extra_css %}
     /* Plan a Quest on-demand button */
     .btn-plan-quest {

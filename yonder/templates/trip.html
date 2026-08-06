@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% import "_boarding_pass.html" as bp %}
 {% block title %}{{ share.title }} · Yonder{% endblock %}
+{% block canonical_url %}{{ share_url }}{% endblock %}
+{% block meta_description %}{% if share %}{{ share.title }} — a {{ kind_label }} trip found on Yonder.City. Spontaneous last-minute flights by vibe.{% else %}Shared trip on Yonder.City — spontaneous last-minute flights by vibe.{% endif %}{% endblock %}
 {% block extra_css %}
     .trip-share {
       max-width: 52rem;
