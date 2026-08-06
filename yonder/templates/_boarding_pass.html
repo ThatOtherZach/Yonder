@@ -524,28 +524,6 @@
           {% endif %}
         </div>
       {% endif %}
-      {% if has_col %}
-      <div class="bp-budget-strip">
-        <div class="bps-left">
-          <span class="bps-label">Daily Spend</span>
-          {% if it.ground_display %}
-          <span class="bps-ground">{{ it.ground_display }}</span>
-          {% endif %}
-          {% if it.ground_compare_line %}
-          <span class="bps-compare">{{ it.ground_compare_line }}</span>
-          {% endif %}
-          {% if it.ground_budget_line %}
-          <span class="bps-budget-status{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}">{{ it.ground_budget_line }}</span>
-          {% endif %}
-        </div>
-        {% if show_all_in %}
-        <div class="bps-total">
-          <span class="bps-total-amt">{{ it.all_in_display }}</span>
-          <span class="bps-total-label">all-in est.</span>
-        </div>
-        {% endif %}
-      </div>
-      {% endif %}
     {% elif has_col %}
     <div class="bp-budget-strip">
       <div class="bps-left">

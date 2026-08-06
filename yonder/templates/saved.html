@@ -186,15 +186,7 @@
         return '<div class="bp-budget-strip">' + left + right + "</div>";
       }
 
-      function injectBudgetStrip(slot, col) {
-        if (!hasColData(col)) return;
-        var existing = slot.nextElementSibling;
-        if (existing && existing.classList.contains("bp-budget-strip")) return;
-        slot.insertAdjacentHTML("afterend", renderBudgetStrip(col));
-      }
-
       function renderColBlocksHtml(col) {
-        /* Budget data is now shown via the strip (renderBudgetStrip / injectBudgetStrip) */
         return "";
       }
 
@@ -303,7 +295,6 @@
           if (iata.length !== 3) {
             slot.classList.remove("is-loading");
             if (hasColData(col)) slot.innerHTML = renderFieldNoteHtml(null, col);
-            injectBudgetStrip(slot, col);
             bindFieldNoteToggles(slot);
             setTimeout(next, 0);
             return;
@@ -327,13 +318,11 @@
               } else {
                 slot.innerHTML = renderFieldNoteHtml(null, col);
               }
-              injectBudgetStrip(slot, col);
               bindFieldNoteToggles(slot);
             })
             .catch(function () {
               slot.classList.remove("is-loading");
               if (hasColData(col)) slot.innerHTML = renderFieldNoteHtml(null, col);
-              injectBudgetStrip(slot, col);
               bindFieldNoteToggles(slot);
             })
             .finally(function () { setTimeout(next, 120); });
