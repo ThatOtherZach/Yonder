@@ -35,13 +35,29 @@ _REGION_SLUGS: frozenset[str] = frozenset(
         "ukraine", "poland", "switzerland", "belgium", "netherlands",
         "hungary", "cyprus", "portugal", "italy", "austria", "czech republic",
         "south korea", "korea",
-        # US states
-        "california", "illinois", "texas", "utah", "washington", "oregon",
-        "south dakota", "florida", "georgia", "colorado", "nevada",
-        # Canadian provinces
-        "bc", "alberta", "ontario", "british columbia",
+        # US states (all 50 + DC)
+        # NOTE: "new york" intentionally omitted — it is also a major city
+        # destination.  "New York, New York" list_titles are correctly split
+        # by the comma rule in _city_from_list_title, yielding "new york" the
+        # city.  A standalone "New York" list title would be ambiguous, but
+        # address-fallback is sufficient for those cases.
+        "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+        "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+        "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana",
+        "maine", "maryland", "massachusetts", "michigan", "minnesota",
+        "mississippi", "missouri", "montana", "nebraska", "nevada",
+        "new hampshire", "new jersey", "new mexico", "north carolina",
+        "north dakota", "ohio", "oklahoma", "oregon", "pennsylvania",
+        "rhode island", "south carolina", "south dakota", "tennessee", "texas",
+        "utah", "vermont", "virginia", "washington", "west virginia",
+        "wisconsin", "wyoming", "district of columbia",
+        # Canadian provinces / territories
+        "bc", "alberta", "ontario", "british columbia", "quebec", "manitoba",
+        "saskatchewan", "nova scotia", "new brunswick",
+        "newfoundland and labrador", "prince edward island",
+        "northwest territories", "nunavut", "yukon",
         # UK regions
-        "scotland", "england", "wales",
+        "scotland", "england", "wales", "northern ireland",
         # Special/meta titles
         "churono", "land of scots", "o-re-going", "murica", "van beer list",
         "want to go", "deutschland",
@@ -59,6 +75,43 @@ _ADDRESS_NON_CITY: frozenset[str] = frozenset(
         "new zealand", "mexico", "brazil", "turkey",
     }
 )
+
+# ---------------------------------------------------------------------------
+# City name aliases: local-language → English standard slug.
+# Applied after extraction so picks_for_city lookups use English names.
+# ---------------------------------------------------------------------------
+
+_CITY_ALIASES: dict[str, str] = {
+    # Polish
+    "warszawa": "warsaw",
+    "krakow": "krakow",       # already English-enough; keep
+    "wroclaw": "wroclaw",
+    # Portuguese
+    "lisboa": "lisbon",
+    "porto": "porto",          # same in English
+    # German
+    "koln": "cologne",
+    "munchen": "munich",
+    "wien": "vienna",
+    # Japanese
+    "tokio": "tokyo",
+    "osaka-shi": "osaka",
+    "kyoto-shi": "kyoto",
+    # Korean
+    "seoul-si": "seoul",
+    "busan-si": "busan",
+    # Ukrainian
+    "kyiv": "kyiv",            # modern English standard; keep as-is
+    # Spanish
+    "barcelona": "barcelona",  # same
+    "madrid": "madrid",
+    # French
+    "paris": "paris",
+    # Chinese
+    "beijing": "beijing",
+    "shanghai": "shanghai",
+}
+
 
 # ---------------------------------------------------------------------------
 # City extraction
@@ -98,11 +151,8 @@ def _city_from_address(address: str) -> str:
     if not parts:
         return ""
 
-    # Candidates: everything except the first part (street) — walk right-to-left
-    # skipping postal codes, state codes, and country names.
-    candidates = parts[1:] if len(parts) > 1 else parts
-
-    for part in reversed(candidates):
+    def _clean_part(part: str) -> str:
+        """Strip postal codes, state abbreviations, and stray digits from a segment."""
         clean = part
         # Strip UK postcodes: "NW1 0ND", "AB33 8JF"
         clean = re.sub(r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b", "", clean)
@@ -110,15 +160,24 @@ def _city_from_address(address: str) -> str:
         clean = re.sub(r"\b[A-Z]\d[A-Z]\s*\d[A-Z]\d\b", "", clean)
         # Strip US ZIPs: "10024" or "97477-1234"
         clean = re.sub(r"\b\d{5}(-\d{4})?\b", "", clean)
+        # Strip hyphenated postal codes before standalone digits so the hyphen
+        # is removed too: "00-901" → "" not "-" ; "101-0021" → "" not "- "
+        # Require ≥2 digits on each side to avoid stripping street sub-numbers.
+        clean = re.sub(r"\b\d{2,}[-–]\d{2,}\b", "", clean)
         # Strip 2-letter state/province abbreviation tokens
         clean = re.sub(r"\b[A-Z]{2}\b", "", clean)
         # Strip remaining stand-alone digit groups (Thai, Korean postcodes, etc.)
         clean = re.sub(r"\b\d+\b", "", clean)
-        clean = clean.strip(" ,.")
+        return clean.strip(" ,.")
 
+    # Candidates: everything except the first part (street) — walk right-to-left
+    # skipping postal codes, state codes, and country names.
+    candidates = parts[1:] if len(parts) > 1 else parts
+
+    for part in reversed(candidates):
+        clean = _clean_part(part)
         if not clean:
             continue
-
         slug = _normalize(clean)
         if not slug:
             continue
@@ -129,15 +188,57 @@ def _city_from_address(address: str) -> str:
             continue
         return slug
 
-    return ""
+    # Fallback: try parts[0] when the right-to-left scan was fully filtered out.
+    # Many short addresses follow "City, Country" or "City, State ZIP" where
+    # parts[0] is the city rather than a street.  Apply conservative guards:
+    #   • strip a leading postal code (e.g. "8001 Zürich", "32-600 Kraków")
+    #   • strip trailing UK/CA postcodes (e.g. "Stonehaven AB39 2TL")
+    #   • strip trailing standalone digits (e.g. "Agios Tychon 4532")
+    #   • if any digits remain → embedded house number → real street → skip
+    #   • if it contains road/path/admin-area words → real street → skip
+    first = parts[0]
+    first = re.sub(r"^\d[\d\-]*\s+", "", first)         # leading postal code
+    first = re.sub(r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b", "", first)  # trailing UK
+    first = re.sub(r"\b[A-Z]\d[A-Z]\s*\d[A-Z]\d\b", "", first)            # trailing CA
+    first = re.sub(r"\s+\d[\d\-]*$", "", first)          # trailing digit-only code
+    first = first.strip()
+    if re.search(r"\d", first):
+        return ""  # embedded digits → street address
+    if re.search(
+        r"\b(district|county|state|province|region|area|department"
+        r"|municipality|improvement|national\s+park|state\s+park)\b",
+        first, re.IGNORECASE,
+    ):
+        return ""
+    if re.search(
+        r"\b(street|road|avenue|boulevard|drive|lane|court|highway"
+        r"|circle|place|parkway|freeway|row|square|gardens?|close"
+        r"|grove|terrace|crescent|praça|piazza|plaza|paseo|calle"
+        r"|rue|via|gasse|strasse|straat|laan|allee|alley"
+        r"|\brd\b|\bave\b|\bblvd\b|\bdr\b|\bln\b|\bct\b|\bhwy\b"
+        r"|\bcir\b|\bpl\b|\bway\b|\bpkwy\b|\bfwy\b"
+        r"|\bnw\b|\bne\b|\bsw\b|\bse\b)\b",
+        first, re.IGNORECASE,
+    ):
+        return ""
+    slug = _normalize(first)
+    if not slug or slug in _ADDRESS_NON_CITY or slug in _REGION_SLUGS or len(slug) <= 2:
+        return ""
+    return slug
 
 
 def _extract_city(list_title: str, address: str) -> str:
-    """Best-effort city slug for a POI row: list_title first, address fallback."""
+    """Best-effort city slug for a POI row: list_title first, address fallback.
+
+    The raw slug is then passed through :data:`_CITY_ALIASES` so that
+    local-language names (e.g. "warszawa", "lisboa") are stored under their
+    English equivalents ("warsaw", "lisbon") and match ``picks_for_city``
+    lookups that use English city names.
+    """
     city = _city_from_list_title(list_title)
     if not city:
         city = _city_from_address(address)
-    return city
+    return _CITY_ALIASES.get(city, city)
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +326,59 @@ def import_pois(csv_path: str | Path | None = None) -> int:
         conn.commit()
 
     return len(rows)
+
+
+# ---------------------------------------------------------------------------
+# Startup backfill
+# ---------------------------------------------------------------------------
+
+def backfill_city_slugs() -> int:
+    """Recompute ``city_slug`` for every existing row that has a missing or
+    incorrect value.
+
+    This is idempotent — it only updates a row when the freshly extracted slug
+    differs from what is stored.  Rows targeted:
+
+    * ``city_slug`` is ``NULL`` or empty string
+    * ``city_slug`` starts or ends with a stray dash (e.g. "``- warszawa``",
+      "``tokyo -``") produced by the pre-fix postal-code stripping logic
+    * ``city_slug`` is a raw local-language name that should have been aliased
+      (e.g. "``warszawa``" → "``warsaw``", "``lisboa``" → "``lisbon``")
+
+    Returns the number of rows changed.
+    """
+    alias_sources = list(_CITY_ALIASES.keys())
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT feature_id, address, list_title, city_slug
+            FROM pois
+            WHERE city_slug IS NULL
+               OR city_slug = ''
+               OR city_slug ~ '^- |^-$| -$| - '
+               OR city_slug = ANY(%s)
+            """,
+            (alias_sources,),
+        ).fetchall()
+
+    updates: list[tuple[str, str]] = []
+    for r in rows:
+        new_slug = _extract_city(r["list_title"] or "", r["address"] or "")
+        old_slug = r["city_slug"] or ""
+        if new_slug and new_slug != old_slug:
+            updates.append((new_slug, r["feature_id"]))
+
+    if not updates:
+        return 0
+
+    with get_conn() as conn:
+        conn.executemany(
+            "UPDATE pois SET city_slug = %s WHERE feature_id = %s",
+            updates,
+        )
+        conn.commit()
+
+    return len(updates)
 
 
 # ---------------------------------------------------------------------------

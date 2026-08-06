@@ -1,5 +1,5 @@
 """Tests for the curated POI module — import idempotency, city-name lookup,
-and brief-payload integration.
+city-extraction helpers, and brief-payload integration.
 
 POI table operations are isolated in a throwaway PostgreSQL schema so the real
 ``pois`` table is never touched.
@@ -33,6 +33,7 @@ CREATE TABLE pois (
     city_slug      TEXT NOT NULL DEFAULT '',
     address        TEXT,
     list_title     TEXT,
+    closed         BOOLEAN,
     imported_at    TIMESTAMPTZ DEFAULT NOW()
 )
 """
@@ -352,3 +353,289 @@ def test_place_brief_to_dict_empty_poi_picks():
     brief = PlaceBrief(title="Nowhere")
     d = brief.to_dict()
     assert d["poi_picks"] == []
+
+
+# ---------------------------------------------------------------------------
+# City-extraction helper tests (no DB required)
+# ---------------------------------------------------------------------------
+
+
+def test_city_from_address_city_country_style():
+    """Short 'City, Country' address: the first segment is the city."""
+    from yonder.poi import _city_from_address
+
+    assert _city_from_address("Juno Beach, France") == "juno beach"
+    assert _city_from_address("Jasper, AB T0E 1E0") == "jasper"
+    assert _city_from_address("Manitou Beach, SK") == "manitou beach"
+    assert _city_from_address("Nelson, BC") == "nelson"
+
+
+def test_city_from_address_leading_postal_code():
+    """Leading postal code is stripped so the city name is extracted."""
+    from yonder.poi import _city_from_address
+
+    assert _city_from_address("8001 Zürich, Switzerland") == "zurich"
+    assert _city_from_address("06320 La Turbie, France") == "la turbie"
+    assert _city_from_address("08024 Barcelona, Spain") == "barcelona"
+
+
+def test_city_from_address_hyphenated_postal_code():
+    """Hyphenated European/Japanese postal codes (00-901, 101-0021) don't
+    leave stray dashes in the extracted slug.
+
+    _city_from_address returns the raw (pre-alias) slug; alias normalisation
+    happens in _extract_city.
+    """
+    from yonder.poi import _city_from_address
+
+    # Polish: "00-901 Warszawa" → raw "warszawa" (no stray dash)
+    assert _city_from_address("plac Defilad 1, 00-901 Warszawa, Poland") == "warszawa"
+    # Japanese: "Tokyo 101-0021" → clean "tokyo" (no stray dash/digits)
+    assert _city_from_address(
+        "2 Chome-16-2 Sotokanda, Chiyoda City, Tokyo 101-0021, Japan"
+    ) == "tokyo"
+    # Portuguese: "1170-133 Lisboa" → raw "lisboa" at _city_from_address level;
+    # the alias (lisboa → lisbon) is applied later by _extract_city.
+    result = _city_from_address("R. Palmira 46A, 1170-133 Lisboa, Portugal")
+    assert result == "lisboa"
+
+
+def test_city_from_address_trailing_uk_postcode():
+    """Trailing UK postcode on parts[0] is stripped to reveal the city."""
+    from yonder.poi import _city_from_address
+
+    assert _city_from_address("Stonehaven AB39 2TL, United Kingdom") == "stonehaven"
+    assert _city_from_address("Edinburgh EH2 4BL, United Kingdom") == "edinburgh"
+
+
+def test_city_from_address_skips_real_streets():
+    """Parts[0] that look like a street (digits after stripping postal code)
+    are not used as a city name."""
+    from yonder.poi import _city_from_address
+
+    # Street with embedded house number
+    assert _city_from_address(
+        "140 Rock Creek Church Rd NW, Washington, DC 20011, United States"
+    ) == ""
+    # Full street address with embedded postal+city
+    # (Praça do Império 1400-206 Lisboa — digits remain after leading-code strip)
+    assert _city_from_address("Praça do Império 1400-206 Lisboa, Portugal") == ""
+
+
+def test_city_from_address_skips_admin_areas():
+    """Administrative area names are not mistaken for cities."""
+    from yonder.poi import _city_from_address
+
+    assert _city_from_address("Improvement District No. 9, AB") == ""
+
+
+def test_city_from_list_title_new_york_preserved():
+    """'New York' list titles must extract 'new york', not be filtered as a
+    US state.  New York is both a state AND the most common destination city
+    in the dataset — the comma-split rule handles 'New York, New York' and the
+    plain 'New York Places' title is accepted as a city-level list."""
+    from yonder.poi import _city_from_list_title
+
+    # "New York, New York" → split on comma → "New York" → "new york" ✓
+    assert _city_from_list_title("New York, New York") == "new york"
+    # Plain "New York Places" → strip suffix → "New York" → "new york" ✓
+    assert _city_from_list_title("New York Places") == "new york"
+    # Pure state-level lists that ARE filtered correctly
+    assert _city_from_list_title("California Places") == ""
+    assert _city_from_list_title("Texas") == ""
+
+
+def test_city_aliases_applied():
+    """_extract_city normalises local-language names to English equivalents."""
+    from yonder.poi import _extract_city
+
+    # "Warszawa" from a Polish address → "warsaw"
+    assert _extract_city("Poland Places", "plac Defilad 1, 00-901 Warszawa, Poland") == "warsaw"
+    # "Lisboa" from a Portuguese address → "lisbon"
+    assert _extract_city("Portugal Places", "R. Palmira 46A, 1170-133 Lisboa, Portugal") == "lisbon"
+    # "Köln" normalised then aliased → "cologne"
+    assert _extract_city("Deutschland Places", "Some Str. 1, 50667 Köln, Germany") in ("cologne", "koln", "")
+
+
+def test_picks_for_city_lisbon_via_address_backfill(poi_schema, tmp_path):
+    """POIs stored with Portuguese addresses are findable via picks_for_city('Lisbon')."""
+    import yonder.poi as poi_mod
+
+    csv_file = tmp_path / "test.csv"
+    csv_file.write_text(
+        _CSV_HEADER
+        + _csv_row(
+            "lisbon1",
+            "Conserveira de Lisboa",
+            list_title="Portugal Places",
+            address="R. dos Bacalhoeiros 34, 1100-071 Lisboa, Portugal",
+        )
+    )
+    poi_mod.import_pois(csv_file)
+
+    picks = poi_mod.picks_for_city("Lisbon")
+    assert any(p["name"] == "Conserveira de Lisboa" for p in picks), (
+        f"Expected Lisbon entry; got {picks}"
+    )
+
+
+def test_picks_for_city_warsaw_via_address_backfill(poi_schema, tmp_path):
+    """POIs stored with Polish addresses are findable via picks_for_city('Warsaw')."""
+    import yonder.poi as poi_mod
+
+    csv_file = tmp_path / "test.csv"
+    csv_file.write_text(
+        _CSV_HEADER
+        + _csv_row(
+            "warsaw1",
+            "Palace of Culture and Science",
+            list_title="Poland Places",
+            address="plac Defilad 1, 00-901 Warszawa, Poland",
+        )
+    )
+    poi_mod.import_pois(csv_file)
+
+    picks = poi_mod.picks_for_city("Warsaw")
+    assert any(p["name"] == "Palace of Culture and Science" for p in picks), (
+        f"Expected Warsaw entry; got {picks}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# backfill_city_slugs integration tests
+# ---------------------------------------------------------------------------
+
+
+def _direct_insert(conn, feature_id: str, name: str, city_slug: str,
+                   address: str = "", list_title: str = "") -> None:
+    """Insert a raw row directly, bypassing _extract_city, to simulate legacy data."""
+    conn.execute(
+        """
+        INSERT INTO pois (feature_id, name, city_slug, address, list_title)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (feature_id) DO UPDATE
+            SET city_slug  = EXCLUDED.city_slug,
+                address    = EXCLUDED.address,
+                list_title = EXCLUDED.list_title
+        """,
+        (feature_id, name, city_slug, address, list_title),
+    )
+
+
+def test_backfill_fills_empty_city_slug(poi_schema):
+    """backfill_city_slugs() populates city_slug for rows that were stored blank."""
+    import yonder.poi as poi_mod
+
+    # Seed a row with empty city_slug but a parseable address
+    with poi_mod.get_conn() as conn:
+        _direct_insert(
+            conn,
+            "bf-empty",
+            "Park Güell",
+            city_slug="",
+            address="08024 Barcelona, Spain",
+            list_title="Spain",
+        )
+        conn.commit()
+
+    changed = poi_mod.backfill_city_slugs()
+    assert changed >= 1
+
+    with poi_mod.get_conn() as conn:
+        row = conn.execute(
+            "SELECT city_slug FROM pois WHERE feature_id = 'bf-empty'"
+        ).fetchone()
+    assert row["city_slug"] == "barcelona", (
+        f"Expected 'barcelona', got {row['city_slug']!r}"
+    )
+
+
+def test_backfill_fixes_stray_dash_slug(poi_schema):
+    """backfill_city_slugs() fixes legacy '- warszawa' and 'tokyo -' slugs."""
+    import yonder.poi as poi_mod
+
+    with poi_mod.get_conn() as conn:
+        _direct_insert(
+            conn, "bf-dash1", "Palace of Culture", "- warszawa",
+            address="plac Defilad 1, 00-901 Warszawa, Poland",
+            list_title="Poland Places",
+        )
+        _direct_insert(
+            conn, "bf-dash2", "Kanda Shrine", "tokyo -",
+            address="2 Chome-16-2 Sotokanda, Chiyoda City, Tokyo 101-0021, Japan",
+            list_title="Japan Places",
+        )
+        conn.commit()
+
+    changed = poi_mod.backfill_city_slugs()
+    assert changed >= 2
+
+    with poi_mod.get_conn() as conn:
+        rows = {
+            r["feature_id"]: r["city_slug"]
+            for r in conn.execute(
+                "SELECT feature_id, city_slug FROM pois WHERE feature_id IN ('bf-dash1','bf-dash2')"
+            ).fetchall()
+        }
+    assert rows["bf-dash1"] == "warsaw", f"Expected 'warsaw', got {rows['bf-dash1']!r}"
+    assert rows["bf-dash2"] == "tokyo", f"Expected 'tokyo', got {rows['bf-dash2']!r}"
+
+
+def test_backfill_applies_city_aliases(poi_schema):
+    """backfill_city_slugs() translates local-language slugs to English equivalents."""
+    import yonder.poi as poi_mod
+
+    with poi_mod.get_conn() as conn:
+        _direct_insert(
+            conn, "bf-alias1", "Conserveira de Lisboa", "lisboa",
+            address="R. dos Bacalhoeiros 34, 1100-071 Lisboa, Portugal",
+            list_title="Portugal Places",
+        )
+        conn.commit()
+
+    changed = poi_mod.backfill_city_slugs()
+    assert changed >= 1
+
+    with poi_mod.get_conn() as conn:
+        row = conn.execute(
+            "SELECT city_slug FROM pois WHERE feature_id = 'bf-alias1'"
+        ).fetchone()
+    assert row["city_slug"] == "lisbon", f"Expected 'lisbon', got {row['city_slug']!r}"
+
+
+def test_backfill_is_idempotent(poi_schema):
+    """Calling backfill_city_slugs() twice does not double-update clean rows."""
+    import yonder.poi as poi_mod
+
+    with poi_mod.get_conn() as conn:
+        _direct_insert(
+            conn, "bf-clean", "Sagrada Família", "",
+            address="08013 Barcelona, Spain",
+            list_title="Spain",
+        )
+        conn.commit()
+
+    first = poi_mod.backfill_city_slugs()
+    assert first >= 1
+    second = poi_mod.backfill_city_slugs()
+    assert second == 0, "Second backfill should be a no-op"
+
+
+def test_backfill_then_picks_for_city_lisbon(poi_schema):
+    """Lisbon POIs stored with legacy '- lisboa' slug are findable after backfill."""
+    import yonder.poi as poi_mod
+
+    with poi_mod.get_conn() as conn:
+        _direct_insert(
+            conn, "bf-lisbon1", "Jerónimos Monastery", "- lisboa",
+            address="Praça do Império, 1400-038 Lisboa, Portugal",
+            list_title="Portugal Places",
+        )
+        conn.commit()
+
+    poi_mod.backfill_city_slugs()
+
+    picks = poi_mod.picks_for_city("Lisbon")
+    assert any(p["name"] == "Jerónimos Monastery" for p in picks), (
+        f"Expected Lisbon entry after backfill; got {picks}"
+    )

@@ -312,6 +312,16 @@ try:
     _migrate_prefs(_read_env())
 except Exception:
     pass
+
+# Startup backfill: recompute city_slug for any POI rows that have an empty,
+# corrupted (stray-dash), or un-aliased slug (e.g. "warszawa" → "warsaw").
+# Safe to run on every start — no-ops when all rows are already clean.
+try:
+    from yonder.poi import backfill_city_slugs as _backfill_city_slugs
+
+    _backfill_city_slugs()
+except Exception:
+    pass
 templates = Jinja2Templates(directory=str(_PKG / "templates"))
 from yonder.products import DEPARTMENTS as _PACKING_DEPTS, PACKING_PRODUCTS as _PACKING_PRODUCTS
 templates.env.globals["packing_products"] = _PACKING_PRODUCTS
