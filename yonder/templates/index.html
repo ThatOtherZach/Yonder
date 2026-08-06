@@ -2372,7 +2372,13 @@
         }
         fetch("/api/saved", opts)
           .then(function (r) { return r.json(); })
-          .then(function () { clearTimeout(failsafe); go(); })
+          .then(function (d) {
+            clearTimeout(failsafe);
+            if (d && d.ok && d.saved_count != null && d.save_limit != null) {
+              btn.textContent = d.saved_count + " of " + d.save_limit + " Saved";
+            }
+            go();
+          })
           .catch(function () { clearTimeout(failsafe); go(); });
       }
 

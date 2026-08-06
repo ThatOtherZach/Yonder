@@ -49,6 +49,7 @@ from yonder.last_search import (
 from yonder.links import airline_display_name, airline_site_label
 from yonder.quota import budgets_snapshot, choose_providers, get_registry
 from yonder.saved import (
+    SAVE_LIMIT,
     clear_all_saves,
     count_saved,
     delete as delete_saved,
@@ -3353,6 +3354,7 @@ async def saved_list_page(
             "cards": cards,
             "flash": flash,
             "error": err,
+            "save_limit": SAVE_LIMIT,
         },
     )
     if need_cookie:
@@ -3469,6 +3471,7 @@ async def api_save_itinerary(request: Request):
             "title": saved.title,
             "display_price": saved.display_price,
             "saved_count": count_saved(),
+            "save_limit": SAVE_LIMIT,
         }
     )
 

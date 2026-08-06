@@ -90,7 +90,8 @@
       </div>
     {% else %}
       <div class="list-head d-flex flex-wrap align-items-baseline justify-content-between">
-        <h2>{{ cards|length }} Vibe{{ 's' if cards|length != 1 else '' }}</h2>
+        <h2>{{ cards|length }} / {{ save_limit }} Saved</h2>
+        <p class="muted" style="margin:0.25rem 0 0;font-size:0.82rem">First in, first out. Your oldest trip is removed when full.</p>
         <div class="d-flex flex-wrap align-items-center" style="gap:0.75rem;margin:0">
           <form method="post" action="/api/clear-saves" class="js-delete-form" style="margin:0">
             <button type="button" class="danger js-remove-confirm" style="font-size:0.82rem;padding:0.3rem 0.75rem">Remove All</button>

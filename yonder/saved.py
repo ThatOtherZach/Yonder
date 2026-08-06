@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import uuid
@@ -12,6 +13,8 @@ from typing import Any
 
 from yonder.db import get_conn
 from yonder.money import format_approx
+
+SAVE_LIMIT: int = int(os.getenv("SAVED_TRIP_LIMIT", "8"))
 
 
 @dataclass
@@ -485,6 +488,20 @@ def save_itinerary(
             row,
         )
         conn.commit()
+    # FIFO eviction: only for genuinely new rows (not refreshes or duplicate re-saves)
+    if replace_id is None and dedup_id is None:
+        with get_conn() as conn:
+            cnt_row = conn.execute(
+                "SELECT COUNT(*) AS n FROM saved_itineraries"
+            ).fetchone()
+            cnt = int(cnt_row["n"]) if cnt_row else 0
+            if cnt > SAVE_LIMIT:
+                conn.execute(
+                    "DELETE FROM saved_itineraries WHERE id = ("
+                    "SELECT id FROM saved_itineraries ORDER BY saved_at ASC LIMIT 1"
+                    ")"
+                )
+                conn.commit()
     saved = get(sid)
     assert saved is not None
     return saved
