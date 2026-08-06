@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -374,6 +374,29 @@ _vj_boot, _vv_boot = _vibes_data()
 templates.env.globals["vibes_json"] = _vj_boot
 templates.env.globals["vibes_v"] = _vv_boot
 app.mount("/static", StaticFiles(directory=str(_PKG / "static")), name="static")
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots_txt() -> PlainTextResponse:
+    return PlainTextResponse(
+        "User-agent: *\nAllow: /\n\nSitemap: https://yonder.city/sitemap.xml\n"
+    )
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml() -> Response:
+    urls = [
+        "https://yonder.city/",
+        "https://yonder.city/packing",
+    ]
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ]
+    for u in urls:
+        lines.append(f"  <url><loc>{u}</loc></url>")
+    lines.append("</urlset>")
+    return Response("\n".join(lines), media_type="application/xml")
 
 
 def _compute_return_days() -> int:
