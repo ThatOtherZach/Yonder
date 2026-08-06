@@ -383,6 +383,30 @@ async def robots_txt() -> PlainTextResponse:
     )
 
 
+@app.get("/llms.txt", response_class=PlainTextResponse)
+async def llms_txt() -> PlainTextResponse:
+    return PlainTextResponse(
+        """# Yonder.City
+
+> Find spontaneous last-minute flights based on your travel vibe.
+
+Yonder.City is a flight-finder tool for spontaneous travelers. Users describe a trip in plain English, choose a mood or "vibe" (chaos, romance, city, etc.), and receive AI-curated flight suggestions across multiple providers.
+
+## Features
+- Escape mode: point-to-point flights
+- Detour mode: multi-city open-jaw itineraries
+- Save and share trip itineraries via link or QR code
+- Vibe-based AI suggestions powered by xAI/Grok
+
+## Public pages
+- / - Main flight search (Explore)
+- /saved - Saved itineraries
+- /packing - AI packing list
+- /t/{id} - Shared trip itinerary
+"""
+    )
+
+
 @app.get("/sitemap.xml")
 async def sitemap_xml() -> Response:
     urls = [
