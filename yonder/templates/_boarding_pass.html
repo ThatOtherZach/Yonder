@@ -175,15 +175,6 @@
     {% endif %}
     {# promo moved to loading overlay (progress.js) #}
     <div class="bp-actions">
-      {% if o.google_flights_url %}
-      <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">{{ query.origin }} ➜ {{ query.destination }} ↗</a>
-      {% endif %}
-      {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
-      <a class="btn secondary" href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
-      {% endif %}
-      {% for tl in train_links %}
-      <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
-      {% endfor %}
       {% if mode in ('explore', 'saved') %}
       <div class="rt-picker esc-rt-picker"
            data-esc-origin="{{ query.origin }}"
@@ -196,6 +187,15 @@
         </span>
       </div>
       {% endif %}
+      {% if o.google_flights_url %}
+      <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">{{ query.origin }} ➜ {{ query.destination }} ↗</a>
+      {% endif %}
+      {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
+      <a class="btn secondary" href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
+      {% endif %}
+      {% for tl in train_links %}
+      <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
+      {% endfor %}
     </div>
   </div>
   <div class="bp-stub">
@@ -503,45 +503,68 @@
                 {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
                 {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
               {% endif %}
-              {% if has_col %}
-              {% if it.ground_display or it.ground_compare_line %}
-              <div class="pb-block pb-col">
-                <h4>Daily Spend</h4>
-                {% if it.ground_display %}<p>{{ it.ground_display }}</p>{% endif %}
-                {% if it.ground_compare_line %}<p class="muted" style="margin-top:0.25rem">{{ it.ground_compare_line }}</p>{% endif %}
+            </div>
+            {% if has_col %}
+            <div class="bp-budget-strip" style="margin-top:0.75rem">
+              <div class="bps-left">
+                <span class="bps-label">Daily Spend</span>
+                {% if it.ground_display %}<span class="bps-ground">{{ it.ground_display }}</span>{% endif %}
+                {% if it.ground_compare_line %}<span class="bps-compare">{{ it.ground_compare_line }}</span>{% endif %}
+                {% if it.ground_budget_line %}<span class="bps-budget-status{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}">{{ it.ground_budget_line }}</span>{% endif %}
               </div>
-              {% endif %}
-              {% if it.ground_budget_line %}
-              <div class="pb-block pb-col{% if it.ground_budget_status == 'under' %} col-under{% elif it.ground_budget_status == 'over' %} col-over{% endif %}">
-                <h4>Your budget</h4>
-                <p>{{ it.ground_budget_line }}</p>
-              </div>
-              {% endif %}
               {% if show_all_in %}
-              <div class="pb-block pb-col pb-col-allin">
-                <h4>Trip Estimate</h4>
-                <p><strong>{{ it.all_in_display }}</strong></p>
+              <div class="bps-total">
+                <span class="bps-total-amt">{{ it.all_in_display }}</span>
+                <span class="bps-total-label">all-in est.</span>
               </div>
-              {% endif %}
               {% endif %}
             </div>
+            {% endif %}
           </div>
           {% endif %}
         </div>
       {% endif %}
+      {% if has_col %}
+      <div class="bp-budget-strip">
+        <div class="bps-left">
+          <span class="bps-label">Daily Spend</span>
+          {% if it.ground_display %}
+          <span class="bps-ground">{{ it.ground_display }}</span>
+          {% endif %}
+          {% if it.ground_compare_line %}
+          <span class="bps-compare">{{ it.ground_compare_line }}</span>
+          {% endif %}
+          {% if it.ground_budget_line %}
+          <span class="bps-budget-status{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}">{{ it.ground_budget_line }}</span>
+          {% endif %}
+        </div>
+        {% if show_all_in %}
+        <div class="bps-total">
+          <span class="bps-total-amt">{{ it.all_in_display }}</span>
+          <span class="bps-total-label">all-in est.</span>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
     {% elif has_col %}
-    <div class="bp-col">
-      {% if it.ground_display %}
-      <p class="bp-note" style="margin:0.55rem 0 0">{{ it.ground_display }}</p>
-      {% endif %}
-      {% if it.ground_compare_line %}
-      <p class="bp-note muted" style="margin:0.2rem 0 0">{{ it.ground_compare_line }}</p>
-      {% endif %}
-      {% if it.ground_budget_line %}
-      <p class="bp-note{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}" style="margin:0.2rem 0 0">{{ it.ground_budget_line }}</p>
-      {% endif %}
+    <div class="bp-budget-strip">
+      <div class="bps-left">
+        <span class="bps-label">Daily Spend</span>
+        {% if it.ground_display %}
+        <span class="bps-ground">{{ it.ground_display }}</span>
+        {% endif %}
+        {% if it.ground_compare_line %}
+        <span class="bps-compare">{{ it.ground_compare_line }}</span>
+        {% endif %}
+        {% if it.ground_budget_line %}
+        <span class="bps-budget-status{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}">{{ it.ground_budget_line }}</span>
+        {% endif %}
+      </div>
       {% if show_all_in %}
-      <p class="bp-note" style="margin:0.25rem 0 0;font-weight:650">{{ it.all_in_display }}</p>
+      <div class="bps-total">
+        <span class="bps-total-amt">{{ it.all_in_display }}</span>
+        <span class="bps-total-label">all-in est.</span>
+      </div>
       {% endif %}
     </div>
     {% endif %}
@@ -550,20 +573,6 @@
     <script type="application/json" id="it-json-{{ idx }}">{{ it.model_dump_json() | safe }}</script>
     {% endif %}
     <div class="bp-actions">
-      {% if mode == 'saved' %}
-      <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form">
-        <button type="submit" class="refresh-btn">Refresh fares</button>
-      </form>
-      {% endif %}
-      {% for leg in (it.legs or []) %}
-      {% set _leg_url = leg.google_flights_url or (leg.offer and leg.offer.google_flights_url) %}
-      {% if _leg_url %}
-      <a class="btn secondary" href="{{ _leg_url }}" target="_blank" rel="noopener">{{ leg.from_iata }} ➜ {{ leg.to_iata }} ↗</a>
-      {% endif %}
-      {% endfor %}
-      {% for tl in train_links %}
-      <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
-      {% endfor %}
       {% if mode in ('explore', 'saved') and it.legs|length == 2 %}
       {% set _l0 = it.legs[0] %}
       {% set _l1 = it.legs[1] %}
@@ -576,8 +585,20 @@
         </span>
       </div>
       {% endif %}
+      {% for leg in (it.legs or []) %}
+      {% set _leg_url = leg.google_flights_url or (leg.offer and leg.offer.google_flights_url) %}
+      {% if _leg_url %}
+      <a class="btn secondary" href="{{ _leg_url }}" target="_blank" rel="noopener">{{ leg.from_iata }} ➜ {{ leg.to_iata }} ↗</a>
+      {% endif %}
+      {% endfor %}
+      {% for tl in train_links %}
+      <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
+      {% endfor %}
       {% if mode == 'saved' %}
-      <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form" style="margin-left: auto;">
+      <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form" style="margin-left: auto;">
+        <button type="submit" class="refresh-btn">Refresh fares</button>
+      </form>
+      <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form">
         <button type="button" class="danger js-remove-confirm">Remove</button>
       </form>
       {% endif %}
@@ -885,11 +906,6 @@
 
     {# Booking links + saved actions #}
     <div class="bp-actions">
-      {% if mode == 'saved' and s %}
-      <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form">
-        <button type="submit" class="refresh-btn">Refresh fares</button>
-      </form>
-      {% endif %}
       {% if ib_leg and ib_leg.google_flights_url %}
       <a class="btn secondary" href="{{ ib_leg.google_flights_url }}" target="_blank" rel="noopener">Book {{ home_iata }} → {{ idea.entry_iata }} ↗</a>
       {% endif %}
@@ -897,7 +913,10 @@
       <a class="btn secondary" href="{{ ob_leg.google_flights_url }}" target="_blank" rel="noopener">Book {{ idea.exit_iata }} → {{ home_iata }} ↗</a>
       {% endif %}
       {% if mode == 'saved' and s %}
-      <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form" style="margin-left: auto;">
+      <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form" style="margin-left: auto;">
+        <button type="submit" class="refresh-btn">Refresh fares</button>
+      </form>
+      <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form">
         <button type="button" class="danger js-remove-confirm">Remove</button>
       </form>
       {% endif %}

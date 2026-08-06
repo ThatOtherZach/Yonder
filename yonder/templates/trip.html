@@ -91,6 +91,46 @@
       font-size: 0.9rem;
       margin: 0 0 1rem;
     }
+    /* ── Field-note tabbed card ── */
+    .fn-tabs-card { padding: 0 !important; }
+    .fn-tab-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.75rem 1rem 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      border-bottom: 1px solid var(--line);
+    }
+    .fn-tab-bar::-webkit-scrollbar { display: none; }
+    .fn-tab {
+      flex-shrink: 0;
+      background: transparent;
+      border: 1.5px solid var(--line);
+      border-radius: 999px;
+      padding: 0.3rem 0.9rem;
+      font-size: 0.82rem;
+      font-weight: 700;
+      font-family: inherit;
+      color: var(--muted);
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: background 0.15s, color 0.12s, border-color 0.12s;
+      margin-bottom: 0.75rem;
+      white-space: nowrap;
+    }
+    .fn-tab.active {
+      background: var(--accent, #1d6b4f);
+      border-color: var(--accent, #1d6b4f);
+      color: #fff;
+    }
+    .fn-tab:hover:not(.active) {
+      border-color: var(--accent, #1d6b4f);
+      color: var(--accent, #1d6b4f);
+    }
+    .fn-panel { padding: 0 1rem 1rem; }
+    .fn-panel.is-hidden { display: none; }
     /* No horizontal scroll on any section */
     .trip-share {
       overflow-x: hidden;
@@ -126,12 +166,7 @@
   {% else %}
   {% set p = share.payload or {} %}
   <header class="page-head container">
-    <h1>{{ share.title }}</h1>
-    <p class="trip-meta">
-      Shared {{ kind_label }} · scan the QR or open this link on another device.
-      Fares are signals only — re-check before you buy.
-      {% set _tm = p.trip_meta or {} %}{% if _tm.model_source %}<br /><span style="font-size:0.85em;color:var(--muted)">via {{ _tm.model_source }}</span>{% endif %}
-    </p>
+    <h1 class="text-center">{{ share.title }}</h1>
   </header>
   <main class="trip-share container">
     {# QR lightbox overlay #}
@@ -182,75 +217,68 @@
     {# ——— Product ad widget ——— #}
     {% include "_product_ad.html" %}
 
-    {# ——— Field notes — same HTML structure as _boarding_pass.html field-note-inset ——— #}
+    {# ——— Field notes: single tabbed card ——— #}
     {# Quest field notes are rendered inside the quest_card macro. #}
     {% if place_books %}
-      {# Escape: one note for the destination #}
+
+      {# Build a deduped list of (iata, pb) pairs for the current share kind #}
+      {% set fn_iatas = namespace(list=[]) %}
       {% if share.kind == 'escape' %}
-        {% set q = (share.payload or {}).get('query') or {} %}
-        {% set pb = place_books.get((q.destination or '').upper()) %}
-        {% if pb %}
-        {% set _tagline = pb.tagline or pb.era_note or pb.vibe %}
-        <div class="card" style="padding:1rem;overflow:hidden;">
-          <div class="place-book field-note-inset"{% if share_vibe %} style="--bp-accent: {{ share_vibe.color }}"{% endif %}>
-            <div class="pb-story-body">
-              <span class="pb-tag">Field note</span>
-              <div class="pb-title-line">
-                <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
-                {% if _tagline %}<p class="pb-closer">{{ _tagline }}</p>{% endif %}
-              </div>
-              {% if pb.subtitle and _tagline %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
-              {% set pb_acts = pb.activity_links or [] %}
-              {% set pb_airport_trains = airport_train_for(q.destination) if q.destination else [] %}
-              {% if pb.facts or pb_acts or pb_airport_trains %}
-              <div class="pb-fast-facts" aria-label="Fast facts">
-                {% for f in (pb.facts or [])[:2 if pb_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
-                {% for l in pb_acts %}<a class="pb-fact pb-fact-link" href="{{ l.url }}" target="_blank" rel="noopener sponsored">{{ l.emoji }} {{ l.title }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
-                {% for t in pb_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
-              </div>
-              {% endif %}
-            </div>
-            {% if pb.culture or pb.food or pb.caution %}
-            <button type="button" class="pb-toggle" aria-expanded="false">
-              <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
-              <span class="pb-chevron" aria-hidden="true">▾</span>
-            </button>
-            <div class="pb-details" hidden>
-              <div class="pb-grid pb-mesh-grid">
-                {% if pb.culture %}<div class="pb-block"><h4>Culture</h4><p>{{ pb.culture }}</p></div>{% endif %}
-                {% if pb.food %}<div class="pb-block"><h4>Food</h4><p>{{ pb.food }}</p></div>{% endif %}
-                {% if pb.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ pb.caution }}</p></div>{% endif %}
-              </div>
-            </div>
-            {% endif %}
-          </div>
+        {% set _q = (share.payload or {}).get('query') or {} %}
+        {% set _dest = (_q.destination or '') | upper %}
+        {% if _dest and place_books.get(_dest) %}{% set fn_iatas.list = [_dest] %}{% endif %}
+      {% elif share.kind == 'detour' %}
+        {% set _it = (share.payload or {}).get('itinerary') or {} %}
+        {% set _seen = namespace(v=[]) %}
+        {% set _raw = namespace(list=[]) %}
+        {% if _it.stop_iata %}{% set _raw.list = _raw.list + [_it.stop_iata | upper] %}{% endif %}
+        {% for leg in (_it.legs or []) %}{% if leg.to_iata %}{% set _raw.list = _raw.list + [leg.to_iata | upper] %}{% endif %}{% endfor %}
+        {% for code in _raw.list %}
+          {% if code not in _seen.v and place_books.get(code) %}
+            {% set _seen.v = _seen.v + [code] %}
+            {% set fn_iatas.list = fn_iatas.list + [code] %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+
+      {% if fn_iatas.list %}
+      {% set _it = (share.payload or {}).get('itinerary') or {} %}
+      {% set _q  = (share.payload or {}).get('query')     or {} %}
+      <div class="card fn-tabs-card">
+
+        {# Tab bar — hidden when there's only one note #}
+        {% if fn_iatas.list | length > 1 %}
+        <div class="fn-tab-bar" role="tablist" aria-label="Field notes">
+          {% for code in fn_iatas.list %}
+          <button type="button"
+                  class="fn-tab{% if loop.first %} active{% endif %}"
+                  role="tab"
+                  aria-selected="{{ 'true' if loop.first else 'false' }}"
+                  aria-controls="fn-panel-{{ loop.index0 }}"
+                  data-panel="{{ loop.index0 }}">{{ code }}</button>
+          {% endfor %}
         </div>
         {% endif %}
 
-      {# Detour: one note per stop, deduped #}
-      {% elif share.kind == 'detour' %}
-        {% set it = (share.payload or {}).get('itinerary') or {} %}
-        {% set shown = namespace(iatas=[]) %}
-        {% set all_iatas = namespace(list=[]) %}
-        {% if it.stop_iata %}{% set all_iatas.list = all_iatas.list + [it.stop_iata] %}{% endif %}
-        {% for leg in (it.legs or []) %}{% if leg.to_iata %}{% set all_iatas.list = all_iatas.list + [leg.to_iata] %}{% endif %}{% endfor %}
-        {% for iata in all_iatas.list %}
-          {% set code = iata | upper %}
-          {% set pb = place_books.get(code) %}
-          {% if pb and code not in shown.iatas %}
-            {% set shown.iatas = shown.iatas + [code] %}
-            {% set _tagline = pb.tagline or pb.era_note or pb.vibe %}
-        <div class="card" style="padding:1rem;overflow:hidden;">
-          <div class="place-book field-note-inset" style="{% if it.theme_primary %}--bp-accent: {{ it.theme_primary }};{% endif %}">
+        {# Panels #}
+        {% for code in fn_iatas.list %}
+        {% set pb = place_books.get(code) %}
+        {% set _tagline = pb.tagline or pb.era_note or pb.vibe %}
+        {% set pb_acts = pb.activity_links or [] %}
+        {% set pb_airport_trains = airport_train_for(code) %}
+        <div class="fn-panel{% if not loop.first %} is-hidden{% endif %}"
+             id="fn-panel-{{ loop.index0 }}"
+             role="tabpanel"
+             data-panel="{{ loop.index0 }}">
+          <div class="place-book field-note-inset"
+               style="{% if share_vibe and share.kind == 'escape' %}--bp-accent: {{ share_vibe.color }};{% elif _it.theme_primary %}--bp-accent: {{ _it.theme_primary }};{% endif %}">
             <div class="pb-story-body">
-              <span class="pb-tag">Field note · {{ iata }}</span>
+              <span class="pb-tag">Field note{% if fn_iatas.list | length > 1 %} · {{ code }}{% endif %}</span>
               <div class="pb-title-line">
                 <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
                 {% if _tagline %}<p class="pb-closer">{{ _tagline }}</p>{% endif %}
               </div>
               {% if pb.subtitle and _tagline %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
-              {% set pb_acts = pb.activity_links or [] %}
-              {% set pb_airport_trains = airport_train_for(iata) if iata else [] %}
               {% if pb.facts or pb_acts or pb_airport_trains %}
               <div class="pb-fast-facts" aria-label="Fast facts">
                 {% for f in (pb.facts or [])[:2 if pb_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
@@ -274,8 +302,9 @@
             {% endif %}
           </div>
         </div>
-          {% endif %}
         {% endfor %}
+
+      </div>
       {% endif %}
     {% endif %}
     <p class="muted" style="margin-top:1.25rem;font-size:0.85rem">
@@ -319,6 +348,23 @@
           if (e.key === "Escape") qrOverlay.classList.remove("is-open");
         });
       }
+
+      // Field note tabs
+      document.querySelectorAll(".fn-tab-bar .fn-tab").forEach(function (tab) {
+        tab.addEventListener("click", function () {
+          var card = tab.closest(".fn-tabs-card");
+          var idx  = tab.getAttribute("data-panel");
+          card.querySelectorAll(".fn-tab").forEach(function (t) {
+            t.classList.remove("active");
+            t.setAttribute("aria-selected", "false");
+          });
+          tab.classList.add("active");
+          tab.setAttribute("aria-selected", "true");
+          card.querySelectorAll(".fn-panel").forEach(function (p) { p.classList.add("is-hidden"); });
+          var panel = card.querySelector('.fn-panel[data-panel="' + idx + '"]');
+          if (panel) panel.classList.remove("is-hidden");
+        });
+      });
 
       // Field note expand / collapse
       document.querySelectorAll(".place-book .pb-toggle").forEach(function (toggle) {

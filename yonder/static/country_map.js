@@ -183,7 +183,7 @@
     var label = el("div", "ymap-compact-label");
     label.appendChild(el("span", "ymap-compact-k", isDetour ? "No-land map" : "Passport map"));
     label.appendChild(
-      el("span", "ymap-compact-hint", "Click to set as visited. Double click to avoid.")
+      el("span", "ymap-compact-hint", "Click to visit. Double click to avoid.")
     );
     bar.appendChild(label);
     bar.appendChild(this._makeZoomTools());

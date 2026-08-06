@@ -170,7 +170,8 @@
 
 /* Touch-friendly: enlarge zoom buttons on mobile */
 @media (max-width: 600px) {
-  .ymap-tools button {
+  /* Only enlarge buttons on the full-page map, not the compact explore bar */
+  .ymap:not(.ymap-compact) .ymap-tools button {
     width: 2.75rem;
     height: 2.75rem;
     font-size: 1.2rem;
@@ -216,6 +217,14 @@
   .ymap.ymap-compact .ymap-frame {
     min-height: 220px;
     max-height: min(340px, 60vh);
+  }
+  /* Hide the long hint so the compact bar stays on one row */
+  .ymap-compact-hint {
+    display: none;
+  }
+  /* Keep the compact bar from wrapping on narrow screens */
+  .ymap-compact-bar {
+    flex-wrap: nowrap;
   }
 }
 
@@ -625,9 +634,13 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.45rem 0.75rem;
   margin-bottom: 0.5rem;
+}
+
+.ymap-compact-bar .ymap-tools {
+  margin-left: auto;
 }
 
 .ymap-compact-label {
@@ -656,9 +669,8 @@
   padding: 0.12rem;
 }
 
-/* XP badge sits directly left of the zoom tools in the compact bar */
+/* XP badge sits after the label in the compact bar */
 .ymap-compact-bar .xp-rank-badge {
-  margin-left: auto;
   flex-shrink: 0;
   white-space: nowrap;
 }

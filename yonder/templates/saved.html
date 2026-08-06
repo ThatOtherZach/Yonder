@@ -24,7 +24,7 @@
     }
     button.refresh-btn {
       background: linear-gradient(135deg, #d4a017, var(--brass)) !important;
-      color: #1a1200 !important;
+      color: #fff !important;
       border: none !important;
       border-radius: 999px !important;
       font-weight: 700;
@@ -65,9 +65,6 @@
   <header class="page-head container">
     <h1>Saved trips</h1>
     <p>
-      Boarding passes you kept. Refresh re-checks the market; last-known fares stick if a leg goes quiet.
-    </p>
-  </header>
   <main class="container">
     {% if flash %}
       <div class="flash ok">{{ flash }}</div>
@@ -88,11 +85,8 @@
       </div>
     {% else %}
       <div class="list-head d-flex flex-wrap align-items-baseline justify-content-between">
-        <h2>{{ cards|length }} pass{{ 'es' if cards|length != 1 else '' }}</h2>
+        <h2>{{ cards|length }} Vibe{{ 's' if cards|length != 1 else '' }}</h2>
         <div class="d-flex flex-wrap align-items-center" style="gap:0.75rem;margin:0">
-          <p class="muted" style="margin:0">
-            Vibes, not tickets · <a href="/?mode=detour#compose-card">Plan a detour</a>
-          </p>
           <form method="post" action="/api/clear-saves" class="js-delete-form" style="margin:0">
             <button type="button" class="danger js-remove-confirm" style="font-size:0.82rem;padding:0.3rem 0.75rem">Remove All</button>
           </form>
@@ -141,7 +135,7 @@
     {% endif %}
   </main>
   <footer class="site-foot container">
-    Vibes aren't tickets, check live fares. Culture notes are short takes, not gospel. Some links earn us a commission. &middot; Designed by <a href="https://saymservices.com" target="_blank" rel="noopener" style="color:#e8590c;text-decoration:none">Saym Services Inc.</a>
+    Vibes aren't tickets, always check live fares and providers for current rates. Culture notes are short takes, not gospel. Use the thumbs up and thumbs down to prefer or hide them as you see fit. Some links provided earn a commission, Yonder.City does not sell or provide proof of purchase &middot; Designed by <a href="https://saymservices.com" target="_blank" rel="noopener" style="color:#e8590c;text-decoration:none">Saym Services Inc.</a> of Vancouver, Canada
   </footer>
   <script>
     /* ── Field notes for Saved cards ─────────────────────────────────────── */
@@ -168,25 +162,35 @@
         return !!(col && (col.ground || col.compare || col.budget || col.allin));
       }
 
-      function renderColBlocksHtml(col) {
+      function renderBudgetStrip(col) {
         if (!hasColData(col)) return "";
-        var h = "";
-        if (col.ground || col.compare) {
-          h += '<div class="pb-block pb-col"><h4>Daily Spend</h4>';
-          if (col.ground) h += "<p>" + escapeHtml(col.ground) + "</p>";
-          if (col.compare) h += '<p class="muted" style="margin-top:0.25rem">' + escapeHtml(col.compare) + "</p>";
-          h += "</div>";
-        }
+        var left = '<div class="bps-left"><span class="bps-label">Daily Spend</span>';
+        if (col.ground) left += '<span class="bps-ground">' + escapeHtml(col.ground) + "</span>";
+        if (col.compare) left += '<span class="bps-compare">' + escapeHtml(col.compare) + "</span>";
         if (col.budget) {
-          var cls = "pb-block pb-col";
-          if (col.budgetStatus === "under") cls += " col-under";
-          else if (col.budgetStatus === "over") cls += " col-over";
-          h += '<div class="' + cls + '"><h4>Your budget</h4><p>' + escapeHtml(col.budget) + "</p></div>";
+          var sc = "bps-budget-status";
+          if (col.budgetStatus === "under") sc += " delta-good";
+          else if (col.budgetStatus === "over") sc += " delta-bad";
+          left += '<span class="' + sc + '">' + escapeHtml(col.budget) + "</span>";
         }
-        if (col.allin) {
-          h += '<div class="pb-block pb-col pb-col-allin"><h4>Trip Estimate</h4><p><strong>' + escapeHtml(col.allin) + "</strong></p></div>";
-        }
-        return h;
+        left += "</div>";
+        var right = col.allin
+          ? '<div class="bps-total"><span class="bps-total-amt">' + escapeHtml(col.allin) +
+            '</span><span class="bps-total-label">all-in est.</span></div>'
+          : "";
+        return '<div class="bp-budget-strip">' + left + right + "</div>";
+      }
+
+      function injectBudgetStrip(slot, col) {
+        if (!hasColData(col)) return;
+        var existing = slot.nextElementSibling;
+        if (existing && existing.classList.contains("bp-budget-strip")) return;
+        slot.insertAdjacentHTML("afterend", renderBudgetStrip(col));
+      }
+
+      function renderColBlocksHtml(col) {
+        /* Budget data is now shown via the strip (renderBudgetStrip / injectBudgetStrip) */
+        return "";
       }
 
       /* Full-parity renderer — matches Explore's renderFieldNoteHtml(brief, col) */
@@ -290,6 +294,7 @@
           if (iata.length !== 3) {
             slot.classList.remove("is-loading");
             if (hasColData(col)) slot.innerHTML = renderFieldNoteHtml(null, col);
+            injectBudgetStrip(slot, col);
             bindFieldNoteToggles(slot);
             setTimeout(next, 0);
             return;
@@ -313,11 +318,13 @@
               } else {
                 slot.innerHTML = renderFieldNoteHtml(null, col);
               }
+              injectBudgetStrip(slot, col);
               bindFieldNoteToggles(slot);
             })
             .catch(function () {
               slot.classList.remove("is-loading");
               if (hasColData(col)) slot.innerHTML = renderFieldNoteHtml(null, col);
+              injectBudgetStrip(slot, col);
               bindFieldNoteToggles(slot);
             })
             .finally(function () { setTimeout(next, 120); });

@@ -24,14 +24,13 @@
           '<span class="pack-ad-stars" aria-label="' + p.rating + ' out of 5">' + stars + ' ' + p.rating + ' Stars</span>' +
           '<p class="pack-ad-name">' + p.name + '</p>' +
           '<p class="pack-ad-review">&ldquo;' + p.review + '&rdquo;</p>' +
+          '<div class="pack-ad-actions">' +
+            '<div class="pack-ad-btn-row">' +
+              '<a class="pack-ad-list btn secondary" href="/packing">🧳 See full packing list</a>' +
+              '<a class="pack-ad-buy btn" href="' + p.url + '" target="_blank" rel="noopener sponsored">Amazon &#8599;</a>' +
+            '</div>' +
+          '</div>' +
         '</div>' +
-      '</div>' +
-      '<div class="pack-ad-actions">' +
-        '<div class="pack-ad-btn-row">' +
-          '<a class="pack-ad-list btn secondary" href="/packing">🧳 See full packing list</a>' +
-          '<a class="pack-ad-buy btn" href="' + p.url + '" target="_blank" rel="noopener sponsored">Amazon &#8599;</a>' +
-        '</div>' +
-        '<span class="pack-ad-disclosure">Affiliate link, Yonder may earn a commission</span>' +
       '</div>' +
     '</div>';
   document.querySelectorAll('.pack-ad-slot').forEach(function (el) {
