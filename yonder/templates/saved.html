@@ -246,11 +246,15 @@
           if (brief.caution) detailInner += '<div class="pb-block"><h4>Heads-up</h4><p>' + escapeHtml(brief.caution) + "</p></div>";
         }
         detailInner += renderColBlocksHtml(col);
-        if (detailInner) {
+        var stripInDetails = hasColData(col)
+          ? '<div style="margin-top:0.75rem">' + renderBudgetStrip(col) + "</div>"
+          : "";
+        if (detailInner || stripInDetails) {
           h += '<button type="button" class="pb-toggle" aria-expanded="false">' +
                '<span class="pb-toggle-label">Culture, Food &amp; Budget</span>' +
                '<span class="pb-chevron" aria-hidden="true">\u25be</span></button>' +
-               '<div class="pb-details" hidden><div class="pb-grid pb-mesh-grid">' + detailInner + "</div></div>";
+               '<div class="pb-details" hidden><div class="pb-grid pb-mesh-grid">' + detailInner + "</div>" +
+               stripInDetails + "</div>";
         }
         return h;
       }
