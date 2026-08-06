@@ -215,67 +215,7 @@
       outline: none;
     }
     /* Submit sits right of the text input; fill tracks vibe slider */
-    button.btn-vibe-go {
-      flex: 0 0 auto;
-      align-self: stretch;
-      min-width: 6.5rem;
-      max-width: 8.5rem;
-      margin: 0;
-      padding: 0.65rem 0.85rem;
-      border-radius: 0;
-      border: none;
-      background: var(--vibe-now, var(--sky-bright));
-      color: #fff;
-      font-family: inherit;
-      font-size: 0.92rem;
-      font-weight: 700;
-      line-height: 1.2;
-      letter-spacing: 0.01em;
-      cursor: pointer;
-      box-shadow: 0 2px 10px color-mix(in srgb, var(--vibe-now, var(--sky-bright)) 35%, transparent);
-      transition: background 0.12s ease, color 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
-      white-space: normal;
-      text-align: center;
-    }
-    button.btn-vibe-go:hover {
-      filter: brightness(1.06);
-    }
-    button.btn-vibe-go:active {
-      filter: brightness(0.96);
-      transform: scale(0.98);
-    }
-    button.btn-vibe-go:disabled {
-      opacity: 0.65;
-      cursor: not-allowed;
-    }
-    /* Group: Find button + Multi-City / Return toggles (right of textarea) */
-    .compose-find-group {
-      flex: 0 0 auto;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      border-left: 1px solid var(--line);
-    }
-    .compose-find-group button.btn-vibe-go {
-      border-left: none;
-      flex: 1 1 auto;
-    }
-    .compose-find-group .toggle-switch {
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-      padding: 0.28rem 0.65rem;
-      font-size: 0.76rem;
-      font-weight: 600;
-      color: var(--text-muted, #888);
-      border-top: 1px solid var(--line);
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .compose-find-group .toggle-track {
-      flex-shrink: 0;
-    }
-    /* Phones (below the grid's sm breakpoint): stack submit below textarea */
+    /* Phones (below the grid's sm breakpoint) */
     @media (max-width: 575.98px) {
       .compose-text-row {
         flex-direction: column;
@@ -284,37 +224,6 @@
         min-height: 5rem;
         font-size: 1rem;
         padding: 0.65rem 0.75rem;
-      }
-      .compose-find-group {
-        flex-direction: row;
-        flex-wrap: wrap;
-        border-left: none;
-        border-top: 1px solid var(--line);
-      }
-      .compose-find-group button.btn-vibe-go {
-        flex: 1 1 100%;
-        border-top: none;
-        width: 100%;
-        min-width: 0;
-        max-width: none;
-        font-size: 1rem;
-        font-weight: 700;
-        padding: 0.75rem 1rem;
-        border-radius: 0;
-      }
-      .compose-find-group .toggle-switch {
-        flex: 1 1 auto;
-        justify-content: center;
-      }
-      button.btn-vibe-go {
-        width: 100%;
-        min-width: 0;
-        max-width: none;
-        border-top: 1px solid color-mix(in srgb, var(--vibe-now, var(--sky-bright)) 30%, var(--line));
-        font-size: 1rem;
-        font-weight: 700;
-        padding: 0.75rem 1rem;
-        border-radius: 0;
       }
       .compose-field-top {
         gap: 0.35rem 0.45rem;
@@ -563,17 +472,45 @@
       z-index: 2;
       filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
     }
-    /* Vibe name pill — colour-filled, white text, emoji icon */
-    .vibe-name-row {
+    /* Vibe name pill — now the form's submit button ("Find [vibe] Flights") */
+    button.vibe-name-row {
+      appearance: none;
+      -webkit-appearance: none;
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      min-height: 2.2rem;
-      padding: 0.25rem 0.75rem 0.25rem 0.55rem;
+      justify-content: center;
+      gap: 0.45rem;
+      width: 100%;
+      min-height: 2.6rem;
+      padding: 0.4rem 0.85rem;
       border-radius: 999px;
       border: 2px solid transparent;
       background: var(--vibe-now, var(--sky));
-      transition: background 0.18s ease, border-color 0.18s ease;
+      font-family: inherit;
+      cursor: pointer;
+      box-shadow: 0 2px 10px color-mix(in srgb, var(--vibe-now, var(--sky-bright)) 35%, transparent);
+      transition: background 0.18s ease, border-color 0.18s ease, filter 0.12s ease, box-shadow 0.12s ease;
+    }
+    button.vibe-name-row:hover {
+      filter: brightness(1.06);
+    }
+    button.vibe-name-row:active {
+      filter: brightness(0.96);
+      transform: scale(0.99);
+    }
+    button.vibe-name-row:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+    button.vibe-name-row:focus-visible {
+      outline: 2px solid var(--sky-bright);
+      outline-offset: 2px;
+    }
+    /* While a search runs (or prompt is empty) only .vibe-name text shows */
+    button.vibe-name-row.is-busy .vibe-name-find,
+    button.vibe-name-row.is-busy .vibe-name-flights,
+    button.vibe-name-row.is-busy .vibe-name-swatch {
+      display: none;
     }
     .vibe-name-swatch {
       flex-shrink: 0;
@@ -584,8 +521,9 @@
       width: auto;
       height: auto;
     }
-    .vibe-name {
-      flex: 1;
+    .vibe-name,
+    .vibe-name-find,
+    .vibe-name-flights {
       min-width: 0;
       font-family: var(--font-display);
       font-size: 1.05rem;
@@ -1350,14 +1288,12 @@
               maxlength="280"
               placeholder="Cheap to Japan in September… or get me out of town, somewhere new, good food…"
             >{{ det_text or esc_text }}</textarea>
-            <div class="compose-find-group">
-              <button type="submit" id="explore-submit" class="btn-vibe-go">Find ✈️</button>
-              <input type="hidden" name="quest_days" value="10" />
-            </div>
+            <input type="hidden" name="quest_days" value="10" />
           </div>
           <div
             data-vibe-slider
             data-input-id="explore-vibe"
+            data-submit-id="explore-submit"
             data-initial="{{ cur_vibe }}"
             {% if lock_vibe %}data-lock-vibe="1"{% endif %}
           ></div>
@@ -1715,26 +1651,58 @@
     (function () {
       var form = document.getElementById("explore-form");
       var ta = document.getElementById("explore-text");
-      var btn = document.getElementById("explore-submit");
+      // Submit button lives inside the vibe slider panel and is created by
+      // vibe_slider.js after mount — always look it up lazily.
+      var btn = null;
+      function getBtn() {
+        if (!btn || !document.contains(btn)) {
+          btn = document.getElementById("explore-submit");
+        }
+        return btn;
+      }
       var vibeInput = document.getElementById("explore-vibe");
       var askMirror = document.getElementById("explore-ask-mirror");
       var depart = document.getElementById("explore-depart");
       var errBox = document.getElementById("ask-client-error");
       var grokReady = {{ "true" if grok_ready else "false" }};
 
-      function updateGoButton() {
-        if (!ta || !btn) return;
-        if (ta.value.trim().length === 0) {
-          btn.textContent = "What's the vibe?";
-          btn.disabled = true;
+      // Override the vibe-panel button label (e.g. "Planning…"); pass null to
+      // restore the live "Find [emoji] [vibe] Flights" label from the slider.
+      function setBtnLabel(text) {
+        var b = getBtn();
+        if (!b) return;
+        var out = b.querySelector(".vibe-name");
+        if (text) {
+          b.classList.add("is-busy");
+          if (out) out.textContent = text;
+          else b.textContent = text;
         } else {
-          btn.disabled = false;
-          if (typeof paintGoButtons === "function") paintGoButtons();
-          else btn.textContent = "Find ✈️";
+          b.classList.remove("is-busy");
+          var host = document.querySelector("[data-vibe-slider]");
+          var v =
+            host && host._vibeSlider && host._vibeSlider.getVibe
+              ? host._vibeSlider.getVibe()
+              : null;
+          if (out && v) out.textContent = v.label;
+        }
+      }
+      function updateGoButton() {
+        var b = getBtn();
+        if (!ta || !b) return;
+        if (b.dataset.searching === "1") return;
+        if (ta.value.trim().length === 0) {
+          setBtnLabel("What's the vibe?");
+          b.disabled = true;
+        } else {
+          b.disabled = false;
+          setBtnLabel(null);
         }
       }
       if (ta) {
         ta.addEventListener("input", updateGoButton);
+        // Slider mounts async and re-labels the button on every vibe change —
+        // re-apply the empty-prompt state after each sync.
+        document.addEventListener("yonder:vibechange", updateGoButton);
         updateGoButton();
       }
 
@@ -2019,8 +1987,12 @@
           btn.disabled = true;
           var prev = btn.textContent;
           btn.textContent = "Refreshing…";
-          var goBtn = document.getElementById("explore-submit");
-          if (goBtn) goBtn.disabled = true;
+          var goBtn = getBtn();
+          if (goBtn) {
+            goBtn.disabled = true;
+            goBtn.dataset.searching = "1";
+            setBtnLabel("Refreshing…");
+          }
           YonderProgress.submitWithProgress(form, {
             mode: "adventure",
             title: "Finding new cities…",
@@ -2028,8 +2000,9 @@
             btn.disabled = false;
             btn.textContent = prev;
             if (goBtn) {
-              goBtn.disabled = false;
-              goBtn.textContent = "Go";
+              delete goBtn.dataset.searching;
+              setBtnLabel(null);
+              updateGoButton();
             }
             if (hidRefresh) hidRefresh.value = "";
           });
@@ -2295,14 +2268,22 @@
           }
           if (askMirror) askMirror.value = text;
           form.action = "/explore";
-          btn.disabled = true;
-          btn.textContent = "Planning…";
+          var subBtn = getBtn();
+          if (subBtn) {
+            subBtn.disabled = true;
+            subBtn.dataset.searching = "1";
+            setBtnLabel("Planning…");
+          }
           YonderProgress.submitWithProgress(form, {
             mode: "adventure",
             title: "Exploring options…",
           }).finally(function () {
-            btn.disabled = false;
-            btn.textContent = "Go";
+            if (subBtn) {
+              subBtn.disabled = false;
+              delete subBtn.dataset.searching;
+              setBtnLabel(null);
+              updateGoButton();
+            }
           });
         }
 

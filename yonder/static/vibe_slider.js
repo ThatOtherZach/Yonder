@@ -473,10 +473,16 @@
       '  <div class="vibe-hue" role="slider" aria-label="Trip vibe" tabindex="0" aria-valuemin="0" aria-valuemax="100">' +
       '    <div class="vibe-hue-cursor" aria-hidden="true">' + globeEmoji + "</div>" +
       "  </div>" +
-      '  <div class="vibe-name-row">' +
+      '  <button type="submit" class="vibe-name-row btn-vibe-go"' +
+      (opts.submitId || host.getAttribute("data-submit-id")
+        ? ' id="' + (opts.submitId || host.getAttribute("data-submit-id")) + '"'
+        : "") +
+      ">" +
+      '    <span class="vibe-name-find" aria-hidden="true">Find</span>' +
       '    <span class="vibe-name-swatch" aria-hidden="true"></span>' +
-      '    <output class="vibe-name" aria-live="polite"></output>' +
-      "  </div>" +
+      '    <span class="vibe-name" aria-live="polite"></span>' +
+      '    <span class="vibe-name-flights" aria-hidden="true">Flights</span>' +
+      "  </button>" +
       "</div>";
 
     var hueEl = host.querySelector(".vibe-hue");
@@ -554,7 +560,6 @@
         btn.style.borderColor = color;
         btn.style.color = contrastInk(color);
         btn.style.boxShadow = "0 2px 12px " + color + "55";
-        if (emoji) btn.textContent = "Find " + emoji;
       });
     }
 
@@ -570,6 +575,10 @@
       if (nameRow) {
         nameRow.style.backgroundColor = show;
         nameRow.style.borderColor = show;
+        nameRow.setAttribute(
+          "aria-label",
+          "Find " + vibe.label + " Flights"
+        );
       }
       hueEl.setAttribute("aria-valuenow", String(Math.round(h * 100)));
       hueEl.setAttribute("aria-valuetext", vibe.label);
