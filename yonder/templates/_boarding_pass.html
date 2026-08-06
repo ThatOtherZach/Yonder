@@ -550,15 +550,9 @@
     <div class="bp-budget-strip">
       <div class="bps-left">
         <span class="bps-label">Daily Spend</span>
-        {% if it.ground_display %}
-        <span class="bps-ground">{{ it.ground_display }}</span>
-        {% endif %}
-        {% if it.ground_compare_line %}
-        <span class="bps-compare">{{ it.ground_compare_line }}</span>
-        {% endif %}
-        {% if it.ground_budget_line %}
-        <span class="bps-budget-status{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}">{{ it.ground_budget_line }}</span>
-        {% endif %}
+        {% if it.ground_display %}<span class="bps-ground">{{ it.ground_display }}</span>{% endif %}
+        {% if it.ground_compare_line %}<span class="bps-compare">{{ it.ground_compare_line }}</span>{% endif %}
+        {% if it.ground_budget_line %}<span class="bps-budget-status{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}">{{ it.ground_budget_line }}</span>{% endif %}
       </div>
       {% if show_all_in %}
       <div class="bps-total">
@@ -584,11 +578,6 @@
           <button type="button" class="btn secondary rt-go">Return ↗</button>
         </span>
       </div>
-      {% endif %}
-      {% if mode == 'saved' %}
-      <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form">
-        <button type="submit" class="refresh-btn">Refresh fares</button>
-      </form>
       {% endif %}
       {% for leg in (it.legs or []) %}
       {% set _leg_url = leg.google_flights_url or (leg.offer and leg.offer.google_flights_url) %}
