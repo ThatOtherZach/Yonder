@@ -9,6 +9,17 @@
 {% block og_description %}{% if share %}Check out this spontaneous {{ kind_label }} trip on Yonder.City — {{ share.title }}.{% else %}Shared trip on Yonder.City — spontaneous last-minute flights by vibe.{% endif %}{% endblock %}
 {% block twitter_title %}{% if share %}{{ share.title }} · Yonder.City{% else %}Shared Trip · Yonder.City{% endif %}{% endblock %}
 {% block twitter_description %}{% if share %}Check out this spontaneous {{ kind_label }} trip on Yonder.City — {{ share.title }}.{% else %}Shared trip on Yonder.City — spontaneous last-minute flights by vibe.{% endif %}{% endblock %}
+{% block extra_head %}{% if share %}<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "@id": "{{ share_url }}#webpage",
+  "url": "{{ share_url }}",
+  "name": "{{ share.title | e }} · Yonder.City",
+  "description": "{{ share.title | e }} — a {{ kind_label }} trip found on Yonder.City. Spontaneous last-minute flights by vibe.",
+  "isPartOf": { "@id": "https://yonder.city/#website" }
+}
+</script>{% endif %}{% endblock %}
 {% block extra_css %}
     .trip-share {
       max-width: 52rem;

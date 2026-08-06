@@ -1648,6 +1648,29 @@
     });
   </script>
   <script>window.PACKING_PRODUCTS = {{ packing_products | tojson }};</script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://yonder.city/#website",
+        "url": "https://yonder.city/",
+        "name": "Yonder.City",
+        "description": "Spontaneous flight finder powered by vibes and AI."
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://yonder.city/#app",
+        "name": "Yonder.City",
+        "applicationCategory": "TravelApplication",
+        "operatingSystem": "Web",
+        "url": "https://yonder.city/",
+        "description": "Find last-minute flights based on how you feel. Pick a vibe — chaos, romance, city — and Yonder suggests spontaneous getaways."
+      }
+    ]
+  }
+  </script>
   {% block extra_head %}{% endblock %}
 </head>
 <body class="{% if vibe_theme and vibe_theme.color %}has-vibe-theme{% endif %}"{% if vibe_theme and vibe_theme.style %} style="{{ vibe_theme.style }}"{% endif %}>
