@@ -1,7 +1,6 @@
-/* poi_map.js — curated POI world map, v1
+/* poi_map.js — curated POI world map, v4
    D3 + TopoJSON world base, ~2400 POI markers, category filter pills.
-   No external dependencies beyond D3 + TopoJSON (loaded by the host page).
-   Degrades gracefully: if data or map fails to load, the page still works.
+   Supports scroll-wheel / pinch zoom, click-drag pan, and ± buttons.
 */
 (function () {
   "use strict";
@@ -84,9 +83,9 @@
   }
 
   var container = document.getElementById("poi-map-container");
-  var statusEl = document.getElementById("poi-map-status");
-  var pillsEl = document.getElementById("poi-cat-pills");
-  var countEl = document.getElementById("poi-count");
+  var statusEl  = document.getElementById("poi-map-status");
+  var pillsEl   = document.getElementById("poi-cat-pills");
+  var countEl   = document.getElementById("poi-count");
 
   if (!container) return;
 
@@ -97,10 +96,9 @@
   var W = container.clientWidth || 900;
   var H = Math.max(480, Math.round(W * 0.52));
 
-  /* Colour palette — matches the explore map's amber theme */
-  var OCEAN  = "#d4c8a8";   /* warm parchment water */
-  var LAND   = "#ede3c8";   /* lighter parchment land */
-  var GRID   = "rgba(184,134,11,0.10)"; /* faint gold graticule */
+  var OCEAN = "#d4c8a8";
+  var LAND  = "#ede3c8";
+  var GRID  = "rgba(184,134,11,0.10)";
 
   /* SVG scaffold */
   var svg = d3
@@ -109,7 +107,11 @@
     .attr("viewBox", "0 0 " + W + " " + H)
     .attr("width", "100%")
     .attr("height", H)
-    .style("background", OCEAN);
+    .style("background", OCEAN)
+    .style("cursor", "grab");
+
+  /* Single zoom layer — all map content lives here */
+  var zoomLayer = svg.append("g").attr("class", "poi-zoom-layer");
 
   var projection = d3
     .geoNaturalEarth1()
@@ -126,21 +128,24 @@
     .style("display", "none");
 
   /* State */
-  var allData = [];
+  var allData        = [];
   var activeCategories = new Set();
-  var dotsGroup = null;
+  var dotsGroup      = null;
+  var currentK       = 1;   /* current zoom scale, for radius correction */
+
+  var DOT_R = 4.5;
 
   function positionTooltip(event) {
     var rect = container.getBoundingClientRect();
     var x = (event.clientX || 0) - rect.left + 12;
-    var y = (event.clientY || 0) - rect.top - 12;
+    var y = (event.clientY || 0) - rect.top  - 12;
     if (x + 240 > rect.width) x = x - 252;
     tooltip.style("left", x + "px").style("top", y + "px");
   }
 
   function renderDots(data) {
     if (dotsGroup) dotsGroup.remove();
-    dotsGroup = svg.append("g").attr("class", "poi-dots");
+    dotsGroup = zoomLayer.append("g").attr("class", "poi-dots");
 
     var filtered = activeCategories.size
       ? data.filter(function (d) {
@@ -163,40 +168,28 @@
         var p = projection([d.lon, d.lat]);
         return p ? p[1] : -9999;
       })
-      .attr("r", 4.5)
-      .attr("fill", function (d) {
-        return catColor(d.c);
-      })
+      .attr("r", DOT_R / currentK)
+      .attr("fill", function (d) { return catColor(d.c); })
       .attr("fill-opacity", 0.82)
       .attr("stroke", "var(--paper, #f4efe6)")
-      .attr("stroke-width", 0.8)
+      .attr("stroke-width", 0.8 / currentK)
       .style("cursor", "pointer")
       .on("mouseover", function (event, d) {
-        d3.select(this).attr("r", 7).attr("fill-opacity", 1);
+        d3.select(this).attr("r", (DOT_R * 1.5) / currentK).attr("fill-opacity", 1);
         tooltip
           .style("display", "block")
           .html(
-            '<span class="pt-emoji">' +
-              (d.e || "📍") +
-              "</span> " +
-              '<strong class="pt-name">' +
-              escHtml(d.n || "") +
-              "</strong>" +
-              (d.c ? ' <span class="pt-cat">' + escHtml(d.c) + "</span>" : "") +
-              (d.t ? '<p class="pt-note">' + escHtml(d.t) + "</p>" : "") +
-              (d.u
-                ? '<a class="pt-link" href="' +
-                  escHtml(d.u) +
-                  '" target="_blank" rel="noopener">Open in Maps ↗</a>'
-                : "")
+            '<span class="pt-emoji">' + (d.e || "📍") + "</span> " +
+            '<strong class="pt-name">' + escHtml(d.n || "") + "</strong>" +
+            (d.c ? ' <span class="pt-cat">' + escHtml(d.c) + "</span>" : "") +
+            (d.t ? '<p class="pt-note">'  + escHtml(d.t) + "</p>" : "") +
+            (d.u ? '<a class="pt-link" href="' + escHtml(d.u) + '" target="_blank" rel="noopener">Open in Maps ↗</a>' : "")
           );
         positionTooltip(event);
       })
-      .on("mousemove", function (event) {
-        positionTooltip(event);
-      })
+      .on("mousemove", positionTooltip)
       .on("mouseout", function () {
-        d3.select(this).attr("r", 4.5).attr("fill-opacity", 0.82);
+        d3.select(this).attr("r", DOT_R / currentK).attr("fill-opacity", 0.82);
         tooltip.style("display", "none");
       })
       .on("click", function (event, d) {
@@ -212,23 +205,41 @@
       .replace(/"/g, "&quot;");
   }
 
+  /* ── Zoom behaviour ─────────────────────────────────────────────── */
+  var zoom = d3.zoom()
+    .scaleExtent([1, 20])
+    .on("zoom", function (event) {
+      currentK = event.transform.k;
+      zoomLayer.attr("transform", event.transform);
+      /* Keep dots the same screen size regardless of zoom level */
+      if (dotsGroup) {
+        dotsGroup.selectAll("circle")
+          .attr("r",            function () { return DOT_R / currentK; })
+          .attr("stroke-width", function () { return 0.8  / currentK; });
+      }
+      svg.style("cursor", event.transform.k > 1 ? "grabbing" : "grab");
+    });
+
+  svg.call(zoom);
+
+  /* Expose controls for the HTML buttons */
+  window._poiZoomIn    = function () { svg.transition().duration(300).call(zoom.scaleBy, 1.6); };
+  window._poiZoomOut   = function () { svg.transition().duration(300).call(zoom.scaleBy, 1 / 1.6); };
+  window._poiZoomReset = function () { svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity); };
+
+  /* ── Category pills ─────────────────────────────────────────────── */
   function buildPills(data) {
     if (!pillsEl) return;
     pillsEl.innerHTML = "";
 
-    /* Count per category */
     var counts = {};
     data.forEach(function (d) {
       var k = (d.c || "unknown").toLowerCase();
       counts[k] = (counts[k] || 0) + 1;
     });
 
-    /* Sort by count desc */
-    var cats = Object.keys(counts).sort(function (a, b) {
-      return counts[b] - counts[a];
-    });
+    var cats = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
 
-    /* "All" pill */
     var allPill = document.createElement("button");
     allPill.className = "poi-pill active";
     allPill.textContent = "🌍 ALL (" + data.length.toLocaleString() + ")";
@@ -270,20 +281,19 @@
     });
   }
 
-  /* Load world map + POI data in parallel */
-  var WORLD_URL =
-    "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
-  var POIS_URL = "/api/pois.json";
+  /* ── Load world + POI data ──────────────────────────────────────── */
+  var WORLD_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+  var POIS_URL  = "/api/pois.json";
 
   setStatus("Loading map…");
 
   Promise.all([d3.json(WORLD_URL), d3.json(POIS_URL)])
     .then(function (results) {
       var world = results[0];
-      var pois = results[1];
+      var pois  = results[1];
 
-      /* Draw ocean sphere */
-      var baseLayer = svg.insert("g", ":first-child").attr("class", "poi-base");
+      /* Ocean sphere */
+      var baseLayer = zoomLayer.insert("g", ":first-child").attr("class", "poi-base");
       baseLayer
         .append("path")
         .datum({ type: "Sphere" })
@@ -291,7 +301,7 @@
         .attr("fill", OCEAN)
         .attr("stroke", "none");
 
-      /* Graticule grid */
+      /* Graticule */
       baseLayer
         .append("path")
         .datum(d3.geoGraticule10())
@@ -301,7 +311,7 @@
         .attr("stroke-width", 0.45)
         .attr("vector-effect", "non-scaling-stroke");
 
-      /* Draw land — no country borders */
+      /* Land */
       var land = topojson.feature(world, world.objects.countries);
       baseLayer
         .selectAll("path.poi-country")
@@ -323,4 +333,4 @@
       setStatus("Map could not load — check connection and try again.");
       console.warn("poi_map: load error", err);
     });
-})();
+}());

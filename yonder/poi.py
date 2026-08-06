@@ -234,7 +234,7 @@ def import_pois(csv_path: str | Path | None = None) -> int:
 def picks_for_city(
     city: str | None,
     *,
-    limit: int = 6,
+    limit: int = 4,
 ) -> list[dict[str, Any]]:
     """Return up to *limit* POIs whose city_slug matches *city*.
 
@@ -256,6 +256,7 @@ def picks_for_city(
             SELECT name, emoji, category, note, google_maps_url
             FROM pois
             WHERE NOT COALESCE(closed, FALSE)
+              AND city_slug IS NOT NULL AND city_slug <> ''
               AND (city_slug = %s
                OR city_slug LIKE %s
                OR %s LIKE city_slug || '%%')
@@ -289,7 +290,7 @@ def all_pois_for_map() -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT name, emoji, category, note, google_maps_url, lat, lon
+            SELECT name, emoji, category, note, google_maps_url, lat, lon, city_slug
             FROM pois
             WHERE lat IS NOT NULL AND lon IS NOT NULL
               AND NOT COALESCE(closed, FALSE)
@@ -305,6 +306,7 @@ def all_pois_for_map() -> list[dict[str, Any]]:
             "u": r["google_maps_url"],
             "lat": r["lat"],
             "lon": r["lon"],
+            "g": r["city_slug"] or "",   # city slug for client-side filtering
         }
         for r in rows
     ]

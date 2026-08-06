@@ -148,6 +148,31 @@
       border-color: var(--accent, #1d6b4f);
       color: var(--accent, #1d6b4f);
     }
+    .fn-explore-btn {
+      margin-left: auto;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3em;
+      padding: 0.28rem 0.85rem;
+      border-radius: 999px;
+      border: 1.5px solid var(--accent, #1d6b4f);
+      background: transparent;
+      color: var(--accent, #1d6b4f);
+      font-size: 0.76rem;
+      font-weight: 700;
+      font-family: inherit;
+      text-decoration: none;
+      white-space: nowrap;
+      margin-bottom: 0.75rem;
+      transition: background 0.13s, color 0.13s;
+    }
+    .fn-explore-btn:hover { background: var(--accent, #1d6b4f); color: #fff; }
+    .fn-tab-bar-solo {
+      display: flex;
+      padding: 0.6rem 1rem 0;
+      border-bottom: 1px solid var(--line);
+    }
     .fn-panel { padding: 0 1rem 1.5rem; }
     .fn-panel.is-hidden { display: none; }
     /* No horizontal scroll on any section */
@@ -305,6 +330,11 @@
                   aria-controls="fn-panel-{{ loop.index0 }}"
                   data-panel="{{ loop.index0 }}">{{ code }}</button>
           {% endfor %}
+          <a href="/" class="fn-explore-btn">✦ Not sure what to see?</a>
+        </div>
+        {% else %}
+        <div class="fn-tab-bar-solo">
+          <a href="/" class="fn-explore-btn">✦ Not sure what to see?</a>
         </div>
         {% endif %}
 
@@ -334,11 +364,11 @@
                 {% for t in pb_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
               </div>
               {% endif %}
-              {% set pb_picks = pb.poi_picks or [] %}
+              {% set pb_picks = (pb.poi_picks or [])[:4] %}
               {% if pb_picks %}
               <div class="pb-picks">
-                <span class="pb-picks-label">Curator's picks</span>
                 {% for pick in pb_picks %}<a class="pb-pick" href="{{ pick.url }}" target="_blank" rel="noopener">{{ pick.emoji }} {{ pick.name }}</a>{% endfor %}
+                <a class="pb-pick" href="/pois" style="border-style:dashed;opacity:0.7">More ↗</a>
               </div>
               {% endif %}
             </div>

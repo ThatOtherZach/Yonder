@@ -148,6 +148,75 @@
     padding: 0.5rem 0.85rem;
     margin: 0 0 1.5rem;
   }
+  /* ── Places panel ── */
+  #pack-places {
+    animation: fadein 0.18s ease;
+  }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  .places-search-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+  }
+  .places-city-input {
+    flex: 1;
+    max-width: 22rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 99px;
+    border: 1.5px solid var(--line);
+    background: var(--white);
+    font-family: inherit;
+    font-size: 0.9rem;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.13s;
+  }
+  .places-city-input:focus { border-color: var(--accent); }
+  .places-count {
+    font-size: 0.8rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .places-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    min-height: 2rem;
+  }
+  .places-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25em;
+    padding: 0.22rem 0.65rem;
+    background: var(--paper-2, #f4f1ea);
+    border: 1px solid var(--line);
+    border-radius: 99px;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    text-decoration: none;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .places-chip:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .places-empty {
+    font-size: 0.88rem;
+    color: var(--muted);
+    font-style: italic;
+    padding: 0.5rem 0;
+  }
+  .places-map-link {
+    display: inline-block;
+    margin-top: 1.25rem;
+    font-size: 0.82rem;
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .places-map-link:hover { text-decoration: underline; }
 {% endblock %}
 {% block body %}
 <div id="main-content" class="packing-page">
@@ -192,19 +261,105 @@
 </footer>
 <script>
 (function () {
-  var filters = document.getElementById('dept-filters');
-  var cards = document.querySelectorAll('#pack-grid .pack-card');
+  var filters  = document.getElementById('dept-filters');
+  var grid     = document.getElementById('pack-grid');
+  var placesEl = document.getElementById('pack-places');
+  var cityInp  = document.getElementById('places-city');
+  var chipsEl  = document.getElementById('places-chips');
+  var countEl  = document.getElementById('places-count');
+  var cards    = document.querySelectorAll('#pack-grid .pack-card');
   if (!filters) return;
+
+  /* ── Dept pill filter ── */
   filters.addEventListener('click', function (e) {
     var pill = e.target.closest('.dept-pill');
     if (!pill) return;
     filters.querySelectorAll('.dept-pill').forEach(function (p) { p.classList.remove('active'); });
     pill.classList.add('active');
     var dept = pill.dataset.dept;
-    cards.forEach(function (card) {
-      card.hidden = dept && card.dataset.dept !== dept;
-    });
+    if (dept === '__places__') {
+      grid.hidden = true;
+      placesEl.hidden = false;
+      if (cityInp) { cityInp.focus(); loadPOIs(); }
+    } else {
+      grid.hidden = false;
+      placesEl.hidden = true;
+      cards.forEach(function (card) {
+        card.hidden = dept && card.dataset.dept !== dept;
+      });
+    }
   });
+
+  /* ── POI city search ── */
+  var poisCache = null;
+
+  function normCity(s) {
+    return (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+  }
+
+  function loadPOIs() {
+    if (poisCache !== null) return;
+    poisCache = [];   /* mark loading */
+    fetch('/api/pois.json')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        poisCache = Array.isArray(data) ? data : [];
+        renderPOIs();
+      })
+      .catch(function () { poisCache = []; });
+  }
+
+  function topCities(data, n) {
+    var tally = {};
+    data.forEach(function (d) { if (d.g) tally[d.g] = (tally[d.g] || 0) + 1; });
+    return Object.keys(tally).sort(function (a, b) { return tally[b] - tally[a]; }).slice(0, n);
+  }
+
+  function renderPOIs() {
+    if (!chipsEl) return;
+    var q = normCity(cityInp ? cityInp.value : '');
+    if (!q) {
+      var top = topCities(poisCache || [], 16);
+      if (top.length) {
+        chipsEl.innerHTML = '<span style="font-size:0.75rem;color:var(--muted);margin-right:0.4rem">Popular:</span>' +
+          top.map(function (city) {
+            var label = city.split(' ').map(function (w) { return w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+            return '<button type="button" class="places-chip" data-city="' + escHtml(city) + '">' + escHtml(label) + '</button>';
+          }).join('');
+        chipsEl.querySelectorAll('.places-chip[data-city]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            cityInp.value = btn.dataset.city;
+            renderPOIs();
+          });
+        });
+      } else {
+        chipsEl.innerHTML = '<p class="places-empty">Type a city to see its spots.</p>';
+      }
+      if (countEl) countEl.textContent = '';
+      return;
+    }
+    var hits = (poisCache || []).filter(function (d) {
+      var g = d.g || '';
+      return g && (g === q || g.indexOf(q) === 0 || q.indexOf(g) === 0);
+    });
+    if (countEl) countEl.textContent = hits.length ? hits.length + ' places' : '';
+    if (!hits.length) {
+      chipsEl.innerHTML = '<p class="places-empty">No places found for "' + escHtml(cityInp.value) + '" — try the full map.</p>';
+      return;
+    }
+    chipsEl.innerHTML = hits.map(function (d) {
+      return '<a class="places-chip" href="' + escHtml(d.u || '#') + '" target="_blank" rel="noopener">' +
+             escHtml((d.e || '📍') + '\u00a0' + (d.n || '')) + '</a>';
+    }).join('');
+  }
+
+  function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  if (cityInp) {
+    cityInp.addEventListener('input', renderPOIs);
+  }
 }());
 </script>
 {% endblock %}

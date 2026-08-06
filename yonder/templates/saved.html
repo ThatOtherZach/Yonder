@@ -91,6 +91,84 @@
       color: #fff;
       border-color: var(--bp-accent, var(--accent, #1d6b4f));
     }
+    /* ── Mid-list promo card ─── */
+    .saved-mid-promo {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background: var(--paper-2, #f4f1ea);
+      border: 1.5px dashed var(--line);
+      border-radius: 14px;
+      padding: 1rem 1.2rem;
+    }
+    .smp-emoji {
+      font-size: 2rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .smp-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .smp-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+    .smp-headline {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--ink);
+      margin: 0 0 0.25rem;
+      line-height: 1.3;
+    }
+    .smp-copy {
+      font-size: 0.8rem;
+      color: var(--ink-soft);
+      line-height: 1.45;
+      margin: 0;
+    }
+    .smp-code {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      margin-top: 0.45rem;
+      padding: 0.18rem 0.6rem;
+      border-radius: 999px;
+      border: 1.5px solid var(--line-strong, var(--line));
+      background: var(--white);
+      cursor: pointer;
+      font-family: inherit;
+      color: var(--ink);
+    }
+    .smp-code code {
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+    .smp-code-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+    }
+    .smp-link {
+      flex-shrink: 0;
+    }
+    .smp-link a {
+      display: inline-block;
+      padding: 0.45rem 0.9rem;
+      border-radius: 999px;
+      background: var(--ink);
+      color: #fff;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .smp-link a:hover { opacity: 0.85; }
 {% endblock %}
 {% block body %}
   <header class="page-head container">
@@ -133,6 +211,9 @@
         {% set s = card.saved %}
         {% set it = card.it %}
         {% set qi = card.quest_idea %}
+        {% if loop.index == 4 %}
+        <div class="saved-mid-promo" id="saved-mid-promo" aria-label="Partner offer"></div>
+        {% endif %}
         {% if qi %}
         {{ bp.quest_card('saved', qi, loop.index0, home_iata=s.origin or '', quest_vibe=s.vibe or '', share=card.share, s=s, place_books=card.place_books or {}) }}
         {% elif it %}
@@ -258,14 +339,15 @@
             }
             h += "</div>";
           }
-          var pbPicks = brief.poi_picks || [];
+          var pbPicks = (brief.poi_picks || []).slice(0, 4);
           if (pbPicks.length) {
-            h += '<div class="pb-picks"><span class="pb-picks-label">Curator\'s picks</span>';
+            h += '<div class="pb-picks">';
             pbPicks.forEach(function(pick) {
               if (!pick || !pick.url) return;
               h += '<a class="pb-pick" href="' + escapeHtml(String(pick.url)) + '" target="_blank" rel="noopener">' +
                    escapeHtml((pick.emoji || '\uD83D\uDCCD') + '\u00a0' + (pick.name || '')) + '</a>';
             });
+            h += '<a class="pb-pick" href="/pois" style="border-style:dashed;opacity:0.7">More \u2197</a>';
             h += '</div>';
           }
         } else if (hasColData(col)) {
@@ -409,6 +491,63 @@
           else setTimeout(fn, 50);
         });
       }
+    // ── Mid-list promo rotator ──────────────────────────────────────────
+    (function () {
+      var slot = document.getElementById("saved-mid-promo");
+      if (!slot) return;
+      var promo = window.FS_PROMO || null;
+      var code = (promo && promo.code) ? promo.code : "YONDERCITY";
+      var vpnHref = (promo && promo.link) ? promo.link : "https://protonvpn.com";
+      var sailyHref = "https://tp.media/r?marker=756039.YonderSIMCards&trs=557178&p=8979&u=https%3A%2F%2Fsaily.com&campaign_id=629";
+      var ads = [
+        {
+          emoji: "📶",
+          label: "Travel tip",
+          headline: "Stay connected abroad",
+          copy: "Skip the roaming fees — a Saily eSIM gives you local data in 150+ countries, activated before you land.",
+          cta: "Get Saily ↗",
+          href: sailyHref,
+          code: code,
+          codeLabel: "tap to copy",
+          sponsored: true
+        },
+        {
+          emoji: "🔒",
+          label: "Travel tip",
+          headline: "Public Wi-Fi is a gamble",
+          copy: "Airports, hotels, cafés — encrypt your connection with ProtonVPN and browse safely anywhere.",
+          cta: "Try ProtonVPN ↗",
+          href: vpnHref,
+          code: null,
+          sponsored: false
+        }
+      ];
+      var ad = ads[Math.random() < 0.5 ? 0 : 1];
+      var codeHtml = ad.code
+        ? '<button type="button" class="smp-code" data-code="' + ad.code + '" aria-label="Copy code ' + ad.code + '">' +
+          '<code>' + ad.code + '</code><span class="smp-code-label"> ' + ad.codeLabel + '</span></button>'
+        : "";
+      slot.innerHTML =
+        '<span class="smp-emoji" aria-hidden="true">' + ad.emoji + '</span>' +
+        '<div class="smp-body">' +
+          '<div class="smp-label">' + ad.label + (ad.sponsored ? ' · <em>Sponsored</em>' : '') + '</div>' +
+          '<p class="smp-headline">' + ad.headline + '</p>' +
+          '<p class="smp-copy">' + ad.copy + '</p>' +
+          codeHtml +
+        '</div>' +
+        '<div class="smp-link"><a href="' + ad.href + '" target="_blank" rel="noopener' + (ad.sponsored ? ' sponsored' : '') + '">' + ad.cta + '</a></div>';
+      // Copy-to-clipboard for code button
+      var btn = slot.querySelector(".smp-code");
+      if (btn) {
+        btn.addEventListener("click", function () {
+          navigator.clipboard && navigator.clipboard.writeText(btn.dataset.code).then(function () {
+            var lbl = btn.querySelector(".smp-code-label");
+            if (lbl) { var orig = lbl.textContent; lbl.textContent = " copied!"; setTimeout(function () { lbl.textContent = orig; }, 1800); }
+          });
+        });
+      }
+    })();
+
       ready(function () {
         if (!window.YonderProgress) return;
         document.querySelectorAll("form.refresh-form").forEach(function (form) {
