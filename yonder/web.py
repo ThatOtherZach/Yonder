@@ -3218,6 +3218,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
             "kind_label": kind_label,
             "place_books": place_books,
             "share_vibe": share_vibe,
+            "og_image": f"{base}/static/share_bg.jpg",
         },
     )
 
