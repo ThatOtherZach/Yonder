@@ -302,12 +302,25 @@
       background-repeat: no-repeat;
       background-position: right 0.85rem center;
     }
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 0;
+      background: var(--sky);
+      color: var(--white);
+      padding: 0.5rem 1rem;
+      z-index: 9999;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .skip-link:focus { top: 0; }
     input:hover, select:hover, textarea:hover {
       border-color: var(--line-strong);
       background: var(--white);
     }
-    input:focus, select:focus, textarea:focus {
-      outline: none;
+    input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 2px solid var(--sky-bright);
+      outline-offset: 2px;
       border-color: var(--sky-bright);
       background: var(--white);
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--sky-bright) 22%, transparent);
@@ -1638,6 +1651,7 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body class="{% if vibe_theme and vibe_theme.color %}has-vibe-theme{% endif %}"{% if vibe_theme and vibe_theme.style %} style="{{ vibe_theme.style }}"{% endif %}>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
   <nav class="topnav">
     <div class="topnav-inner container d-flex align-items-center">
       <a class="brand" href="/">Yon<span>der</span><span class="tld">.city</span></a>

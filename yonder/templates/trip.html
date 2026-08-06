@@ -168,7 +168,7 @@
     <h1>Trip not found</h1>
     <p class="trip-meta">{{ error or "This shared trip is missing or expired." }}</p>
   </header>
-  <main class="trip-share container">
+  <main id="main-content" class="trip-share container">
     <p class="muted"><a href="/">← Back to Yonder</a></p>
   </main>
   {% else %}
@@ -176,7 +176,7 @@
   <header class="page-head container">
     <h1 class="text-center">{{ share.title }}</h1>
   </header>
-  <main class="trip-share container">
+  <main id="main-content" class="trip-share container">
     {# QR lightbox overlay #}
     <div class="qr-overlay" id="qr-overlay" role="dialog" aria-modal="true" aria-label="QR code enlarged">
       <div class="qr-overlay-inner">
