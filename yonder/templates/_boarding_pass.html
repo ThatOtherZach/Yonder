@@ -124,6 +124,13 @@
           {% for tr in esc_transfers %}<a class="pb-fact pb-fact-link" href="{{ tr.url }}" target="_blank" rel="noopener sponsored">{{ tr.emoji }} {{ tr.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
         </div>
         {% endif %}
+        {% set esc_picks = escape_place_book.poi_picks or [] %}
+        {% if esc_picks %}
+        <div class="pb-picks">
+          <span class="pb-picks-label">Curator's picks</span>
+          {% for pick in esc_picks %}<a class="pb-pick" href="{{ pick.url }}" target="_blank" rel="noopener">{{ pick.emoji }} {{ pick.name }}</a>{% endfor %}
+        </div>
+        {% endif %}
         {% else %}
         <span class="pb-tag">Field note</span>
         <div class="pb-fn-loading">
@@ -478,6 +485,13 @@
               {% for l in pb_acts %}<a class="pb-fact pb-fact-link" href="{{ l.url }}" target="_blank" rel="noopener sponsored">{{ l.emoji }} {{ l.title }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
               {% for t in pb_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
               {% for tr in pb_transfers %}<a class="pb-fact pb-fact-link" href="{{ tr.url }}" target="_blank" rel="noopener sponsored">{{ tr.emoji }} {{ tr.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+            </div>
+            {% endif %}
+            {% set pb_picks = pb.poi_picks or [] %}
+            {% if pb_picks %}
+            <div class="pb-picks">
+              <span class="pb-picks-label">Curator's picks</span>
+              {% for pick in pb_picks %}<a class="pb-pick" href="{{ pick.url }}" target="_blank" rel="noopener">{{ pick.emoji }} {{ pick.name }}</a>{% endfor %}
             </div>
             {% endif %}
             {% elif it.stop_iata %}

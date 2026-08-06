@@ -1179,6 +1179,37 @@
       background: var(--paper-2, #f4f1ea);
       color: var(--ink);
     }
+    .pb-picks {
+      margin-top: 0.6rem;
+    }
+    .pb-picks-label {
+      display: block;
+      font-size: 0.69rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 0.3rem;
+    }
+    a.pb-pick {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25em;
+      padding: 0.18rem 0.5rem;
+      background: var(--paper-2, #f4f1ea);
+      border: 1px solid var(--line);
+      border-radius: 99px;
+      font-size: 0.76rem;
+      color: var(--ink-soft);
+      text-decoration: none;
+      margin: 0 0.22rem 0.22rem 0;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    a.pb-pick:hover {
+      background: var(--bp-accent, var(--accent, #1d6b4f));
+      color: #fff;
+      border-color: var(--bp-accent, var(--accent, #1d6b4f));
+    }
     .field-note-slot.is-loading {
       opacity: 0.92;
       border-style: dashed;
@@ -2769,6 +2800,16 @@
               h += '<a class="pb-fact pb-fact-link" href="' + escapeHtml(_klookUrl) + '" target="_blank" rel="noopener sponsored">\uD83C\uDF9F\uFE0F Find experiences <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
             }
             h += "</div>";
+          }
+          var pbPicks = brief.poi_picks || [];
+          if (pbPicks.length) {
+            h += '<div class="pb-picks"><span class="pb-picks-label">Curator\'s picks</span>';
+            pbPicks.forEach(function(pick) {
+              if (!pick || !pick.url) return;
+              h += '<a class="pb-pick" href="' + escapeHtml(String(pick.url)) + '" target="_blank" rel="noopener">' +
+                   escapeHtml((pick.emoji || '\uD83D\uDCCD') + '\u00a0' + (pick.name || '')) + '</a>';
+            });
+            h += '</div>';
           }
           var pbTagline = brief.tagline || brief.era_note || brief.vibe;
           if (pbTagline)

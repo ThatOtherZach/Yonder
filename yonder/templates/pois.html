@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Curated Places · Yonder{% endblock %}
+{% block canonical_url %}https://yonder.city/pois{% endblock %}
+{% block meta_description %}2,400+ hand-curated places of interest from cities around the world — bars, cafés, landmarks, hikes, and more.{% endblock %}
+{% block extra_css %}
+  .pois-page {
+    max-width: 80rem;
+    margin: 0 auto;
+    padding: 2rem 1rem 4rem;
+  }
+  .pois-page h1 {
+    font-family: var(--font-display);
+    font-size: 2.1rem;
+    margin: 0 0 0.3rem;
+    color: var(--ink);
+  }
+  .pois-sub {
+    color: var(--muted);
+    font-size: 0.93rem;
+    margin: 0 0 1.25rem;
+  }
+  .pois-sub a { color: var(--accent); }
+  /* Count badge */
+  .poi-count-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--ink-soft);
+    margin-bottom: 0.85rem;
+  }
+  /* Category filter pills */
+  #poi-cat-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+    min-height: 2rem;
+  }
+  .poi-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.28rem 0.75rem;
+    border-radius: 99px;
+    border: 1.5px solid var(--line);
+    background: var(--paper-2);
+    color: var(--ink-soft);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.13s, color 0.13s, border-color 0.13s;
+    font-family: inherit;
+  }
+  .poi-pill:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .poi-pill.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  /* Map container */
+  #poi-map-container {
+    position: relative;
+    width: 100%;
+    border: none;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #d4c8a8;
+    min-height: 480px;
+  }
+  #poi-map-status {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  /* Tooltip */
+  .poi-tooltip {
+    position: absolute;
+    z-index: 20;
+    max-width: 240px;
+    background: var(--white, #fffcf7);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.65rem 0.85rem;
+    box-shadow: 0 4px 16px rgba(0,0,0,.12);
+    pointer-events: none;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--ink);
+  }
+  .poi-tooltip .pt-emoji { font-size: 1.1em; }
+  .poi-tooltip .pt-name { color: var(--ink); }
+  .poi-tooltip .pt-cat {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-left: 0.3em;
+  }
+  .poi-tooltip .pt-note {
+    margin: 0.35rem 0 0;
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 0.8rem;
+  }
+  .poi-tooltip .pt-link {
+    display: block;
+    margin-top: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .poi-tooltip .pt-link:hover { text-decoration: underline; }
+  /* No-script / JS-off notice */
+  .pois-nojs {
+    text-align: center;
+    padding: 2.5rem 1rem;
+    color: var(--muted);
+  }
+{% endblock %}
+{% block body %}
+<header class="page-head container">
+  <h1>Curated Places</h1>
+  <p>Our hand-picked global favourites</p>
+</header>
+<main id="main-content" class="pois-page container">
+
+  <p class="poi-count-badge">
+    🗺 Showing <span id="poi-count">—</span> places
+    &nbsp;·&nbsp;
+    <a href="/packing" style="color:var(--muted)">← Back to Packing List</a>
+  </p>
+
+  <div id="poi-cat-pills" aria-label="Filter by category">
+    <!-- populated by poi_map.js -->
+  </div>
+
+  <div id="poi-map-container">
+    <p class="muted" style="position:absolute;top:0.55rem;left:50%;transform:translateX(-50%);z-index:10;font-size:0.74rem;white-space:nowrap;pointer-events:none;background:rgba(244,239,230,0.78);padding:0.18rem 0.7rem;border-radius:99px;backdrop-filter:blur(4px)">
+      All 2,400+ places are personal picks — not sponsored · Each pin links to Google Maps
+    </p>
+    <div id="poi-map-status">Loading map…</div>
+    <noscript>
+      <div class="pois-nojs">
+        <p>JavaScript is required to display the interactive map.</p>
+        <p><a href="/packing">← Back to Packing List</a></p>
+      </div>
+    </noscript>
+  </div>
+</main>
+
+<footer class="site-foot container">
+  Vibes aren't tickets, always check live fares and providers for current rates. Culture notes are short takes, not gospel. Use the thumbs up and thumbs down to prefer or hide them as you see fit. Some links provided earn a commission, Yonder.City does not sell or provide proof of purchase &middot; Designed by <a href="https://saymservices.com" target="_blank" rel="noopener" style="color:#e8590c;text-decoration:none">Saym Services Inc.</a> of Vancouver, Canada
+</footer>
+
+<!-- D3 + TopoJSON from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js" defer></script>
+<script src="/static/poi_map.js?v=3" defer></script>
+{% endblock %}

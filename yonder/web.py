@@ -3167,6 +3167,17 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
 
     _vibe_id = share_vibe["id"] if share_vibe else None
 
+    def _share_poi_picks(iata_code: str) -> list:
+        """Curator's picks for a share-page field note — resolved via IATA → city."""
+        try:
+            from yonder.airports import city_country_for_iata
+            from yonder.poi import picks_for_city
+
+            info = city_country_for_iata(iata_code)
+            return picks_for_city(info[0] if info else None)
+        except Exception:
+            return []
+
     place_books: dict[str, dict] = {}
     if share.kind == "escape":
         dest = (p.get("query") or {}).get("destination") or ""
@@ -3177,6 +3188,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
                 brief["activity_links"] = await activity_links_for(
                     settings, iata=dest.upper(), vibe=_vibe_id
                 )
+                brief["poi_picks"] = _share_poi_picks(dest.upper())
                 place_books[dest.upper()] = brief
     elif share.kind == "detour":
         it = p.get("itinerary") or {}
@@ -3191,6 +3203,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
                     brief["activity_links"] = await activity_links_for(
                         settings, iata=code, vibe=_vibe_id
                     )
+                    brief["poi_picks"] = _share_poi_picks(code)
                     place_books[code] = brief
     elif share.kind == "quest":
         idea = p.get("idea") or {}
@@ -3203,6 +3216,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
                     brief["activity_links"] = await activity_links_for(
                         settings, iata=code, vibe=_vibe_id
                     )
+                    brief["poi_picks"] = _share_poi_picks(code)
                     place_books[code] = brief
 
     return templates.TemplateResponse(
@@ -4582,6 +4596,42 @@ async def packing_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "packing.html",
+        {
+            "nav": None,
+            **_base_ctx(),
+        },
+    )
+
+
+@app.get("/api/pois.json")
+async def api_pois_json() -> JSONResponse:
+    """Slim POI dataset for the world map — all geocoded entries."""
+    try:
+        from yonder.poi import all_pois_for_map
+
+        data = all_pois_for_map()
+    except Exception:
+        data = []
+    return JSONResponse(content=data)
+
+
+@app.get("/pois", response_class=HTMLResponse)
+async def pois_page(request: Request) -> HTMLResponse:
+    """Full interactive curated POI world map, linked from the Packing List page."""
+    # Auto-seed on first deployment if the table is empty.
+    try:
+        from yonder.db import get_conn
+        from yonder.poi import import_pois as _import_pois
+
+        with get_conn() as _conn:
+            _row = _conn.execute("SELECT 1 FROM pois LIMIT 1").fetchone()
+        if not _row:
+            _import_pois()
+    except Exception:
+        pass
+    return templates.TemplateResponse(
+        request,
+        "pois.html",
         {
             "nav": None,
             **_base_ctx(),

@@ -170,10 +170,12 @@ class PlaceBrief:
     country: str | None = None
     from_cache: bool = False
     activity_links: list[dict[str, Any]] | None = None
+    poi_picks: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "activity_links": self.activity_links or [],
+            "poi_picks": self.poi_picks or [],
             "title": self.title,
             "subtitle": self.subtitle,
             "facts": self.facts or [],
@@ -254,6 +256,17 @@ async def _activity_links(
         return []
 
 
+def _poi_picks(city: str | None) -> list[dict[str, Any]]:
+    """Curator's picks for a destination city — [] when unmatched or table empty."""
+    if not city:
+        return []
+    try:
+        from yonder.poi import picks_for_city
+        return picks_for_city(city)
+    except Exception:
+        return []
+
+
 async def get_place_brief(
     settings: Settings,
     *,
@@ -290,6 +303,7 @@ async def get_place_brief(
             activity_links=await _activity_links(
                 settings, iata=iata, city=city, trip_vibe=trip_vibe, user_prompt=user_prompt
             ),
+            poi_picks=_poi_picks(city),
             title=str(hit.get("title") or city or iata or country or "Somewhere"),
             subtitle=str(hit.get("subtitle") or ""),
             facts=list(hit.get("facts") or [])[:4],
@@ -334,6 +348,7 @@ async def get_place_brief(
             activity_links=await _activity_links(
                 settings, iata=iata, city=city, trip_vibe=trip_vibe, user_prompt=user_prompt
             ),
+            poi_picks=_poi_picks(city),
             title=str(payload.get("title") or city or iata or "Somewhere"),
             subtitle=str(payload.get("subtitle") or ""),
             facts=list(payload.get("facts") or [])[:4],
@@ -404,6 +419,7 @@ async def briefs_for_stops(
                     trip_vibe=trip_vibe,
                     user_prompt=user_prompt,
                 ),
+                "poi_picks": _poi_picks(city),
             }
             continue
         if cache_only or live >= max_n:

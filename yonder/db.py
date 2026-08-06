@@ -292,6 +292,26 @@ CREATE TABLE IF NOT EXISTS attribute_evidence (
 );
 CREATE INDEX IF NOT EXISTS idx_ae_subject
     ON attribute_evidence(subject_kind, subject, attribute, source);
+
+CREATE TABLE IF NOT EXISTS pois (
+    feature_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    emoji TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    google_maps_url TEXT NOT NULL DEFAULT '',
+    lat DOUBLE PRECISION,
+    lon DOUBLE PRECISION,
+    city_slug TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    list_title TEXT NOT NULL DEFAULT '',
+    closed BOOLEAN NOT NULL DEFAULT FALSE,
+    status_checked_at DOUBLE PRECISION
+);
+CREATE INDEX IF NOT EXISTS idx_pois_city ON pois(city_slug);
+-- Idempotent column migrations for existing installations
+ALTER TABLE pois ADD COLUMN IF NOT EXISTS closed BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE pois ADD COLUMN IF NOT EXISTS status_checked_at DOUBLE PRECISION;
 """
 
 
