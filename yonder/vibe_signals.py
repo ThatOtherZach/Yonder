@@ -306,6 +306,13 @@ def recompute_scores(*, force: bool = False) -> bool:
                 ],
             )
             conn.commit()
+            # After a successful recompute, kick off the ad-pipeline poll so
+            # trending destinations are surfaced and qualifying candidates pushed.
+            try:
+                from yonder.ad_pipeline import poll_and_push as _ad_poll
+                _ad_poll()
+            except Exception:
+                pass
             return True
     except Exception:
         return False

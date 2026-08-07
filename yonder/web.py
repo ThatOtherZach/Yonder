@@ -3488,6 +3488,18 @@ async def api_save_itinerary(request: Request):
         )
     except Exception:
         pass
+    # Ad pipeline: upsert a candidate for this destination+vibe pair.
+    # Landing URL is derived from REPLIT_DOMAINS (trusted env), never from
+    # request.base_url which could be forged via a Host header.
+    try:
+        from yonder.ad_pipeline import upsert_candidate_from_save as _upsert_ad
+
+        asyncio.get_running_loop().run_in_executor(
+            None,
+            lambda: _upsert_ad(saved),
+        )
+    except Exception:
+        pass
     return JSONResponse(
         {
             "ok": True,

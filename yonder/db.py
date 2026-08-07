@@ -312,6 +312,32 @@ CREATE INDEX IF NOT EXISTS idx_pois_city ON pois(city_slug);
 -- Idempotent column migrations for existing installations
 ALTER TABLE pois ADD COLUMN IF NOT EXISTS closed BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE pois ADD COLUMN IF NOT EXISTS status_checked_at DOUBLE PRECISION;
+
+CREATE TABLE IF NOT EXISTS ad_candidates (
+    dest_iata TEXT NOT NULL,
+    vibe TEXT NOT NULL,
+    city_name TEXT,
+    ad_title TEXT,
+    ad_body TEXT,
+    landing_url TEXT,
+    save_count INTEGER NOT NULL DEFAULT 0,
+    search_count INTEGER NOT NULL DEFAULT 0,
+    signal_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+    push_state TEXT NOT NULL DEFAULT 'pending',
+    pushed_at DOUBLE PRECISION,
+    ads_api_ad_id TEXT,
+    updated_at DOUBLE PRECISION NOT NULL,
+    PRIMARY KEY (dest_iata, vibe)
+);
+CREATE INDEX IF NOT EXISTS idx_ad_candidates_push
+    ON ad_candidates(push_state, signal_score DESC);
+CREATE INDEX IF NOT EXISTS idx_ad_candidates_pushed_at
+    ON ad_candidates(pushed_at);
+
+CREATE TABLE IF NOT EXISTS ad_pipeline_config (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT ''
+);
 """
 
 
