@@ -327,8 +327,15 @@ CREATE TABLE IF NOT EXISTS ad_candidates (
     pushed_at DOUBLE PRECISION,
     ads_api_ad_id TEXT,
     updated_at DOUBLE PRECISION NOT NULL,
+    fail_count INTEGER NOT NULL DEFAULT 0,
+    failed_at DOUBLE PRECISION,
     PRIMARY KEY (dest_iata, vibe)
 );
+-- Idempotent migrations: add columns to pre-existing tables.
+ALTER TABLE ad_candidates ADD COLUMN IF NOT EXISTS fail_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE ad_candidates ADD COLUMN IF NOT EXISTS failed_at DOUBLE PRECISION;
+-- Backfill: legacy failed rows with no failed_at get updated_at as their failure timestamp.
+UPDATE ad_candidates SET failed_at = updated_at WHERE push_state = 'failed' AND failed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_ad_candidates_push
     ON ad_candidates(push_state, signal_score DESC);
 CREATE INDEX IF NOT EXISTS idx_ad_candidates_pushed_at

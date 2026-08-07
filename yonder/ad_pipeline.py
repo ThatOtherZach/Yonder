@@ -36,6 +36,13 @@ DAILY_CAP: int = 10
 # How many top dest_vibe_scores rows to scan per hourly poll for new candidates.
 TOP_N_SCAN: int = 200
 
+# Base retry window in seconds for failed candidates (default 6 hours).
+# Subsequent failures use exponential backoff: base * 2^(fail_count-1).
+RETRY_WINDOW_SECONDS: int = 6 * 3600
+
+# Cap on the retry backoff to avoid waiting forever (default 7 days).
+MAX_RETRY_WINDOW_SECONDS: int = 7 * 24 * 3600
+
 
 # ── Copy-template helpers ────────────────────────────────────────────────────
 
@@ -212,6 +219,71 @@ def _daily_pushed_count() -> int:
             (cutoff,),
         ).fetchone()
     return int(row["n"]) if row else 0
+
+
+def retry_failed_candidates() -> int:
+    """Reset push_state to 'pending' for failed candidates whose backoff window has elapsed.
+
+    Each failure increments ``fail_count``; the retry window doubles per failure
+    (exponential backoff capped at ``MAX_RETRY_WINDOW_SECONDS``):
+
+        retry_window = min(RETRY_WINDOW_SECONDS * 2^(fail_count - 1), MAX_RETRY_WINDOW_SECONDS)
+
+    Only rows whose ``updated_at`` is older than their individual retry window are
+    reset — genuinely broken candidates back off progressively and never monopolise
+    the daily cap.
+
+    Returns the number of rows reset to pending.
+    """
+    now = time.time()
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                "SELECT dest_iata, vibe, fail_count, failed_at, updated_at "
+                "FROM ad_candidates WHERE push_state = 'failed'"
+            ).fetchall()
+
+        to_retry: list[tuple[str, str]] = []
+        for r in rows:
+            fail_count = int(r["fail_count"] or 0)
+            # Backoff anchored to failed_at (never updated by ordinary upserts).
+            # window = base * 2^(fail_count-1), minimum base, capped at MAX.
+            exponent = max(0, fail_count - 1)
+            window = min(
+                RETRY_WINDOW_SECONDS * (2 ** exponent),
+                MAX_RETRY_WINDOW_SECONDS,
+            )
+            # Use failed_at as the anchor; fall back to updated_at for legacy rows
+            # where failed_at was not yet recorded (pre-migration failures).
+            # This ensures historical failed rows can always recover.
+            anchor = r["failed_at"] or r["updated_at"]
+            if anchor is None:
+                # No timestamp at all — use a safe epoch so the row retries immediately.
+                anchor = 0.0
+            elapsed = now - float(anchor)
+            if elapsed >= window:
+                to_retry.append((r["dest_iata"], r["vibe"]))
+
+        if not to_retry:
+            return 0
+
+        with get_conn() as conn:
+            for dest_iata, vibe in to_retry:
+                conn.execute(
+                    "UPDATE ad_candidates SET push_state = 'pending', updated_at = %s "
+                    "WHERE dest_iata = %s AND vibe = %s",
+                    (now, dest_iata, vibe),
+                )
+            conn.commit()
+
+        log.info(
+            "ad_pipeline: retry_failed_candidates reset %d row(s) to pending",
+            len(to_retry),
+        )
+        return len(to_retry)
+    except Exception:
+        log.exception("ad_pipeline: retry_failed_candidates failed")
+        return 0
 
 
 # ── Public entry points ──────────────────────────────────────────────────────
@@ -408,11 +480,18 @@ def run_push_cycle() -> int:
                 "ad_pipeline: failed to push %s/%s", r["dest_iata"], r["vibe"]
             )
             try:
+                now_fail = time.time()
                 with get_conn() as conn:
                     conn.execute(
-                        "UPDATE ad_candidates SET push_state = 'failed' "
-                        "WHERE dest_iata = %s AND vibe = %s",
-                        (r["dest_iata"], r["vibe"]),
+                        """
+                        UPDATE ad_candidates
+                        SET push_state = 'failed',
+                            fail_count  = COALESCE(fail_count, 0) + 1,
+                            failed_at   = %s,
+                            updated_at  = %s
+                        WHERE dest_iata = %s AND vibe = %s
+                        """,
+                        (now_fail, now_fail, r["dest_iata"], r["vibe"]),
                     )
                     conn.commit()
             except Exception:
@@ -422,10 +501,17 @@ def run_push_cycle() -> int:
 
 
 def poll_and_push() -> None:
-    """Full hourly pipeline: upsert trending candidates, then push qualifying ones.
+    """Full hourly pipeline: retry stale failures, upsert trending candidates, then push.
 
     Called automatically inside ``vibe_signals.recompute_scores()`` after each
     successful hourly recompute.  Safe to call directly in tests.
+
+    Step order:
+    1. ``retry_failed_candidates()`` — reset failed rows whose backoff window has
+       elapsed back to ``pending`` so they re-enter the queue this cycle.
+    2. ``upsert_candidates_from_scores()`` — add any new trending pairs.
+    3. ``run_push_cycle()`` — push qualifying pending rows up to the daily cap.
     """
+    retry_failed_candidates()
     upsert_candidates_from_scores()
     run_push_cycle()

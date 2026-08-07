@@ -768,3 +768,326 @@ class TestPollAndPush:
         # Candidate upserted even without API key
         assert row is not None
         assert row["push_state"] == "pending"
+
+
+# ---------------------------------------------------------------------------
+# retry_failed_candidates
+# ---------------------------------------------------------------------------
+
+
+class TestRetryFailedCandidates:
+    """Tests for the exponential-backoff retry mechanism."""
+
+    def _seed_failed(
+        self,
+        conn,
+        dest_iata: str,
+        vibe: str,
+        fail_count: int = 1,
+        age_seconds: float = 0.0,
+    ) -> None:
+        """Insert a failed ad candidate whose failed_at is age_seconds in the past."""
+        now = time.time()
+        failed_at = now - age_seconds
+        conn.execute(
+            "INSERT INTO ad_candidates "
+            "(dest_iata, vibe, city_name, ad_title, ad_body, landing_url, "
+            "save_count, search_count, signal_score, push_state, fail_count, failed_at, updated_at) "
+            "VALUES (%s, %s, 'City', 'Title', 'Body', '/', 1, 5, 1.0, 'failed', %s, %s, %s)",
+            (dest_iata, vibe, fail_count, failed_at, now),
+        )
+
+    def test_resets_failed_row_after_base_window(self, isolated):
+        """A row that failed once is reset after RETRY_WINDOW_SECONDS elapses."""
+        old_retry_window = ap.RETRY_WINDOW_SECONDS
+        ap.RETRY_WINDOW_SECONDS = 3600  # 1h for this test
+        try:
+            # fail_count=1 → window=3600s; row is 3601s old → should be reset
+            with isolated() as conn:
+                self._seed_failed(conn, "NRT", "culture", fail_count=1, age_seconds=3601)
+
+            count = ap.retry_failed_candidates()
+            assert count == 1
+
+            with isolated() as conn:
+                row = conn.execute(
+                    "SELECT push_state FROM ad_candidates WHERE dest_iata = 'NRT'"
+                ).fetchone()
+            assert row["push_state"] == "pending"
+        finally:
+            ap.RETRY_WINDOW_SECONDS = old_retry_window
+
+    def test_does_not_reset_within_backoff_window(self, isolated):
+        """A recently-failed row is NOT reset until its backoff window elapses."""
+        old_retry_window = ap.RETRY_WINDOW_SECONDS
+        ap.RETRY_WINDOW_SECONDS = 3600
+        try:
+            # fail_count=1 → window=3600s; row is only 1800s old → stay failed
+            with isolated() as conn:
+                self._seed_failed(conn, "LHR", "adventure", fail_count=1, age_seconds=1800)
+
+            count = ap.retry_failed_candidates()
+            assert count == 0
+
+            with isolated() as conn:
+                row = conn.execute(
+                    "SELECT push_state FROM ad_candidates WHERE dest_iata = 'LHR'"
+                ).fetchone()
+            assert row["push_state"] == "failed"
+        finally:
+            ap.RETRY_WINDOW_SECONDS = old_retry_window
+
+    def test_exponential_backoff_doubles_per_failure(self, isolated):
+        """fail_count=2 doubles the window; the row stays failed until 2× the base elapses."""
+        old_retry_window = ap.RETRY_WINDOW_SECONDS
+        ap.RETRY_WINDOW_SECONDS = 3600
+        try:
+            # fail_count=2 → window = 3600 * 2^1 = 7200s
+            # age=5000s < 7200s → should stay failed
+            with isolated() as conn:
+                self._seed_failed(conn, "CDG", "romance", fail_count=2, age_seconds=5000)
+
+            count = ap.retry_failed_candidates()
+            assert count == 0
+
+            with isolated() as conn:
+                row = conn.execute(
+                    "SELECT push_state FROM ad_candidates WHERE dest_iata = 'CDG'"
+                ).fetchone()
+            assert row["push_state"] == "failed"
+
+            # Now reset with failed_at age > 7200s → should be retried
+            with isolated() as conn:
+                conn.execute(
+                    "UPDATE ad_candidates SET failed_at = %s "
+                    "WHERE dest_iata = 'CDG' AND vibe = 'romance'",
+                    (time.time() - 7201,),
+                )
+
+            count = ap.retry_failed_candidates()
+            assert count == 1
+
+            with isolated() as conn:
+                row = conn.execute(
+                    "SELECT push_state FROM ad_candidates WHERE dest_iata = 'CDG'"
+                ).fetchone()
+            assert row["push_state"] == "pending"
+        finally:
+            ap.RETRY_WINDOW_SECONDS = old_retry_window
+
+    def test_backoff_capped_at_max_window(self, isolated):
+        """Even with a very high fail_count, retry window is capped at MAX_RETRY_WINDOW_SECONDS."""
+        old_retry_window = ap.RETRY_WINDOW_SECONDS
+        old_max = ap.MAX_RETRY_WINDOW_SECONDS
+        ap.RETRY_WINDOW_SECONDS = 3600
+        ap.MAX_RETRY_WINDOW_SECONDS = 7200  # 2h cap
+        try:
+            # fail_count=10 → uncapped window would be huge; capped to 7200s
+            # age=7201s → should be reset
+            with isolated() as conn:
+                self._seed_failed(conn, "SYD", "beach", fail_count=10, age_seconds=7201)
+
+            count = ap.retry_failed_candidates()
+            assert count == 1
+
+            with isolated() as conn:
+                row = conn.execute(
+                    "SELECT push_state FROM ad_candidates WHERE dest_iata = 'SYD'"
+                ).fetchone()
+            assert row["push_state"] == "pending"
+        finally:
+            ap.RETRY_WINDOW_SECONDS = old_retry_window
+            ap.MAX_RETRY_WINDOW_SECONDS = old_max
+
+    def test_pending_and_pushed_rows_untouched(self, isolated):
+        """retry_failed_candidates only touches failed rows."""
+        with isolated() as conn:
+            # pending row
+            conn.execute(
+                "INSERT INTO ad_candidates "
+                "(dest_iata, vibe, city_name, ad_title, ad_body, landing_url, "
+                "save_count, search_count, signal_score, push_state, fail_count, updated_at) "
+                "VALUES ('AAA', 'culture', 'City', 'T', 'B', '/', 1, 5, 1.0, 'pending', 0, %s)",
+                (time.time() - 100000,),
+            )
+            # pushed row (very old)
+            conn.execute(
+                "INSERT INTO ad_candidates "
+                "(dest_iata, vibe, city_name, ad_title, ad_body, landing_url, "
+                "save_count, search_count, signal_score, push_state, fail_count, updated_at) "
+                "VALUES ('BBB', 'adventure', 'City', 'T', 'B', '/', 1, 5, 1.0, 'pushed', 0, %s)",
+                (time.time() - 100000,),
+            )
+
+        count = ap.retry_failed_candidates()
+        assert count == 0
+
+        with isolated() as conn:
+            rows = conn.execute(
+                "SELECT dest_iata, push_state FROM ad_candidates ORDER BY dest_iata"
+            ).fetchall()
+        states = {r["dest_iata"]: r["push_state"] for r in rows}
+        assert states["AAA"] == "pending"
+        assert states["BBB"] == "pushed"
+
+    def test_fail_count_incremented_on_push_failure(self, isolated, monkeypatch):
+        """run_push_cycle increments fail_count when a push fails."""
+        monkeypatch.setenv("OPENAI_ADS_API_KEY", "test-key")
+
+        with isolated() as conn:
+            conn.execute(
+                "INSERT INTO ad_candidates "
+                "(dest_iata, vibe, city_name, ad_title, ad_body, landing_url, "
+                "save_count, search_count, signal_score, fail_count, updated_at) "
+                "VALUES ('NRT', 'culture', 'Tokyo', 'Title', 'Body', '/', 1, 5, 2.0, 0, %s)",
+                (time.time(),),
+            )
+
+        with patch("yonder.ads_api.AdsApiClient") as MockClient:
+            inst = MockClient.return_value
+            inst.ensure_campaign.return_value = "c"
+            inst.ensure_ad_group.return_value = "g"
+            inst.ensure_brand_image.return_value = "f"
+            inst.create_ad.side_effect = RuntimeError("API error")
+
+            ap.run_push_cycle()
+
+        with isolated() as conn:
+            row = conn.execute(
+                "SELECT push_state, fail_count FROM ad_candidates WHERE dest_iata = 'NRT'"
+            ).fetchone()
+        assert row["push_state"] == "failed"
+        assert row["fail_count"] == 1
+
+    def test_fail_count_accumulates_across_failures(self, isolated, monkeypatch):
+        """fail_count accumulates — a row that has failed twice has fail_count=2."""
+        monkeypatch.setenv("OPENAI_ADS_API_KEY", "test-key")
+
+        with isolated() as conn:
+            # Seed with fail_count already at 1 (first failure happened before)
+            conn.execute(
+                "INSERT INTO ad_candidates "
+                "(dest_iata, vibe, city_name, ad_title, ad_body, landing_url, "
+                "save_count, search_count, signal_score, push_state, fail_count, updated_at) "
+                "VALUES ('LHR', 'adventure', 'London', 'Title', 'Body', '/', 1, 5, 2.0, 'pending', 1, %s)",
+                (time.time(),),
+            )
+
+        with patch("yonder.ads_api.AdsApiClient") as MockClient:
+            inst = MockClient.return_value
+            inst.ensure_campaign.return_value = "c"
+            inst.ensure_ad_group.return_value = "g"
+            inst.ensure_brand_image.return_value = "f"
+            inst.create_ad.side_effect = RuntimeError("API error again")
+
+            ap.run_push_cycle()
+
+        with isolated() as conn:
+            row = conn.execute(
+                "SELECT push_state, fail_count FROM ad_candidates WHERE dest_iata = 'LHR'"
+            ).fetchone()
+        assert row["push_state"] == "failed"
+        assert row["fail_count"] == 2  # incremented from 1 to 2
+
+    def test_poll_and_push_calls_retry_first(self, isolated, monkeypatch):
+        """poll_and_push resets eligible failed rows before scanning for pushes."""
+        old_retry_window = ap.RETRY_WINDOW_SECONDS
+        ap.RETRY_WINDOW_SECONDS = 3600
+        try:
+            # A failed row whose backoff window has elapsed
+            with isolated() as conn:
+                self._seed_failed(conn, "CDG", "romance", fail_count=1, age_seconds=7200)
+
+            ap.poll_and_push()  # no API key → push skipped, but retry runs
+
+            with isolated() as conn:
+                row = conn.execute(
+                    "SELECT push_state FROM ad_candidates WHERE dest_iata = 'CDG'"
+                ).fetchone()
+            # Should have been reset to pending by the retry step
+            assert row["push_state"] == "pending"
+        finally:
+            ap.RETRY_WINDOW_SECONDS = old_retry_window
+
+    def test_legacy_failed_row_with_null_failed_at_is_retried(self, isolated):
+        """Legacy failed rows where failed_at IS NULL fall back to updated_at for backoff.
+
+        Regression: pre-migration failed rows must not be stuck permanently.
+        """
+        old_retry_window = ap.RETRY_WINDOW_SECONDS
+        ap.RETRY_WINDOW_SECONDS = 3600
+        try:
+            # Seed a failed row with no failed_at (as it would look before migration)
+            old_updated_at = time.time() - 7200  # 2h ago, > 3600s window
+            with isolated() as conn:
+                conn.execute(
+                    "INSERT INTO ad_candidates "
+                    "(dest_iata, vibe, city_name, ad_title, ad_body, landing_url, "
+                    "save_count, search_count, signal_score, push_state, fail_count, "
+                    "failed_at, updated_at) "
+                    "VALUES ('SIN', 'city', 'Singapore', 'T', 'B', '/', 1, 5, 1.0, "
+                    "'failed', 1, NULL, %s)",
+                    (old_updated_at,),
+                )
+
+            # Should retry using updated_at as the fallback anchor
+            count = ap.retry_failed_candidates()
+            assert count == 1, (
+                "Legacy failed row with failed_at=NULL should be retried using updated_at"
+            )
+
+            with isolated() as conn:
+                row = conn.execute(
+                    "SELECT push_state FROM ad_candidates WHERE dest_iata = 'SIN'"
+                ).fetchone()
+            assert row["push_state"] == "pending"
+        finally:
+            ap.RETRY_WINDOW_SECONDS = old_retry_window
+
+    def test_save_upsert_does_not_restart_retry_clock(self, isolated, monkeypatch):
+        """A save-triggered upsert (which updates updated_at) must NOT defer the retry.
+
+        Regression test: backoff must be anchored to failed_at, not updated_at.
+        A candidate that receives saves while failed should still retry once
+        failed_at is old enough — the retry clock must not be restarted by content
+        updates.
+        """
+        old_retry_window = ap.RETRY_WINDOW_SECONDS
+        ap.RETRY_WINDOW_SECONDS = 3600
+        try:
+            monkeypatch.setenv("REPLIT_DOMAINS", "example.com")
+            # Seed a failed row with failed_at 5h ago (> 3600s window → eligible)
+            with isolated() as conn:
+                self._seed_failed(conn, "NRT", "culture", fail_count=1, age_seconds=5 * 3600)
+
+            # Simulate a save upsert that refreshes updated_at to NOW,
+            # but does NOT change failed_at (the upsert preserves push_state).
+            saved = _FakeSaved()
+            ap.upsert_candidate_from_save(saved)
+
+            # After the upsert, push_state is still preserved as 'failed'
+            # (the upsert ON CONFLICT clause does not overwrite push_state).
+            with isolated() as conn:
+                row = conn.execute(
+                    "SELECT push_state, failed_at, updated_at "
+                    "FROM ad_candidates WHERE dest_iata = 'NRT'"
+                ).fetchone()
+            assert row["push_state"] == "failed", (
+                "upsert_candidate_from_save must not reset push_state to pending"
+            )
+
+            # Now retry_failed_candidates() should still reset the row to pending
+            # because failed_at (not updated_at) is old enough.
+            count = ap.retry_failed_candidates()
+            assert count == 1, (
+                "retry must fire based on failed_at, not updated_at; "
+                "a save upsert must not restart the retry clock"
+            )
+
+            with isolated() as conn:
+                row = conn.execute(
+                    "SELECT push_state FROM ad_candidates WHERE dest_iata = 'NRT'"
+                ).fetchone()
+            assert row["push_state"] == "pending"
+        finally:
+            ap.RETRY_WINDOW_SECONDS = old_retry_window
