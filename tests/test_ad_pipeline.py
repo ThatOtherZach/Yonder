@@ -514,6 +514,134 @@ class TestCreativeLimits:
 
 
 # ---------------------------------------------------------------------------
+# Corrected API payload shapes
+# ---------------------------------------------------------------------------
+
+
+class TestCorrectedPayloadShapes:
+    """Verify every outbound payload matches the current OpenAI Ads API schema."""
+
+    def _capture_post(self):
+        captured: list[dict] = []
+
+        def fake_post(self_inner, path, data):
+            captured.append({"path": path, "data": data})
+            return {"id": "stub-id"}
+
+        return captured, fake_post
+
+    def test_campaign_uses_lifetime_spend_limit_micros(self, isolated):
+        """Campaign payload must use budget.lifetime_spend_limit_micros, not type+amount_micros."""
+        captured, fake_post = self._capture_post()
+
+        def fake_get(self_inner, path):
+            raise Exception("not found")
+
+        client = aa.AdsApiClient(api_key="k", base_url="https://stub")
+        with (
+            patch.object(aa.AdsApiClient, "_post", fake_post),
+            patch.object(aa.AdsApiClient, "_get", fake_get),
+        ):
+            client.ensure_campaign()
+
+        payload = captured[0]["data"]
+        assert "budget" in payload
+        budget = payload["budget"]
+        # The correct field — rejected by the API as unknown if you use type+amount_micros
+        assert "lifetime_spend_limit_micros" in budget, (
+            "campaign budget must use lifetime_spend_limit_micros"
+        )
+        # Old wrong fields must NOT be present
+        assert "type" not in budget, "budget.type was rejected 400 by the API"
+        assert "amount_micros" not in budget, "budget.amount_micros was rejected 400 by the API"
+        assert budget["lifetime_spend_limit_micros"] >= 1_000_000, "minimum budget is 1 000 000"
+
+    def test_ad_group_sends_required_bidding_config(self, isolated):
+        """Ad group payload must include bidding_config (billing_event_type + max_bid_micros)."""
+        captured, fake_post = self._capture_post()
+
+        def fake_get(self_inner, path):
+            raise Exception("not found")
+
+        client = aa.AdsApiClient(api_key="k", base_url="https://stub")
+        with (
+            patch.object(aa.AdsApiClient, "_post", fake_post),
+            patch.object(aa.AdsApiClient, "_get", fake_get),
+        ):
+            client.ensure_ad_group(campaign_id="camp-1")
+
+        payload = captured[0]["data"]
+        assert "bidding_config" in payload, "ad group requires bidding_config"
+        bc = payload["bidding_config"]
+        assert "billing_event_type" in bc
+        assert "max_bid_micros" in bc
+        assert bc["billing_event_type"] == "impression"
+        assert bc["max_bid_micros"] >= 1
+
+    def test_create_ad_uses_correct_creative_field_names(self):
+        """create_ad must use creative.type, creative.target_url, creative.file_id."""
+        captured: list[dict] = []
+
+        def fake_post(self_inner, path, data):
+            captured.append(data)
+            return {"id": "ad-1"}
+
+        client = aa.AdsApiClient(api_key="k", base_url="https://stub")
+        with patch.object(aa.AdsApiClient, "_post", fake_post):
+            client.create_ad(
+                ad_group_id="g",
+                title="Visit Tokyo",
+                body="Amazing city.",
+                landing_url="https://example.com/tokyo",
+                file_id="file-xyz",
+            )
+
+        payload = captured[0]
+        creative = payload.get("creative", {})
+
+        # Correct field names
+        assert creative.get("type") == "chat_card", "creative.type must be chat_card (not top-level format)"
+        assert creative.get("target_url") == "https://example.com/tokyo", (
+            "landing URL must be creative.target_url (not landing_url)"
+        )
+        assert creative.get("file_id") == "file-xyz", (
+            "image must be creative.file_id (not image_file_id)"
+        )
+
+        # Old wrong field names must not appear
+        assert "format" not in payload, "format is not a valid top-level field"
+        assert "landing_url" not in creative, "landing_url is not a valid creative field; use target_url"
+        assert "image_file_id" not in creative, "image_file_id is not valid; use file_id"
+
+        # Ad name is required by the API
+        assert "name" in payload, "ads require a name field"
+        assert len(payload["name"]) >= 3
+
+    def test_image_upload_hits_upload_endpoint_and_reads_file_id(self, isolated, tmp_path):
+        """Image upload must POST to /upload and read response.file_id (not /files or id)."""
+        fake_jpg = tmp_path / "share_bg.jpg"
+        fake_jpg.write_bytes(b"\xff\xd8\xff" + b"\x00" * 10)
+
+        upload_calls: list[dict] = []
+
+        def fake_multipart(self_inner, path, *, files, data):
+            upload_calls.append({"path": path})
+            return {"file_id": "file-correct"}
+
+        client = aa.AdsApiClient(api_key="k", base_url="https://stub")
+        with (
+            patch.object(aa.AdsApiClient, "_post_multipart", fake_multipart),
+            patch.object(aa, "_BRAND_IMAGE_PATH", fake_jpg),
+        ):
+            fid = client.ensure_brand_image()
+
+        assert fid == "file-correct"
+        assert upload_calls[0]["path"] == "/upload", (
+            "image upload must use /upload, not /files"
+        )
+
+
+# ---------------------------------------------------------------------------
 # ensure_campaign / ensure_ad_group — create-once and reuse logic
 # ---------------------------------------------------------------------------
 
@@ -626,11 +754,12 @@ class TestBrandImageUpload:
         fake_jpg = tmp_path / "share_bg.jpg"
         fake_jpg.write_bytes(b"\xff\xd8\xff" + b"\x00" * 10)
 
-        upload_calls: list[int] = []
+        upload_calls: list[dict] = []
 
         def fake_multipart(self_inner, path, *, files, data):
-            upload_calls.append(1)
-            return {"id": "file-abc"}
+            upload_calls.append({"path": path, "files": list(files.keys()), "data": data})
+            # API returns {"file_id": "..."} (not "id")
+            return {"file_id": "file-abc"}
 
         client = aa.AdsApiClient(api_key="k", base_url="https://stub")
         with (
@@ -641,6 +770,8 @@ class TestBrandImageUpload:
 
         assert fid == "file-abc"
         assert len(upload_calls) == 1
+        # Upload must hit /upload, not /files
+        assert upload_calls[0]["path"] == "/upload"
 
         with isolated() as conn:
             row = conn.execute(

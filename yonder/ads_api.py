@@ -4,6 +4,13 @@ Base URL: https://api.ads.openai.com/v1
 Auth:     Bearer <OPENAI_ADS_API_KEY>
 
 Guardrail: ``status`` is always ``"paused"`` — unconditional, never parameterised.
+
+Payload shapes follow the OpenAI Ads API reference (2025):
+  POST /campaigns        → budget.lifetime_spend_limit_micros (min 1 000 000)
+  POST /ad_groups        → bidding_config.billing_event_type + max_bid_micros
+  POST /ads              → name (required), creative.type, creative.target_url,
+                           creative.file_id
+  POST /upload           → multipart file; response key is ``file_id``
 """
 
 from __future__ import annotations
@@ -22,8 +29,10 @@ _ADS_BASE = "https://api.ads.openai.com/v1"
 _CAMPAIGN_NAME = "Yonder Destinations"
 _AD_GROUP_NAME = "Yonder Destination Ads"
 _BRAND_IMAGE_PATH = Path(__file__).parent / "static" / "share_bg.jpg"
-# Conservative default: 1 USD in micros
+# Minimum allowed by the API is 1 000 000 (= $1.00 in micros)
 _DEFAULT_BUDGET_MICROS: int = 1_000_000
+# Default max bid: 60 000 micros = $0.06 CPM (impression billing)
+_DEFAULT_MAX_BID_MICROS: int = 60_000
 
 
 def _cfg_get(key: str) -> str | None:
@@ -68,6 +77,11 @@ class AdsApiClient:
     def _get(self, path: str) -> dict[str, Any]:
         with httpx.Client(timeout=30) as client:
             r = client.get(f"{self._base_url}{path}", headers=self._headers())
+            if r.is_error:
+                log.error(
+                    "ads_api: GET %s → %d  body=%s",
+                    path, r.status_code, r.text[:500],
+                )
             r.raise_for_status()
             return r.json()
 
@@ -76,6 +90,11 @@ class AdsApiClient:
             r = client.post(
                 f"{self._base_url}{path}", json=data, headers=self._headers()
             )
+            if r.is_error:
+                log.error(
+                    "ads_api: POST %s → %d  body=%s",
+                    path, r.status_code, r.text[:500],
+                )
             r.raise_for_status()
             return r.json()
 
@@ -90,13 +109,23 @@ class AdsApiClient:
                 files=files,
                 data=data,
             )
+            if r.is_error:
+                log.error(
+                    "ads_api: POST(multipart) %s → %d  body=%s",
+                    path, r.status_code, r.text[:500],
+                )
             r.raise_for_status()
             return r.json()
 
     # ── Ensure-or-create helpers ─────────────────────────────────────────────
 
     def ensure_campaign(self) -> str:
-        """Return an existing campaign ID, or create one and store it."""
+        """Return an existing campaign ID, or create one and store it.
+
+        Budget uses ``lifetime_spend_limit_micros`` as required by the API
+        (minimum 1 000 000).  The old ``budget.type`` / ``budget.amount_micros``
+        shape was rejected with 400 Unknown parameter.
+        """
         stored = _cfg_get("campaign_id")
         if stored:
             try:
@@ -111,8 +140,7 @@ class AdsApiClient:
                 "name": _CAMPAIGN_NAME,
                 "status": "paused",
                 "budget": {
-                    "type": "lifetime",
-                    "amount_micros": _DEFAULT_BUDGET_MICROS,
+                    "lifetime_spend_limit_micros": _DEFAULT_BUDGET_MICROS,
                 },
             },
         )
@@ -122,7 +150,11 @@ class AdsApiClient:
         return cid
 
     def ensure_ad_group(self, *, campaign_id: str) -> str:
-        """Return an existing ad group ID, or create one and store it."""
+        """Return an existing ad group ID, or create one and store it.
+
+        ``bidding_config`` is required by the API (billing_event_type +
+        max_bid_micros).  Impression billing at a $0.06 CPM default.
+        """
         stored = _cfg_get("ad_group_id")
         if stored:
             try:
@@ -137,6 +169,10 @@ class AdsApiClient:
                 "campaign_id": campaign_id,
                 "name": _AD_GROUP_NAME,
                 "status": "paused",
+                "bidding_config": {
+                    "billing_event_type": "impression",
+                    "max_bid_micros": _DEFAULT_MAX_BID_MICROS,
+                },
             },
         )
         gid = str(resp["id"])
@@ -145,18 +181,22 @@ class AdsApiClient:
         return gid
 
     def ensure_brand_image(self) -> str:
-        """Upload share_bg.jpg once and reuse the file_id on all subsequent calls."""
+        """Upload share_bg.jpg once and reuse the file_id on all subsequent calls.
+
+        The upload endpoint is ``POST /upload`` (not ``/files``).  The response
+        key is ``file_id`` (not ``id``).
+        """
         stored = _cfg_get("brand_image_file_id")
         if stored:
             return stored
 
         img_bytes = _BRAND_IMAGE_PATH.read_bytes()
         resp = self._post_multipart(
-            "/files",
+            "/upload",
             files={"file": ("share_bg.jpg", img_bytes, "image/jpeg")},
-            data={"purpose": "ad_creative"},
+            data={},
         )
-        fid = str(resp["id"])
+        fid = str(resp["file_id"])
         _cfg_set("brand_image_file_id", fid)
         log.info("ads_api: uploaded brand image, file_id=%s", fid)
         return fid
@@ -174,6 +214,12 @@ class AdsApiClient:
 
         Status is **always** ``"paused"`` — this guardrail is unconditional and
         can never be overridden by the caller.
+
+        Field mapping (API schema):
+          - ``creative.type``       = "chat_card"  (not top-level ``format``)
+          - ``creative.target_url`` = landing URL  (not ``landing_url``)
+          - ``creative.file_id``    = image file   (not ``image_file_id``)
+          - ``name``                = required ad name (not shown to end users)
         """
         # Enforce creative character limits
         title = title[:50]
@@ -185,14 +231,14 @@ class AdsApiClient:
             "/ads",
             {
                 "ad_group_id": ad_group_id,
-                "format": "chat_card",
+                "name": title,  # required; not shown to end users
                 "status": "paused",  # unconditional — never "active"
                 "creative": {
+                    "type": "chat_card",
                     "title": title,
                     "body": body,
-                    "call_to_action": "Book now",
-                    "landing_url": landing_url,
-                    "image_file_id": file_id,
+                    "target_url": landing_url,
+                    "file_id": file_id,
                 },
             },
         )
