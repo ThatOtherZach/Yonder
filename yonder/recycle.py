@@ -63,7 +63,7 @@ def _score(
     if tokens:
         score += (len(tokens & words) / max(1, len(tokens))) * 4.0
     if vibe and (s.vibe or "").strip().lower() == vibe:
-        score += 2.5
+        score += 1.5
     if origin and (s.origin or "").upper() == origin:
         score += 2.0
     dep = _first_depart(s)
@@ -281,8 +281,9 @@ def find_recycled_escape(
         dep = _first_depart(s)
         if dep is not None and dep < today:
             continue
-        if origin_u and (s.origin or "").upper() != origin_u:
-            continue
+        # Origin mismatch is a scoring signal (no +2.0 bonus), not a hard
+        # filter — the recycled card hides the fare anyway, so a strong
+        # prompt/vibe match from another origin is still worth showing.
         sc = _score(s, tokens=tokens, vibe=vibe_l, origin=origin_u, depart=depart_d)
         if sc >= min_score:
             scored.append((sc, s))
@@ -382,8 +383,8 @@ def find_recycled_quest(
                 continue
         except Exception:
             pass
-        if origin_u and (s.origin or "").upper() != origin_u:
-            continue
+        # Origin mismatch only forfeits the origin score bonus — not a hard
+        # filter, since quest legs are re-anchored to the requested origin.
         sc = _score(s, tokens=tokens, vibe=vibe_l, origin=origin_u, depart=depart_d)
         if sc >= min_score:
             scored.append((sc, s))

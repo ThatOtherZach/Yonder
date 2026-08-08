@@ -2672,14 +2672,22 @@ async def quest_plan_api(request: Request):
 
     quest_ideas = None
     _last_err: str | None = None
-    try:
-        quest_ideas = await _run_quest()
-    except (asyncio.TimeoutError, asyncio.CancelledError, httpx.TimeoutException):
-        _last_err = "timeout"
-    except httpx.HTTPError as _exc:  # network/protocol errors: str() often empty
-        _last_err = repr(_exc)[:200]
-    except Exception as _exc:  # noqa: BLE001
-        _last_err = (str(_exc) or repr(_exc))[:200]
+    # One automatic retry on timeout — the first attempt occasionally hits a
+    # slow upstream; a second try succeeds often enough to be worth 80 s more.
+    for _attempt in range(2):
+        _last_err = None
+        try:
+            quest_ideas = await _run_quest()
+            break
+        except (asyncio.TimeoutError, asyncio.CancelledError, httpx.TimeoutException):
+            _last_err = "timeout"
+            continue  # retry once on timeout only
+        except httpx.HTTPError as _exc:  # network/protocol errors: str() often empty
+            _last_err = repr(_exc)[:200]
+            break
+        except Exception as _exc:  # noqa: BLE001
+            _last_err = (str(_exc) or repr(_exc))[:200]
+            break
 
     if _last_err == "timeout":
         error_text = "The AI took too long — try again."
