@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -19,6 +20,17 @@ from psycopg2.pool import ThreadedConnectionPool
 
 _pool: ThreadedConnectionPool | None = None
 _pool_lock = threading.Lock()
+
+# Per-connection last-used timestamps.
+# Keyed by the raw connection *object* (not id()), so identity is preserved and
+# Python cannot mistake a new connection for an old one even if memory addresses
+# are reused.  Entries are removed explicitly when a connection is discarded so
+# the dict does not grow without bound.
+_conn_last_used: dict[Any, float] = {}
+_conn_last_used_lock = threading.Lock()
+
+# Only ping a connection with SELECT 1 if it has been idle longer than this.
+_IDLE_PING_THRESHOLD: float = 30.0  # seconds
 
 # Errors that indicate the connection was dropped (idle SSL close, server
 # restart, network hiccup).  These trigger a discard-and-replace cycle.
@@ -453,13 +465,41 @@ def get_conn() -> Iterator[Conn]:
     raw = pool.getconn()
     _returned = False
 
-    # Pre-validate: replace once if the connection was dropped while idle.
-    if not _is_conn_alive(raw):
+    # Pre-validate: only ping with SELECT 1 when the connection has been idle
+    # longer than _IDLE_PING_THRESHOLD.  Busy/recently-used connections skip
+    # the round-trip entirely, cutting per-request overhead under load.
+    #
+    # The dict is keyed by the raw connection *object* (not id()), so a new
+    # connection that happens to reuse the same memory address cannot inherit
+    # a stale timestamp from a discarded predecessor.
+    now = time.monotonic()
+    with _conn_last_used_lock:
+        last_used = _conn_last_used.get(raw, 0.0)
+    idle_seconds = now - last_used
+
+    # Two-tier health guard:
+    # 1. `closed` is a free, synchronous flag that psycopg2 sets when a
+    #    connection has been explicitly closed or already errored out.  Check it
+    #    unconditionally — it costs no network round-trip.
+    # 2. For connections that appear open but may have been silently dropped by
+    #    the server (idle SSL close), run a SELECT 1 ping — but only when the
+    #    connection has been idle longer than _IDLE_PING_THRESHOLD.  Busy /
+    #    recently-returned connections skip this round-trip entirely.
+    explicitly_closed = bool(getattr(raw, "closed", 1))
+    if explicitly_closed or (
+        idle_seconds > _IDLE_PING_THRESHOLD and not _is_conn_alive(raw)
+    ):
+        # Discard the stale connection and remove its tracking entry so the
+        # dict does not hold a reference that prevents GC.
+        with _conn_last_used_lock:
+            _conn_last_used.pop(raw, None)
         try:
             pool.putconn(raw, close=True)
         except Exception:
             pass
         raw = pool.getconn()
+        # The replacement has no entry in _conn_last_used (last_used=0), so if
+        # it sits idle longer than the threshold it will be pinged then.
 
     try:
         yield Conn(raw)
@@ -468,6 +508,8 @@ def get_conn() -> Iterator[Conn]:
         # Mid-request connection drop: discard the broken connection so it is
         # not handed to the next caller; re-raise so the request fails loudly.
         _returned = True
+        with _conn_last_used_lock:
+            _conn_last_used.pop(raw, None)
         try:
             raw.rollback()
         except Exception:
@@ -485,6 +527,8 @@ def get_conn() -> Iterator[Conn]:
         raise
     finally:
         if not _returned:
+            with _conn_last_used_lock:
+                _conn_last_used[raw] = time.monotonic()
             pool.putconn(raw)
 
 

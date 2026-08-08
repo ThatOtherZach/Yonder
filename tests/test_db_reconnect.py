@@ -13,6 +13,7 @@ managed Postgres closes an idle SSL connection — and asserts that:
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch, call
@@ -279,3 +280,163 @@ class TestGetConnReconnect:
         finally:
             raw.close()
             _drop_schema(db_url, schema)
+
+    def test_ping_skipped_for_recently_used_connection(self, db_url, monkeypatch):
+        """Connection returned to pool within threshold is not pinged on recheckout."""
+        schema = _make_schema(db_url)
+        try:
+            raw = psycopg2.connect(db_url)
+            with raw.cursor() as c:
+                c.execute(f'SET search_path TO "{schema}"')
+
+            class FakePool:
+                def getconn(self):
+                    return raw
+
+                def putconn(self, conn, close: bool = False):
+                    pass  # don't actually return to pool; keep raw reusable
+
+            monkeypatch.setattr(db_mod, "_ensure_pool", lambda: FakePool())
+
+            ping_calls: list[object] = []
+            original_is_conn_alive = db_mod._is_conn_alive
+
+            def tracking_is_conn_alive(r: object) -> bool:
+                ping_calls.append(r)
+                return original_is_conn_alive(r)
+
+            monkeypatch.setattr(db_mod, "_is_conn_alive", tracking_is_conn_alive)
+
+            # First checkout/return: stamps last_used on the *object* key.
+            with db_mod.get_conn() as conn:
+                conn.execute("SELECT 1")
+            # The first use may or may not ping (raw has no prior entry → idle=∞).
+            # Clear the ping log; only the second checkout matters.
+            ping_calls.clear()
+
+            # Second checkout: raw was just returned (<< 30 s ago) → skip ping.
+            with db_mod.get_conn() as conn:
+                cur = conn.execute("SELECT 1 AS v")
+                assert cur.fetchone()["v"] == 1
+
+            assert ping_calls == [], (
+                "_is_conn_alive must NOT be called for a connection returned "
+                "within the idle threshold"
+            )
+        finally:
+            raw.close()
+            _drop_schema(db_url, schema)
+            with db_mod._conn_last_used_lock:
+                db_mod._conn_last_used.pop(raw, None)
+
+    def test_discard_removes_tracking_entry(self, db_url, monkeypatch):
+        """When a connection is discarded (close=True), its tracking entry is removed."""
+        schema = _make_schema(db_url)
+        try:
+            stale = psycopg2.connect(db_url)
+            stale.close()  # make it look dropped
+
+            fresh = psycopg2.connect(db_url)
+            with fresh.cursor() as c:
+                c.execute(f'SET search_path TO "{schema}"')
+
+            getconn_calls = iter([stale, fresh])
+
+            class FakePool:
+                def getconn(self):
+                    return next(getconn_calls)
+
+                def putconn(self, conn, close: bool = False):
+                    if close:
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+
+            monkeypatch.setattr(db_mod, "_ensure_pool", lambda: FakePool())
+
+            # Seed an entry for stale so its idle time appears recent;
+            # that lets us confirm the discard path explicitly removes it.
+            with db_mod._conn_last_used_lock:
+                db_mod._conn_last_used[stale] = time.monotonic()
+
+            # get_conn will still detect stale is dead (closed=True → _is_conn_alive
+            # returns False regardless of idle time), discard it, and use fresh.
+            with db_mod.get_conn() as conn:
+                cur = conn.execute("SELECT 42 AS answer")
+                assert cur.fetchone()["answer"] == 42
+
+            with db_mod._conn_last_used_lock:
+                assert stale not in db_mod._conn_last_used, (
+                    "discarded connection must be removed from _conn_last_used"
+                )
+        finally:
+            fresh.close()
+            _drop_schema(db_url, schema)
+            with db_mod._conn_last_used_lock:
+                db_mod._conn_last_used.pop(stale, None)
+                db_mod._conn_last_used.pop(fresh, None)
+
+    def test_new_connection_not_confused_with_discarded_predecessor(
+        self, db_url, monkeypatch
+    ):
+        """A replacement connection must not inherit a recent timestamp from the
+        discarded connection it replaced (object-key safety check).
+
+        With integer-id keys, if Python reuses a memory address the new
+        connection could silently skip its first health-check.  With
+        object-identity keys that is structurally impossible: the old entry is
+        removed on discard, and the new object is a distinct key.
+        """
+        schema = _make_schema(db_url)
+        try:
+            # first — will be discarded because closed=1.
+            first = psycopg2.connect(db_url)
+            first.close()
+
+            second = psycopg2.connect(db_url)
+            with second.cursor() as c:
+                c.execute(f'SET search_path TO "{schema}"')
+
+            getconn_calls = iter([first, second])
+
+            class FakePool:
+                def getconn(self):
+                    return next(getconn_calls)
+
+                def putconn(self, conn, close: bool = False):
+                    if close:
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+
+            monkeypatch.setattr(db_mod, "_ensure_pool", lambda: FakePool())
+
+            # Seed a recent timestamp for first so that — if the code used
+            # id() keys — the replacement might incorrectly inherit the skip.
+            with db_mod._conn_last_used_lock:
+                db_mod._conn_last_used[first] = time.monotonic()
+
+            with db_mod.get_conn() as conn:
+                cur = conn.execute("SELECT 99 AS n")
+                assert cur.fetchone()["n"] == 99
+
+            with db_mod._conn_last_used_lock:
+                # first's entry must be removed (discarded).
+                assert first not in db_mod._conn_last_used, (
+                    "discarded connection must be removed from _conn_last_used"
+                )
+                # second must NOT have inherited first's timestamp; it gets its
+                # own fresh entry stamped when returned to the pool.
+                # The key point: second is a distinct object with its own entry.
+                assert second not in db_mod._conn_last_used or (
+                    db_mod._conn_last_used.get(second, 0.0)
+                    != db_mod._conn_last_used.get(first, -1.0)
+                ), "replacement must not inherit predecessor's timestamp"
+        finally:
+            second.close()
+            _drop_schema(db_url, schema)
+            with db_mod._conn_last_used_lock:
+                db_mod._conn_last_used.pop(first, None)
+                db_mod._conn_last_used.pop(second, None)
