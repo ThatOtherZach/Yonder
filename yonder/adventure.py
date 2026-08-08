@@ -2427,6 +2427,7 @@ async def plan_quest(
     visited: list[str] | None = None,
     raw_ideas: list[dict] | None = None,
     anchor_legs: list[dict] | None = None,
+    exclude_dests: list[str] | None = None,
 ) -> list[QuestIdea]:
     """Propose 1–3 open-jaw Quest itineraries and price both legs per idea.
 
@@ -2466,10 +2467,28 @@ async def plan_quest(
                 avoid=avoid or [],
                 visited=visited or [],
                 anchor_legs=anchor_legs,
+                exclude_iatas=exclude_dests,
             )
 
     if not raw_ideas:
         return []
+
+    # ── Destination separation: prefer ideas that differ from excluded dests ─
+    # Escape's destination is passed in exclude_dests so Quest answers with a
+    # different place on the same vibe. If Grok still returned the excluded
+    # destination, float differing ideas first (soft preference, never empty).
+    _excl_set = {str(x).upper() for x in (exclude_dests or []) if x}
+    if _excl_set:
+        def _touches_excluded(row: dict) -> bool:
+            return (
+                str(row.get("entry_iata") or "").upper() in _excl_set
+                or str(row.get("exit_iata") or "").upper() in _excl_set
+            )
+
+        _clean = [r for r in raw_ideas if not _touches_excluded(r)]
+        _dupes = [r for r in raw_ideas if _touches_excluded(r)]
+        if _clean:
+            raw_ideas = _clean + _dupes
 
     # ── 2. Build a minimal AdventureRequest for _price_leg ──────────────────
     req = AdventureRequest(

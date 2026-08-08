@@ -1493,8 +1493,8 @@
         <button type="button" class="active" data-filter="all" role="tab" aria-selected="true">≡ All</button>
         <button type="button" data-filter="escape" role="tab" aria-selected="false"{% if not has_escape %} disabled{% endif %}>➜ Escape</button>
         <button type="button" data-filter="vibe-base" role="tab" aria-selected="false"{% if not (vibe_base is defined and vibe_base) %} disabled{% endif %}>{% if vibe_base is defined and vibe_base %}{{ vibe_base.vibe_emoji }} {{ vibe_base.vibe_label }}{% else %}✦ Vibe{% endif %}</button>
-        <button type="button" data-filter="detour" role="tab" aria-selected="false"{% if not has_detour %} disabled{% endif %}>↝ Detour</button>
         <button type="button" data-filter="quest" role="tab" aria-selected="false" id="quest-filter-tab">⚑ Quest</button>
+        <button type="button" data-filter="detour" role="tab" aria-selected="false"{% if not has_detour %} disabled{% endif %}>↝ Detour</button>
         <button type="button" data-filter="clear" role="tab" aria-selected="false" title="Clear results and return to compose">Clear</button>
       </div>
       <div class="results-criteria" id="results-criteria" aria-label="Re-run criteria">
@@ -1628,6 +1628,57 @@
     {% endif %}
     </div>
 
+    {# ——— Quest results: eager on every search, on-demand retry ——— #}
+    <div class="results-panel" id="quest-results" data-result-kind="quest">
+    {% if has_escape or has_detour or (quest_job_id is defined and quest_job_id) %}
+      <div class="card" id="quest-results-card">
+        <h2>Quest</h2>
+        <p class="sub" id="quest-card-sub">Open-jaw overland adventures · fly into one city, travel overland, fly home from another</p>
+        <div class="quest-criteria-strip" id="quest-criteria-strip">
+          <span class="quest-vibe-badge" id="quest-vibe-badge">
+            <span class="quest-vibe-emoji" id="quest-vibe-emoji"></span>
+            <span class="quest-vibe-label" id="quest-vibe-label"></span>
+            <button type="button" class="quest-vibe-shuffle" id="quest-vibe-shuffle" title="Shuffle vibe" aria-label="Shuffle vibe">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 17 C6 17 9 7 22 7"/>
+                <polyline points="18.5,4 22,7 18.5,10"/>
+                <path d="M2 7 C6 7 9 17 22 17" stroke-dasharray="2.5 1.8"/>
+                <polyline points="18.5,14 22,17 18.5,20"/>
+              </svg>
+            </button>
+          </span>
+          <label class="origin-field quest-origin-label" title="Departure airport (3-letter IATA)">
+            <span>From</span>
+            <input id="quest-origin" type="text" maxlength="3" placeholder="YVR" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="date-field quest-date-label" title="Departure date">
+            <span>Depart</span>
+            <input id="quest-depart" type="date" />
+          </label>
+          <label class="quest-days-label" title="Trip length in days">
+            <span>Days</span>
+            <select id="quest-days" class="quest-days-select">
+              <option value="7">7</option>
+              <option value="10" selected>10</option>
+              <option value="14">14</option>
+              <option value="21">21</option>
+            </select>
+          </label>
+        </div>
+        <div id="quest-card-body">
+          {% if quest_job_id is defined and quest_job_id %}
+          <p class="muted quest-progress" id="quest-progress" role="status" aria-live="polite"
+            data-quest-job="{{ quest_job_id }}">🗺️ Planning your Quest — a different destination on the same vibe…</p>
+          {% else %}
+          <button type="button" class="btn-plan-quest" id="btn-plan-quest">
+            🗺️ Plan a Quest
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+    </div>
+
     {# ——— Detour results (on-demand) ——— #}
     {# Pre-populate destination: prefer escape destination; fall back to form context #}
     {% set _det_btn_dest = '' %}
@@ -1706,51 +1757,6 @@
     {% endif %}
     </div>
 
-    {# ——— Quest results: on-demand open-jaw adventures ——— #}
-    <div class="results-panel" id="quest-results" data-result-kind="quest">
-    {% if has_escape or has_detour %}
-      <div class="card" id="quest-results-card">
-        <h2>Quest</h2>
-        <p class="sub" id="quest-card-sub">Open-jaw overland adventures · fly into one city, travel overland, fly home from another</p>
-        <div class="quest-criteria-strip" id="quest-criteria-strip">
-          <span class="quest-vibe-badge" id="quest-vibe-badge">
-            <span class="quest-vibe-emoji" id="quest-vibe-emoji"></span>
-            <span class="quest-vibe-label" id="quest-vibe-label"></span>
-            <button type="button" class="quest-vibe-shuffle" id="quest-vibe-shuffle" title="Shuffle vibe" aria-label="Shuffle vibe">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M2 17 C6 17 9 7 22 7"/>
-                <polyline points="18.5,4 22,7 18.5,10"/>
-                <path d="M2 7 C6 7 9 17 22 17" stroke-dasharray="2.5 1.8"/>
-                <polyline points="18.5,14 22,17 18.5,20"/>
-              </svg>
-            </button>
-          </span>
-          <label class="origin-field quest-origin-label" title="Departure airport (3-letter IATA)">
-            <span>From</span>
-            <input id="quest-origin" type="text" maxlength="3" placeholder="YVR" autocomplete="off" spellcheck="false" />
-          </label>
-          <label class="date-field quest-date-label" title="Departure date">
-            <span>Depart</span>
-            <input id="quest-depart" type="date" />
-          </label>
-          <label class="quest-days-label" title="Trip length in days">
-            <span>Days</span>
-            <select id="quest-days" class="quest-days-select">
-              <option value="7">7</option>
-              <option value="10" selected>10</option>
-              <option value="14">14</option>
-              <option value="21">21</option>
-            </select>
-          </label>
-        </div>
-        <div id="quest-card-body">
-          <button type="button" class="btn-plan-quest" id="btn-plan-quest">
-            🗺️ Plan a Quest
-          </button>
-        </div>
-      </div>
-    {% endif %}
-    </div>
   </main>
   <footer class="site-foot container">
     Vibes aren't tickets, always check live fares and providers for current rates. Culture notes are short takes, not gospel. Use the thumbs up and thumbs down to prefer or hide them as you see fit. Some links provided earn a commission, Yonder.City does not sell or provide proof of purchase &middot; Designed by <a href="https://saymservices.com" target="_blank" rel="noopener" style="color:#e8590c;text-decoration:none">Saym Services Inc.</a> of Vancouver, Canada
@@ -3111,6 +3117,8 @@
         if (!hasResults) return;
         // Don't overwrite an already-injected quest (e.g. from a live Plan call)
         if (questResults.querySelector(".boarding-pass, .quest-idea-card")) return;
+        // Don't overwrite an in-flight eager Quest job — the poller owns the panel
+        if (questResults.querySelector("[data-quest-job]")) return;
 
         var prompt = (ta && ta.value || "").trim();
         if (!prompt) {
@@ -3352,6 +3360,75 @@
         });
       }
 
+      // ── Eager Quest: poll the background job started by the main search ──
+      // The server renders a progress placeholder with data-quest-job; we poll
+      // /api/quest/status/{id} until done/error and swap in the partial. A hung
+      // job degrades to a friendly retry card — never a stuck spinner.
+      function bootQuestJobPoll() {
+        var progressEl = document.querySelector("[data-quest-job]");
+        if (!progressEl) return;
+        var jobId = progressEl.getAttribute("data-quest-job");
+        if (!jobId) return;
+        var started = Date.now();
+        var MAX_MS = 120000; // hard client budget — beyond the server's 80s guard
+
+        function _retryCard(msg) {
+          var questResults = document.getElementById("quest-results");
+          if (!questResults) return;
+          questResults.innerHTML = '<div class="card" id="quest-results-card"><h2>Quest</h2><p class="muted quest-error" role="alert">' + msg + '</p><div id="quest-card-body"><button type="button" class="btn-plan-quest" id="btn-plan-quest">Try again</button></div></div>';
+          bootPlanQuestButton();
+        }
+
+        function tick() {
+          var questResults = document.getElementById("quest-results");
+          // Panel gone (results cleared) or placeholder replaced — stop polling
+          if (!questResults || !questResults.querySelector("[data-quest-job]")) return;
+          fetch("/api/quest/status/" + encodeURIComponent(jobId))
+            .then(function (r) { return r.json(); })
+            .then(function (json) {
+              var qr = document.getElementById("quest-results");
+              if (!qr || !qr.querySelector("[data-quest-job]")) return;
+              if (json.status === "pending") {
+                if (Date.now() - started > MAX_MS) {
+                  _retryCard("The AI took too long \u2014 try again.");
+                  return;
+                }
+                setTimeout(tick, 2500);
+                return;
+              }
+              if (json.html) {
+                qr.innerHTML = json.html;
+                if (json.status === "done" && json.ok) {
+                  // Persist like a manual Plan so refresh restores without a new AI call
+                  var prompt = (ta && ta.value || "").trim();
+                  if (!prompt) {
+                    var criEl = document.querySelector("[data-search-prompt]");
+                    if (criEl) prompt = criEl.dataset.searchPrompt || "";
+                  }
+                  var originEl = document.getElementById("explore-origin");
+                  var origin = originEl ? (originEl.value || "").trim().toUpperCase() : "";
+                  if (prompt) _saveQuestToStorage(prompt, origin, json.html);
+                  _afterQuestInject(qr);
+                } else {
+                  // Empty/error partials carry their own retry button when relevant
+                  bootPlanQuestButton();
+                }
+              } else {
+                _retryCard(json.error || "Something went wrong \u2014 try again.");
+              }
+            })
+            .catch(function () {
+              if (Date.now() - started > MAX_MS) {
+                _retryCard("Network error \u2014 check connection and try again.");
+                return;
+              }
+              setTimeout(tick, 4000);
+            });
+        }
+
+        setTimeout(tick, 1200);
+      }
+
       // ── Detour on-demand button ──────────────────────────────────────────────
       function bootDetourCriteriaStrip() {
         var vibeEmojiEl = document.getElementById("detour-vibe-emoji");
@@ -3550,6 +3627,7 @@
         bootPlanQuestButton();
         bootQuestCriteriaStrip();
         hydrateQuestFromStorage();
+        bootQuestJobPoll();
         // Pre-fill visible origin field from hidden explore-origin (set by GPS/settings)
         (function () {
           var hid = document.getElementById("explore-origin");

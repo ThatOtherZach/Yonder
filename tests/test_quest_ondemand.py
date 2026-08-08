@@ -224,17 +224,17 @@ class TestQuestEndpointTimeout:
 
 
 class TestMainSearchNoQuestAICall:
-    """Confirm the main /explore search never calls plan_quest."""
+    """Eager Quest never blocks /explore and skips the AI without a key."""
 
-    def test_explore_does_not_call_plan_quest(self, client, monkeypatch):
-        """A normal search must not invoke plan_quest regardless of force_mode."""
+    def test_explore_without_ai_key_never_calls_plan_quest(self, client, monkeypatch):
+        """No AI key → the eager Quest job degrades without invoking plan_quest."""
         import yonder.grok as grok_module
 
         quest_calls: list = []
 
         async def _fail_quest(*a, **kw):
             quest_calls.append(a)
-            raise AssertionError("plan_quest must not be called from /explore")
+            raise AssertionError("plan_quest must not be called without an AI key")
 
         settings = Settings(testing=True, xai_api_key="")
         monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
@@ -243,8 +243,7 @@ class TestMainSearchNoQuestAICall:
         monkeypatch.setattr(web_module, "save_last", lambda *a, **kw: None, raising=False)
         monkeypatch.setattr(web_module, "load_last", lambda *a, **kw: None, raising=False)
 
-        # No AI key → no AI calls at all; should still show escape/detour results
-        # We don't need results to prove quest wasn't called — just status 200.
+        # No AI key → no AI calls at all; should still return the page.
         resp = client.post(
             "/explore",
             data={
@@ -254,17 +253,23 @@ class TestMainSearchNoQuestAICall:
                 "vibe": "adventure",
             },
         )
-        # Should not have raised (plan_quest never called)
-        assert not quest_calls, "plan_quest was called from /explore — should be on-demand only"
+        # Should not have raised (plan_quest never called for keyless searches)
+        assert not quest_calls, "plan_quest was called from /explore without an AI key"
 
-    def test_explore_page_shows_plan_a_quest_button(self, client, monkeypatch):
-        """After a search that produces escape results, the page has a Plan a Quest button."""
+    def test_explore_page_kicks_off_eager_quest(self, client, monkeypatch):
+        """A search with escape results renders the Quest progress placeholder (non-blocking)."""
         import yonder.grok as grok_module
         from datetime import timedelta
         from yonder.grok import ParsedTrip
 
         settings = Settings(testing=True, xai_api_key="test-key")
         monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
+
+        # Keep the background eager Quest task away from real AI calls
+        async def _stub_quest(*a, **kw):
+            return []
+
+        monkeypatch.setattr(web_module, "plan_quest", _stub_quest)
         monkeypatch.setattr(web_module, "detect_trip_gaps", lambda *a, **kw: [])
         monkeypatch.setattr(web_module, "save_last", lambda *a, **kw: None, raising=False)
         monkeypatch.setattr(web_module, "load_last", lambda *a, **kw: None, raising=False)
@@ -311,9 +316,9 @@ class TestMainSearchNoQuestAICall:
         assert resp.status_code == 200
         # The Quest results panel should be present
         assert "quest-results" in resp.text
-        # The Plan a Quest button (not old auto-run cards)
-        assert "btn-plan-quest" in resp.text or "Plan a Quest" in resp.text
-        # No quest boarding passes — quest hasn't been planned yet
+        # Eager Quest: a background job placeholder polls for results
+        assert "data-quest-job" in resp.text
+        # No quest boarding passes — the initial render never blocks on Quest
         assert "is-quest" not in resp.text
 
 

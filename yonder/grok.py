@@ -628,11 +628,14 @@ class GrokClient:
         avoid: list[str] | None = None,
         visited: list[str] | None = None,
         anchor_legs: list[dict] | None = None,
+        exclude_iatas: list[str] | set[str] | None = None,
     ) -> list[dict]:
         """Propose 1–3 open-jaw overland Quest itineraries.
 
         Entry and exit in different countries, neither in avoid_countries.
         Narrative names specific real transport links.
+        exclude_iatas: destinations already covered elsewhere in the search
+        (e.g. Escape's pick) — steered away from so Quest answers differently.
         Returns list of raw dicts matching QuestIdea schema.
         """
         from datetime import timedelta
@@ -642,6 +645,7 @@ class GrokClient:
         outbound_date = depart_date + timedelta(days=days)
         avoid_codes = [a.upper() for a in (avoid or []) if a]
         avoid_set = {a.upper() for a in avoid_codes}
+        excl_codes = sorted({str(x).upper() for x in (exclude_iatas or []) if x})
 
         system = (
             "You are an open-jaw adventure trip planner for a vibe-first travel app. "
@@ -674,7 +678,9 @@ class GrokClient:
                 "outbound_date": outbound_date.isoformat(),
                 "window_days": days,
                 "avoid_countries": avoid_codes,
+                **({"exclude_destination_iatas": excl_codes} if excl_codes else {}),
                 "count": "1 to 3 ideas (prefer 2-3 diverse options)",
+                **({"exclude_destination_iatas": excl_codes} if excl_codes else {}),
                 **({"saved_anchor_legs": _anchor_rows} if _anchor_rows else {}),
             },
             default=str,

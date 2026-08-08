@@ -2463,6 +2463,54 @@ async def explore_run(request: Request) -> HTMLResponse:
         else:
             err_msg = " · ".join(notes) if notes else None
 
+        # ── Eager Quest: every main search kicks off Quest planning in the ──
+        # background. The page returns fast with Escape; the Quest panel polls
+        # /api/quest/status/{id} and fills in when ideas arrive. Escape's
+        # destination is excluded so the two products answer differently.
+        quest_job_id: str | None = None
+        if prompt and not (search_id and is_cancelled(search_id)):
+            try:
+                from yonder import quest_jobs as _qjobs
+
+                _q_excl: list[str] = []
+                _esc_tm_q = escape_override.get("trip_meta") or {}
+                _q_dest = str(
+                    _esc_tm_q.get("destination")
+                    or (escape_override.get("form") or {}).get("destination")
+                    or ""
+                ).upper()
+                if len(_q_dest) != 3 or not _q_dest.isalpha():
+                    _esc_res_q = escape_override.get("result")
+                    _q_dest = str(
+                        getattr(getattr(_esc_res_q, "query", None), "destination", "") or ""
+                    ).upper()
+                if len(_q_dest) == 3 and _q_dest.isalpha():
+                    _q_excl = [_q_dest]
+                try:
+                    _q_depart_dt = date.fromisoformat(depart)
+                except (ValueError, TypeError):
+                    _q_depart_dt = date.today() + timedelta(days=45)
+                quest_job_id = _qjobs.create_job(home_iata=home_iata, vibe=vibe)
+                asyncio.create_task(
+                    _run_eager_quest(
+                        quest_job_id,
+                        settings=settings,
+                        prompt=prompt,
+                        vibe=vibe,
+                        home_iata=home_iata,
+                        depart_dt=_q_depart_dt,
+                        currency=currency,
+                        quest_days=quest_days,
+                        mock=mock,
+                        avoid=avoid,
+                        visited=visited,
+                        anchor_legs=anchor_legs,
+                        exclude_dests=_q_excl,
+                    )
+                )
+            except Exception:  # noqa: BLE001 — eager quest must never break search
+                quest_job_id = None
+
         ctx = _compose_page_ctx(
             settings,
             session_id=sess,
@@ -2479,7 +2527,8 @@ async def explore_run(request: Request) -> HTMLResponse:
         if has_det:
             base_det = ctx.get("detour_panel") if isinstance(ctx.get("detour_panel"), dict) else {}
             ctx["detour_panel"] = {**base_det, **detour_override}
-        # Quest is on-demand — no quest_panel in the initial search response.
+        # Eager Quest fills in via polling — expose the job id to the template.
+        ctx["quest_job_id"] = quest_job_id
         if vibe_base:
             ctx["vibe_base"] = vibe_base
         if escape_direct_offer is not None:
@@ -2689,6 +2738,202 @@ async def quest_plan_api(request: Request):
         return JSONResponse({"ok": False, "error": f"Render error: {_render_exc}", "html": ""})
 
     return JSONResponse({"ok": bool(quest_ideas), "html": html})
+
+
+def _render_quest_partial_html(
+    request: Request,
+    quest_panel_dict: dict,
+    *,
+    home_iata: str,
+    vibe: str,
+    error_message: str | None = None,
+    place_books: dict | None = None,
+) -> str:
+    """Render the quest results partial — shared by the eager-quest poll path."""
+    tpl = templates.env.get_template("_quest_results_partial.html")
+    return tpl.render(
+        request=request,
+        quest_panel=quest_panel_dict,
+        home_iata_fallback=home_iata,
+        vibe_fallback=vibe,
+        error_message=error_message,
+        place_books=place_books or {},
+    )
+
+
+async def _run_eager_quest(
+    job_id: str,
+    *,
+    settings,
+    prompt: str,
+    vibe: str,
+    home_iata: str,
+    depart_dt: date,
+    currency: str,
+    quest_days: int,
+    mock: bool,
+    avoid: list,
+    visited: list,
+    anchor_legs: list,
+    exclude_dests: list[str],
+) -> None:
+    """Background Quest planning kicked off by every main search.
+
+    Flow: recycled saved-quest lookup first (no AI), then a fresh plan_quest
+    guarded by an internal 80 s timeout. Escape's destination arrives in
+    exclude_dests so Quest lands somewhere different on the same vibe.
+    Results/errors are parked in the quest_jobs store; the page polls
+    /api/quest/status/{job_id} and swaps in the rendered partial.
+    """
+    from yonder import quest_jobs as _qjobs
+
+    try:
+        quest_ideas = None
+
+        # 1. Recycled saved quests — fast path, no AI call
+        _recycle_off = (os.environ.get("YONDER_DISABLE_RECYCLE") or "").strip().lower() in ("1", "true", "yes")
+        if not settings.testing and not _recycle_off:
+            try:
+                from yonder.recycle import find_recycled_quest
+                quest_ideas = find_recycled_quest(
+                    prompt=prompt,
+                    vibe=vibe,
+                    origin=home_iata,
+                    depart=depart_dt.isoformat(),
+                    currency=currency,
+                )
+            except Exception:  # noqa: BLE001 — recycle is best-effort
+                quest_ideas = None
+
+        # 2. Fresh AI plan when nothing recycled
+        if quest_ideas is None:
+            if not settings.grok_ready():
+                _qjobs.set_done(
+                    job_id,
+                    quest_panel={
+                        "ask": prompt,
+                        "result": [],
+                        "home_iata": home_iata,
+                        "vibe": vibe,
+                        "error": "Quest needs an AI key — add one in Settings",
+                    },
+                    ok=False,
+                )
+                return
+            quest_ideas = await asyncio.wait_for(
+                plan_quest(
+                    prompt,
+                    vibe,
+                    home_iata,
+                    depart_dt,
+                    settings,
+                    quest_days=quest_days,
+                    include_mock=mock,
+                    avoid=avoid,
+                    visited=visited,
+                    anchor_legs=anchor_legs,
+                    exclude_dests=exclude_dests,
+                ),
+                timeout=80.0,
+            )
+    except (asyncio.TimeoutError, asyncio.CancelledError, httpx.TimeoutException):
+        _qjobs.set_error(job_id, "The AI took too long — try again.")
+        return
+    except httpx.HTTPError as _exc:  # network/protocol errors: str() often empty
+        _qjobs.set_error(job_id, f"Quest couldn't reach the AI planner — {repr(_exc)[:120]}")
+        return
+    except Exception as _exc:  # noqa: BLE001
+        _qjobs.set_error(
+            job_id,
+            f"Quest couldn't reach the AI planner — {(str(_exc) or repr(_exc))[:120]}",
+        )
+        return
+
+    quest_panel = {
+        "ask": prompt,
+        "result": quest_ideas,
+        "home_iata": home_iata,
+        "vibe": vibe,
+        "error": None if quest_ideas else "Quest found no ideas — try a different prompt",
+    }
+
+    place_books: dict = {}
+    if quest_ideas:
+        try:
+            from yonder.encyclopedia import briefs_for_stops
+
+            _q_stops: list[tuple[str | None, str | None, str | None]] = []
+            _q_seen: set[str] = set()
+            for _qi in quest_ideas:
+                for _iata, _city in [
+                    (getattr(_qi, "entry_iata", None), getattr(_qi, "entry_city", None)),
+                    (getattr(_qi, "exit_iata", None), getattr(_qi, "exit_city", None)),
+                ]:
+                    _code = (_iata or "").upper()
+                    if _code and _code not in _q_seen:
+                        _q_seen.add(_code)
+                        _q_stops.append((_code, None, _city))
+            # Cache-only here: the eager job runs on EVERY search, so it must
+            # not add Grok brief calls to the search budget. Missing notes are
+            # filled client-side by the brief-slot poller (/api/place-brief),
+            # and the on-demand retry path still fetches live.
+            place_books = await briefs_for_stops(
+                settings,
+                _q_stops,
+                max_n=3,
+                cache_only=True,
+                user_prompt=prompt,
+                trip_vibe=vibe,
+            )
+        except Exception:  # noqa: BLE001 — briefs are optional garnish
+            place_books = {}
+
+    _qjobs.set_done(
+        job_id,
+        quest_panel=quest_panel,
+        place_books=place_books,
+        ok=bool(quest_ideas),
+    )
+
+
+@app.get("/api/quest/status/{job_id}")
+async def quest_status_api(job_id: str, request: Request):
+    """Poll endpoint for eager Quest jobs.
+
+    Returns JSON: {status: pending|done|error, ok: bool, html: str}.
+    HTML is rendered at read time so share links get a real request.
+    An unknown/expired job returns an error card with the retry button.
+    """
+    from yonder import quest_jobs as _qjobs
+
+    job = _qjobs.get_job(job_id)
+    if job is None:
+        _err = "Quest plan expired — try again."
+        html = _render_quest_partial_html(
+            request, {}, home_iata="", vibe="adventure", error_message=_err
+        )
+        return JSONResponse({"status": "error", "ok": False, "error": _err, "html": html})
+
+    if job.get("status") == "pending":
+        return JSONResponse({"status": "pending", "ok": False})
+
+    _home = job.get("home_iata") or ""
+    _vibe = job.get("vibe") or "adventure"
+    if job.get("status") == "error":
+        _err = job.get("error_text") or "Something went wrong — try again."
+        html = _render_quest_partial_html(
+            request, {}, home_iata=_home, vibe=_vibe, error_message=_err
+        )
+        return JSONResponse({"status": "error", "ok": False, "error": _err, "html": html})
+
+    html = _render_quest_partial_html(
+        request,
+        job.get("quest_panel") or {},
+        home_iata=_home,
+        vibe=_vibe,
+        place_books=job.get("place_books") or {},
+    )
+    return JSONResponse({"status": "done", "ok": bool(job.get("ok")), "html": html})
 
 
 @app.post("/api/detour/plan")
