@@ -20,6 +20,21 @@ from psycopg2.pool import ThreadedConnectionPool
 _pool: ThreadedConnectionPool | None = None
 _pool_lock = threading.Lock()
 
+# Errors that indicate the connection was dropped (idle SSL close, server
+# restart, network hiccup).  These trigger a discard-and-replace cycle.
+_RECONNECT_ERRORS = (psycopg2.OperationalError, psycopg2.InterfaceError)
+
+# Extra kwargs forwarded to psycopg2.connect() for every new connection.
+# keepalives let the OS detect idle drops without waiting for a full query
+# timeout; connect_timeout prevents hanging health-checks during cold starts.
+_CONNECT_KWARGS: dict[str, Any] = {
+    "keepalives": 1,
+    "keepalives_idle": 60,    # start TCP probes after 60 s of silence
+    "keepalives_interval": 10, # re-probe every 10 s
+    "keepalives_count": 5,     # give up after 5 missed probes (~110 s total)
+    "connect_timeout": 10,     # bail on initial connect after 10 s
+}
+
 _DDL = """
 CREATE TABLE IF NOT EXISTS saved_itineraries (
     id TEXT PRIMARY KEY,
@@ -382,12 +397,33 @@ def _database_url() -> str:
     return url
 
 
+def _is_conn_alive(raw: Any) -> bool:
+    """Return True only if *raw* can execute a trivial round-trip query.
+
+    psycopg2's ``connection.closed`` attribute only updates *after* an
+    operation fails, so it cannot detect a server-side SSL close that happened
+    while the connection sat idle in the pool.  A lightweight ``SELECT 1``
+    forces the round-trip and surfaces that error before the caller's real
+    query runs.
+    """
+    if getattr(raw, "closed", 1):
+        return False
+    try:
+        with raw.cursor() as cur:
+            cur.execute("SELECT 1")
+        return True
+    except Exception:
+        return False
+
+
 def _ensure_pool() -> ThreadedConnectionPool:
     global _pool
     if _pool is None:
         with _pool_lock:
             if _pool is None:
-                pool = ThreadedConnectionPool(1, 10, _database_url())
+                pool = ThreadedConnectionPool(
+                    1, 10, _database_url(), **_CONNECT_KWARGS
+                )
                 raw = pool.getconn()
                 try:
                     with raw.cursor() as cur:
@@ -401,12 +437,46 @@ def _ensure_pool() -> ThreadedConnectionPool:
 
 @contextmanager
 def get_conn() -> Iterator[Conn]:
-    """Pooled connection context manager: commit on success, rollback on error."""
+    """Pooled connection context manager: commit on success, rollback on error.
+
+    Transparently survives idle SSL drops from the managed Postgres:
+
+    * Before yielding, the pooled connection is validated with a ``SELECT 1``
+      round-trip.  A stale connection is discarded (``putconn(close=True)``)
+      and replaced by a fresh one from the pool — the caller never sees the
+      dead connection.
+    * If an ``OperationalError``/``InterfaceError`` escapes anyway (e.g. the
+      server drops the connection *during* the request), the connection is
+      discarded so it is not recycled to a future caller.
+    """
     pool = _ensure_pool()
     raw = pool.getconn()
+    _returned = False
+
+    # Pre-validate: replace once if the connection was dropped while idle.
+    if not _is_conn_alive(raw):
+        try:
+            pool.putconn(raw, close=True)
+        except Exception:
+            pass
+        raw = pool.getconn()
+
     try:
         yield Conn(raw)
         raw.commit()
+    except _RECONNECT_ERRORS:
+        # Mid-request connection drop: discard the broken connection so it is
+        # not handed to the next caller; re-raise so the request fails loudly.
+        _returned = True
+        try:
+            raw.rollback()
+        except Exception:
+            pass
+        try:
+            pool.putconn(raw, close=True)
+        except Exception:
+            pass
+        raise
     except Exception:
         try:
             raw.rollback()
@@ -414,7 +484,8 @@ def get_conn() -> Iterator[Conn]:
             pass
         raise
     finally:
-        pool.putconn(raw)
+        if not _returned:
+            pool.putconn(raw)
 
 
 def init_db() -> None:
