@@ -4,6 +4,43 @@
 {% block canonical_url %}https://yonder.city/{% endblock %}
 {% block meta_description %}Search flights by vibe. Tell Yonder how you feel, pick Escape or Detour mode, and discover spontaneous trips departing soon.{% endblock %}
 {% block extra_css %}
+    /* Plan a Detour on-demand button */
+    .btn-plan-detour {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4em;
+      padding: 0.55em 1.3em;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--ink);
+      background: var(--paper);
+      border: 1.5px solid var(--vibe-now, var(--sky));
+      border-radius: var(--radius-sm, 11px);
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      margin-top: 0.35rem;
+    }
+    .btn-plan-detour:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--vibe-now, var(--sky)) 12%, var(--paper));
+      border-color: var(--vibe-now, var(--sky-bright));
+      color: var(--vibe-now, var(--sky-bright));
+    }
+    .btn-plan-detour:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .detour-error {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    /* Detour initial-card criteria strip (shares Quest strip styles) */
+    .detour-criteria-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.6rem;
+      margin-bottom: 0.85rem;
+    }
     /* Plan a Quest on-demand button */
     .btn-plan-quest {
       display: inline-flex;
@@ -1591,9 +1628,18 @@
     {% endif %}
     </div>
 
-    {# ——— Detour results ——— #}
-    <div class="results-panel" id="detour-results" data-result-kind="detour">
+    {# ——— Detour results (on-demand) ——— #}
+    {# Pre-populate destination: prefer escape destination; fall back to form context #}
+    {% set _det_btn_dest = '' %}
+    {% if escape_panel is defined and escape_panel and escape_panel.form is defined and escape_panel.form.destination %}
+      {% set _det_btn_dest = (escape_panel.form.destination or '') %}
+    {% elif dp is defined and dp and dp.form is defined and dp.form.destination %}
+      {% set _det_btn_dest = (dp.form.destination or '') %}
+    {% endif %}
+    <div class="results-panel" id="detour-results" data-result-kind="detour"
+      data-detour-dest="{{ _det_btn_dest }}">
     {% if detour_result and detour_result.itineraries %}
+      {# Server-side render (session-restored result) #}
       <div class="card" id="adv-results" data-trip-meta='{{ (detour_trip_meta or {}) | tojson }}'>
         <h2>Detour</h2>
         <p class="sub">
@@ -1627,6 +1673,35 @@
         {% else %}
           <p class="muted">Nothing priced — check keys or try again.</p>
         {% endif %}
+      </div>
+    {% elif has_escape or (intent_shape is defined and intent_shape in ('detour', 'mix')) %}
+      {# ——— Plan a Detour button card (on-demand, like Quest) ——— #}
+      <div class="card" id="detour-results-card">
+        <h2>Detour</h2>
+        <p class="sub" id="detour-card-sub">Fly in · pause somewhere vibe-matched along the route · fly on</p>
+        <div class="detour-criteria-strip" id="detour-criteria-strip">
+          <span class="quest-vibe-badge" id="detour-vibe-badge">
+            <span class="quest-vibe-emoji" id="detour-vibe-emoji"></span>
+            <span class="quest-vibe-label" id="detour-vibe-label"></span>
+          </span>
+          <label class="origin-field quest-origin-label" title="Departure airport (IATA)">
+            <span>From</span>
+            <input id="detour-origin" type="text" maxlength="3" placeholder="YVR" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="origin-field quest-origin-label" title="Destination airport (IATA)">
+            <span>To</span>
+            <input id="detour-dest-input" type="text" maxlength="3" placeholder="LHR" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="date-field quest-date-label" title="Departure date">
+            <span>Depart</span>
+            <input id="detour-depart" type="date" />
+          </label>
+        </div>
+        <div id="detour-card-body">
+          <button type="button" class="btn-plan-detour" id="btn-plan-detour">
+            ↝ Plan a Detour
+          </button>
+        </div>
       </div>
     {% endif %}
     </div>
@@ -3277,6 +3352,191 @@
         });
       }
 
+      // ── Detour on-demand button ──────────────────────────────────────────────
+      function bootDetourCriteriaStrip() {
+        var vibeEmojiEl = document.getElementById("detour-vibe-emoji");
+        var vibeLabelEl = document.getElementById("detour-vibe-label");
+        var vibeHidden  = document.getElementById("explore-vibe");
+
+        function _resolveVibe(id) {
+          var host = document.querySelector("[data-vibe-slider]");
+          var api  = host && host._vibeSlider;
+          var list = (api && api.vibes) || (window.YonderVibe && window.YonderVibe.VIBES) || [];
+          for (var i = 0; i < list.length; i++) {
+            if (list[i].id === id) return list[i];
+          }
+          return list[0] || null;
+        }
+        function _applyVibeBadge(id) {
+          var v = _resolveVibe(id);
+          if (!v) return;
+          if (vibeEmojiEl) vibeEmojiEl.textContent = v.emoji || "";
+          if (vibeLabelEl) vibeLabelEl.textContent  = v.label || "";
+        }
+        _applyVibeBadge((vibeHidden && vibeHidden.value) || "adventure");
+        document.addEventListener("yonder:vibechange", function(e) {
+          if (e.detail && e.detail.id) _applyVibeBadge(e.detail.id);
+        });
+
+        // Origin — sync with main explore origin
+        var detourOriginEl  = document.getElementById("detour-origin");
+        var exploreOriginEl = document.getElementById("explore-origin");
+        if (detourOriginEl && exploreOriginEl && exploreOriginEl.value) {
+          detourOriginEl.value = exploreOriginEl.value;
+        }
+        if (detourOriginEl) {
+          detourOriginEl.addEventListener("input", function() {
+            detourOriginEl.value = detourOriginEl.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
+          });
+        }
+
+        // Destination — pre-fill from data-detour-dest attribute on parent div
+        var detourDestEl = document.getElementById("detour-dest-input");
+        var detourResultsDiv = document.getElementById("detour-results");
+        if (detourDestEl && detourResultsDiv) {
+          var preFill = detourResultsDiv.dataset.detourDest || "";
+          if (preFill) detourDestEl.value = preFill.toUpperCase();
+        }
+        if (detourDestEl) {
+          detourDestEl.addEventListener("input", function() {
+            detourDestEl.value = detourDestEl.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
+          });
+        }
+
+        // Date — sync with main explore depart
+        var detourDepartEl  = document.getElementById("detour-depart");
+        var exploreDepartEl = document.getElementById("explore-depart");
+        if (detourDepartEl && exploreDepartEl) {
+          detourDepartEl.value = exploreDepartEl.value || "";
+          detourDepartEl.addEventListener("change", function() {
+            exploreDepartEl.value = detourDepartEl.value;
+          });
+        }
+      }
+
+      function bootPlanDetourButton() {
+        var btn = document.getElementById("btn-plan-detour");
+        if (!btn) return;
+        btn.addEventListener("click", function() {
+          var cardBody     = document.getElementById("detour-card-body");
+          var detourResults = document.getElementById("detour-results");
+
+          // Prompt from main textarea or criteria block
+          var prompt = (ta && ta.value || "").trim();
+          if (!prompt) {
+            var criEl = document.querySelector("[data-search-prompt]");
+            if (criEl) prompt = criEl.dataset.searchPrompt || "";
+          }
+          if (!prompt) {
+            if (cardBody) cardBody.innerHTML = '<p class="muted detour-error" role="alert">Type a search prompt first, then hit Plan a Detour.</p>';
+            return;
+          }
+
+          var detourOriginEl = document.getElementById("detour-origin");
+          var originEl2      = document.getElementById("explore-origin");
+          var origin         = (detourOriginEl && detourOriginEl.value) || (originEl2 ? originEl2.value : "") || "";
+
+          var detourDestEl = document.getElementById("detour-dest-input");
+          var destination  = (detourDestEl && detourDestEl.value) || "";
+          if (!destination && detourResults) {
+            destination = detourResults.dataset.detourDest || "";
+          }
+
+          var detourDepartEl = document.getElementById("detour-depart");
+          var depart         = (detourDepartEl && detourDepartEl.value) || (document.getElementById("explore-depart") || {}).value || "";
+          var vibe           = (document.getElementById("explore-vibe") || {}).value || "adventure";
+
+          // Inline progress card — same pattern as Quest
+          btn.disabled = true;
+          var aborter = (typeof AbortController !== "undefined") ? new AbortController() : null;
+          var progress = null;
+          if (window.YonderProgress && window.YonderProgress.ProgressController) {
+            progress = new window.YonderProgress.ProgressController({
+              mode: "adventure",
+              title: "Planning your Detour\u2026",
+              expectedMs: 40000,
+              skipAfterMs: 30000,
+              container: cardBody || detourResults,
+              onSkip: function() { if (aborter) aborter.abort(); },
+            });
+            progress.start();
+          }
+
+          function _removeLoading() { if (progress) progress.remove(); }
+
+          function _restoreDetourButton() {
+            if (btn) { btn.disabled = false; }
+            _removeLoading();
+          }
+
+          // Build an error card that preserves the submitted route so "Try again"
+          // resubmits the same origin/destination/depart instead of a blank form.
+          function _detourErrorCard(msg) {
+            var o = (origin || "").replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase();
+            var d = (destination || "").replace(/[^A-Za-z]/g, "").slice(0, 3).toUpperCase();
+            var dep = (depart || "").replace(/[^0-9-]/g, "").slice(0, 10);
+            return '<div class="card" id="detour-results-card"><h2>Detour</h2>' +
+              '<p class="muted detour-error" role="alert">' + msg + '</p>' +
+              '<div class="detour-criteria-strip" id="detour-criteria-strip">' +
+              '<label class="origin-field quest-origin-label" title="Departure airport (IATA)"><span>From</span>' +
+              '<input id="detour-origin" type="text" maxlength="3" autocomplete="off" spellcheck="false" value="' + o + '" /></label>' +
+              '<label class="origin-field quest-origin-label" title="Destination airport (IATA)"><span>To</span>' +
+              '<input id="detour-dest-input" type="text" maxlength="3" autocomplete="off" spellcheck="false" value="' + d + '" /></label>' +
+              '<label class="date-field quest-date-label" title="Departure date"><span>Depart</span>' +
+              '<input id="detour-depart" type="date" value="' + dep + '" /></label>' +
+              '</div>' +
+              '<div id="detour-card-body"><button type="button" class="btn-plan-detour" id="btn-plan-detour">Try again</button></div></div>';
+          }
+
+          var data = new URLSearchParams({
+            prompt: prompt,
+            origin: origin,
+            destination: destination,
+            depart: depart,
+            vibe: vibe,
+          });
+          fetch("/api/detour/plan", {
+            method: "POST",
+            body: data,
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            signal: aborter ? aborter.signal : undefined,
+          })
+            .then(function(r) { return r.json(); })
+            .then(function(json) {
+              _removeLoading();
+              if (!detourResults) return;
+              if (json.html) {
+                detourResults.innerHTML = json.html;
+                if (typeof bindFieldNoteToggles === "function") bindFieldNoteToggles(detourResults);
+                if (typeof bootSaveAndShare === "function") bootSaveAndShare();
+                if (typeof bootOutboundLinks === "function") bootOutboundLinks();
+                if (typeof bootThumbVotes === "function") bootThumbVotes();
+                if (typeof bootSignalEvents === "function") bootSignalEvents();
+                // Server error partials include a "Try again" card — rebind it
+                if (detourResults.querySelector("#btn-plan-detour")) {
+                  bootDetourCriteriaStrip();
+                  bootPlanDetourButton();
+                }
+              } else {
+                detourResults.innerHTML = _detourErrorCard(json.error || "Something went wrong — try again.");
+                bootPlanDetourButton();
+              }
+            })
+            .catch(function(err) {
+              _removeLoading();
+              if (err && err.name === "AbortError") {
+                _restoreDetourButton();
+                return;
+              }
+              if (detourResults) {
+                detourResults.innerHTML = _detourErrorCard("Network error — check connection and try again.");
+                bootPlanDetourButton();
+              }
+            });
+        });
+      }
+      // ── End Detour on-demand ────────────────────────────────────────────────
+
       function boot() {
         bootForm();
         bootSaveAndShare();
@@ -3285,6 +3545,8 @@
         bootThumbVotes();
         bootResultsFilter();
         bootCriteriaRefresh();
+        bootPlanDetourButton();
+        bootDetourCriteriaStrip();
         bootPlanQuestButton();
         bootQuestCriteriaStrip();
         hydrateQuestFromStorage();

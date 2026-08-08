@@ -1,0 +1,74 @@
+{% import "_boarding_pass.html" as bp %}
+{% set _dp = detour_panel if detour_panel is defined else {} %}
+{% set _df = (_dp.form if _dp and _dp.form is defined else {}) or {} %}
+{% set _det_result = _dp.result if _dp and _dp.result is defined else none %}
+{% set _det_trip_meta = _dp.trip_meta if _dp and _dp.trip_meta is defined else none %}
+{% set _det_place_books = (_dp.place_books if _dp and _dp.place_books is defined else {}) or {} %}
+{% set _det_vibe = (_df.vibe if _df and _df.vibe is defined else '') or '' %}
+{% set _det_text = (_df.prompt if _df and _df.prompt is defined else '') or '' %}
+{% set _return_days = return_days if return_days is defined else 7 %}
+{% set _ai_usage = ai_usage_display if ai_usage_display is defined else '' %}
+{% set _cand_src = candidate_source if candidate_source is defined else '' %}
+
+{% if _det_result and _det_result.itineraries %}
+<div class="card" id="adv-results" data-trip-meta='{{ (_det_trip_meta or {}) | tojson }}'>
+  <h2>Detour</h2>
+  <p class="sub">
+    {{ _det_result.ideas|length }} idea{{ 's' if _det_result.ideas|length != 1 else '' }}
+    {% if _det_result.itineraries|length < _det_result.ideas|length %}
+      · {{ _det_result.itineraries|length }} priced
+    {% endif %}
+    {% if _det_result.direct_price is not none %}
+      · baseline <strong style="color:var(--good)">{{ _det_result.request.currency }} {{ '%.0f'|format(_det_result.direct_price) }}</strong>
+    {% else %}
+      · no direct baseline
+    {% endif %}
+    {% if _cand_src %}
+      · <span style="opacity:0.6;font-size:0.82em">{{ _cand_src }}</span>
+    {% endif %}
+  </p>
+  {% if _ai_usage %}
+  <div class="pills" style="margin-top:0;margin-bottom:0.85rem">
+    <span class="pill" style="opacity:0.7">{{ _ai_usage }}</span>
+  </div>
+  {% endif %}
+  {% if _det_result.itineraries %}
+  <div class="pass-stack">
+    {% for it in _det_result.itineraries[:5] %}
+    {% set pb = (_det_place_books or {}).get(it.stop_iata) if _det_place_books and it.stop_iata else none %}
+    {% set share = share_detour(request, it, _det_trip_meta) %}
+    {% set det_train_links = train_options(it.legs[0].from_iata, (it.legs|last).to_iata) if it.legs else [] %}
+    {{ bp.detour_card('explore', it, loop.index0,
+                      det_vibe=_det_vibe, det_text=_det_text,
+                      share=share, pb=pb, train_links=det_train_links,
+                      return_days=_return_days) }}
+    {% endfor %}
+  </div>
+  {% else %}
+    <p class="muted">Nothing priced — check keys or try again.</p>
+  {% endif %}
+</div>
+{% elif error_message is defined and error_message %}
+<div class="card" id="detour-results-card">
+  <h2>Detour</h2>
+  <p class="muted detour-error" role="alert" style="margin-bottom:0.75rem">{{ error_message }}</p>
+  {# Preserve the submitted route so "Try again" resubmits the same search #}
+  <div class="detour-criteria-strip" id="detour-criteria-strip">
+    <label class="origin-field quest-origin-label" title="Departure airport (IATA)">
+      <span>From</span>
+      <input id="detour-origin" type="text" maxlength="3" autocomplete="off" spellcheck="false" value="{{ (_df.origin or '') | upper }}" />
+    </label>
+    <label class="origin-field quest-origin-label" title="Destination airport (IATA)">
+      <span>To</span>
+      <input id="detour-dest-input" type="text" maxlength="3" autocomplete="off" spellcheck="false" value="{{ (_df.destination or '') | upper }}" />
+    </label>
+    <label class="date-field quest-date-label" title="Departure date">
+      <span>Depart</span>
+      <input id="detour-depart" type="date" value="{{ _df.depart or '' }}" />
+    </label>
+  </div>
+  <div id="detour-card-body">
+    <button type="button" class="btn-plan-detour" id="btn-plan-detour">Try again</button>
+  </div>
+</div>
+{% endif %}

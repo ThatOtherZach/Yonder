@@ -18,6 +18,7 @@ from yonder.adventure import (
     AdventureItinerary,
     AdventureRequest,
     QuestIdea,
+    corridor_candidates,
     detect_trip_gaps,
     plan_adventure,
     plan_quest,
@@ -1890,28 +1891,13 @@ async def explore_run(request: Request) -> HTMLResponse:
     # Quest is no longer called from the main search — it runs on demand via
     # the "Plan a Quest" button and the /api/quest/plan endpoint.
 
-    # When not testing, prefer previously saved (non-mock) trips over AI
-    # generation. Recycled results render through the same card pipeline as
-    # fresh results — fare hidden until a live check on Share/Save. No match
-    # → seamless fallback to the normal AI path below.
-    _recycled = None
+    # Detour recycling is now on-demand via /api/detour/plan.
+    # Only Escape recycling runs eagerly in the main search.
     _recycled_esc: "UnifiedSearchResult | None" = None
     _recycle_off = (os.environ.get("YONDER_DISABLE_RECYCLE") or "").strip().lower() in ("1", "true", "yes")
     if not settings.testing and not _recycle_off:
         try:
-            from yonder.recycle import find_recycled_result, find_recycled_escape
-
-            _recycled = find_recycled_result(
-                prompt=prompt,
-                vibe=vibe,
-                origin=home_iata,
-                depart=depart,
-                currency=currency,
-                limit=max_cand,
-                # Refresh must not repeat cards already shown this session
-                # (save_ban stays allowed — saved trips ARE the pool here)
-                exclude_iatas=(exclude_iatas - save_ban) if is_refresh else None,
-            )
+            from yonder.recycle import find_recycled_escape
             if not is_refresh:
                 _recycled_esc = find_recycled_escape(
                     prompt=prompt,
@@ -1921,80 +1907,9 @@ async def explore_run(request: Request) -> HTMLResponse:
                     currency=currency,
                 )
         except Exception:  # noqa: BLE001
-            _recycled = None
             _recycled_esc = None
 
     try:
-        if _recycled is not None:
-            mock = False
-            result = _recycled
-            vt = vibe_theme(vibe)
-            try:
-                stamped = [
-                    it.model_copy(
-                        update={
-                            "theme_primary": vt["color"],
-                            "theme_accent": vt["deep"],
-                            "theme_label": vt["label"],
-                        }
-                    )
-                    for it in result.itineraries
-                ]
-                result = result.model_copy(update={"itineraries": stamped})
-            except Exception:
-                pass
-            trip_meta = {
-                "prompt": prompt,
-                "trip_prompt": prompt,
-                "vibe": vibe,
-                "vibe_color": vt["color"],
-                "origin": result.request.origin,
-                "destination": result.request.destination,
-                "visited": visited,
-                "avoid": avoid,
-                "intent": decision.shape,
-                "price_pending": True,
-                **attr_meta,
-            }
-            form = {
-                **det_form,
-                "prompt": prompt,
-                "origin": result.request.origin,
-                "destination": result.request.destination,
-                "depart": depart,
-                "vibe": vibe,
-                "vibe_color": vt["color"],
-            }
-            place_books: dict = {}
-            try:
-                from yonder.encyclopedia import briefs_for_stops, stops_from_itineraries
-
-                stops = stops_from_itineraries(result.itineraries, limit=5)
-                place_books = await briefs_for_stops(
-                    settings, stops, max_n=0, cache_only=True
-                )
-            except Exception:
-                place_books = {}
-            detour_override = {
-                "form": form,
-                "result": result,
-                "trip_meta": trip_meta,
-                "place_books": place_books,
-                "attribution": attr_meta,
-            }
-            save_last(
-                "detour",
-                session_id=sess,
-                payload={
-                    "form": form,
-                    "result": result,
-                    "trip_meta": trip_meta,
-                    "place_books": place_books,
-                },
-                pin_first=not is_refresh,
-            )
-            active_mode = "detour"
-
         # ── Escape recycle: best saved escape trip → fare-missing search result ──
         if _recycled_esc is not None and not escape_override.get("result"):
             try:
@@ -2105,10 +2020,10 @@ async def explore_run(request: Request) -> HTMLResponse:
             anchor_legs = []
 
         # ── Unified cold-start plan: 2 Grok calls → 1 ──────────────────────────
-        # When NO panel is recycled (cold-start Find), one combined structured
-        # call covers escape-parse + detour-invent.  Quest runs on demand only.
+        # When NO escape panel is recycled (cold-start Find), one combined
+        # structured call covers escape-parse.  Quest and Detour run on demand.
         _uni_trip = None        # ParsedTrip | None → _do_escape
-        _uni_adventure = None   # (AdventureRequest, ideas) | None → _do_detour
+        _uni_adventure = None   # kept for plan_unified compat; unused since _do_detour is on-demand
         _unified_used = False
         _chip_fast_seeds = (
             bool(chip_seeds)
@@ -2117,7 +2032,6 @@ async def explore_run(request: Request) -> HTMLResponse:
         )
         if (
             _recycled_esc is None
-            and _recycled is None
             and settings.grok_ready()
             and not is_refresh
             and not _chip_fast_seeds
@@ -2159,33 +2073,27 @@ async def explore_run(request: Request) -> HTMLResponse:
                     _route_usage.append(_ugrok.accumulated_usage)
                 _uni_trip = _uni.get("escape")
                 _uni_adventure = _uni.get("detour_cities")
-                _unified_used = bool(_uni_trip or _uni_adventure)
+                _unified_used = bool(_uni_trip)  # detour is on-demand; only escape matters
             except Exception as _uni_exc:  # noqa: BLE001 — fall back to 2 calls
                 errors.append(f"Unified plan fell back: {str(_uni_exc)[:80]}")
 
         # ── Run only panels not covered by the recycle pool ────────────────────
         # Each recycled panel saves one Grok call + N flight-API calls.
-        # Quest is no longer part of the cold-start gather — it runs on demand.
-        # Refresh bypasses escape recycle (stays None) but detour recycle can
-        # still filter by exclude_iatas to avoid repeats.
+        # Quest and Detour are on-demand — the main search runs Escape only.
         _gather_tasks = []
         if _recycled_esc is None:
             _gather_tasks.append(_safe(_do_escape, "Escape"))
-        if _recycled is None and multi_city:
-            _gather_tasks.append(_safe(_do_detour, "Detour"))
         if _gather_tasks:
             await asyncio.gather(*_gather_tasks)
 
         # ── Search cost accounting ───────────────────────────────────────────────
         import logging as _sc_log
-        _rp = [p for p, r in [("escape", _recycled_esc), ("detour", _recycled)] if r is not None]
+        _rp = [p for p, r in [("escape", _recycled_esc)] if r is not None]
         if _unified_used:
-            # 1 combined call + a per-panel fallback call for each missing section
-            _grok_calls = 1 + sum(
-                1 for s in (_uni_trip, _uni_adventure) if not s
-            )
+            # 1 unified call; +1 fallback only when escape parse failed
+            _grok_calls = 1 + (0 if _uni_trip else 1)
         else:
-            _grok_calls = 2 - len(_rp)
+            _grok_calls = 1 - len(_rp)
         _sc_log.getLogger("yonder.cost").info(
             "search_cost grok_calls≈%d recycled_panels=[%s] unified=%s",
             _grok_calls,
@@ -2527,16 +2435,21 @@ async def explore_run(request: Request) -> HTMLResponse:
             pass
 
         if not has_esc and not has_det:
-            raise ValueError(
-                "; ".join(errors) if errors else "Nothing priced — try again or Turbo."
+            # Detour shape with form context: render the on-demand button card even
+            # when the escape pricing step produced no result (e.g. parse failure,
+            # force_mode=detour, or the AI chose a detour intent but search failed).
+            _detour_button_ok = (
+                decision.shape in ("detour", "mix")
+                and bool(detour_override.get("form"))
             )
+            if not _detour_button_ok:
+                raise ValueError(
+                    "; ".join(errors) if errors else "Nothing priced — try again or Turbo."
+                )
 
-        # Prefer showing the side that has data; mix defaults to escape panel first
-        if _recycled is not None:
-            active_mode = "detour"
-        elif decision.shape == "mix":
-            active_mode = "escape" if has_esc else "detour"
-        elif decision.shape == "detour":
+        # Detour is on-demand — has_det is always False in the main search.
+        # Shape "detour" keeps active_mode=detour so the button card shows first.
+        if decision.shape == "detour":
             active_mode = "detour"
         else:
             active_mode = "escape"
@@ -2776,6 +2689,440 @@ async def quest_plan_api(request: Request):
         return JSONResponse({"ok": False, "error": f"Render error: {_render_exc}", "html": ""})
 
     return JSONResponse({"ok": bool(quest_ideas), "html": html})
+
+
+@app.post("/api/detour/plan")
+async def detour_plan_api(request: Request):
+    """On-demand Detour planning endpoint — called by the 'Plan a Detour' button.
+
+    Flow:
+    1. Check recycled saved trips first (fast path, no AI).
+    2. Build corridor candidates from vibe-scored destinations on the route.
+    3. Fall back to Grok ideation when fewer than 3 corridor candidates exist.
+    4. Price via plan_adventure and return rendered HTML.
+
+    Returns JSON: {ok: bool, html: str}
+    """
+    from datetime import timedelta
+    from yonder.types import CabinClass
+    from yonder.adventure import StopoverIdea as _StopoverIdea
+    from yonder.recycle import find_recycled_result as _find_recycled
+
+    settings = reload_settings()
+    form_data = await request.form()
+
+    def _s(key: str, fallback: str = "") -> str:
+        v = form_data.get(key)
+        return str(v).strip() if v is not None and str(v).strip() else fallback
+
+    prompt = _s("prompt") or _s("ask")
+    vibe = _s("vibe", "adventure").lower()
+    if not vibe or len(vibe) > 32 or not vibe.replace("-", "").replace("_", "").isalnum():
+        vibe = "adventure"
+
+    home_iata = settings.resolve_home_iata()
+    origin_raw = _s("origin").upper()
+    origin = origin_raw if (len(origin_raw) == 3 and origin_raw.isalpha()) else home_iata
+
+    dest_raw = _s("destination").upper()
+    destination = dest_raw if (len(dest_raw) == 3 and dest_raw.isalpha()) else ""
+
+    depart = _s("depart")
+    _depart_default = date.today() + timedelta(days=30)
+    if not depart:
+        depart = _depart_default.isoformat()
+    try:
+        depart_date: date = date.fromisoformat(depart[:10])
+        # Reject implausible dates (today or before — user likely fat-fingered)
+        if depart_date < date.today():
+            depart_date = _depart_default
+    except (ValueError, AttributeError):
+        depart_date = _depart_default
+    depart = depart_date.isoformat()
+
+    defaults = _adventure_form_defaults(settings)
+    min_stop, max_stop, max_cand = settings.detour_stop_defaults()
+    try:
+        min_stop = max(1, min(21, int(_s("min_stop_days", str(min_stop)))))
+    except (ValueError, TypeError):
+        pass
+    try:
+        max_stop = max(1, min(30, int(_s("max_stop_days", str(max_stop)))))
+    except (ValueError, TypeError):
+        pass
+
+    avoid = settings.effective_avoid_country_list()
+    visited = settings.visited_country_list()
+    currency = (settings.default_currency or "USD").upper()
+    mock = not settings.configured_providers()
+    sess = _req_sess(request)
+    return_days = _compute_return_days()
+
+    def _render_detour(
+        detour_panel_dict: dict,
+        error_message: str | None = None,
+        place_books: dict | None = None,
+        candidate_source: str = "",
+        ai_usage_display: str = "",
+    ) -> str:
+        tpl = templates.env.get_template("_detour_results_partial.html")
+        return tpl.render(
+            request=request,
+            detour_panel=detour_panel_dict,
+            error_message=error_message,
+            place_books=place_books or {},
+            candidate_source=candidate_source,
+            ai_usage_display=ai_usage_display,
+            return_days=return_days,
+        )
+
+    if not prompt:
+        return JSONResponse({"ok": False, "error": "No prompt — type a search first.", "html": ""})
+
+    # ── Step 1: Recycled saved-trip fast path ──────────────────────────────────
+    _recycled_det = None
+    try:
+        if not settings.testing:
+            _recycled_det = _find_recycled(
+                prompt=prompt,
+                vibe=vibe,
+                origin=origin,
+                depart=depart,
+                currency=currency,
+                limit=max_cand,
+            )
+    except Exception:  # noqa: BLE001
+        _recycled_det = None
+
+    # Route pinning: when the user supplied an explicit destination, filter
+    # recycled itineraries to those whose final leg ends at that destination.
+    # Reject the whole recycled result if none survive the filter.
+    if _recycled_det is not None and destination:
+        try:
+            def _it_final_dest(it) -> str:
+                try:
+                    return (it.legs[-1].to_iata or "").upper() if it.legs else ""
+                except Exception:  # noqa: BLE001
+                    return ""
+            pinned_its = [
+                it for it in _recycled_det.itineraries
+                if _it_final_dest(it) == destination
+            ]
+            if pinned_its:
+                _recycled_det = _recycled_det.model_copy(update={"itineraries": pinned_its})
+            else:
+                _recycled_det = None  # no itinerary matches — run fresh planning
+        except Exception:  # noqa: BLE001
+            _recycled_det = None
+
+    if _recycled_det is not None:
+        vt = vibe_theme(vibe)
+        try:
+            stamped = [
+                it.model_copy(update={
+                    "theme_primary": vt["color"],
+                    "theme_accent": vt["deep"],
+                    "theme_label": vt["label"],
+                })
+                for it in _recycled_det.itineraries
+            ]
+            _recycled_det = _recycled_det.model_copy(update={"itineraries": stamped})
+        except Exception:  # noqa: BLE001
+            pass
+        trip_meta = {
+            "prompt": prompt,
+            "trip_prompt": prompt,
+            "vibe": vibe,
+            "vibe_color": vt["color"],
+            "origin": _recycled_det.request.origin,
+            "destination": _recycled_det.request.destination,
+        }
+        panel = {
+            "form": {
+                **defaults,
+                "prompt": prompt,
+                "origin": _recycled_det.request.origin,
+                "destination": _recycled_det.request.destination,
+                "depart": depart,
+                "vibe": vibe,
+                "vibe_color": vt["color"],
+            },
+            "result": _recycled_det,
+            "trip_meta": trip_meta,
+            "place_books": {},
+        }
+        html = _render_detour(panel, candidate_source="recycled")
+        return JSONResponse({"ok": True, "html": html})
+
+    # ── Step 2: Corridor candidates ────────────────────────────────────────────
+    ideas: list = []
+    candidate_source = "no-dest"
+
+    if destination:
+        try:
+            ideas = corridor_candidates(
+                origin,
+                destination,
+                vibe,
+                min_stop_days=min_stop,
+                max_stop_days=max_stop,
+                avoid_countries=avoid,
+                exclude_iatas=set(),
+                limit=max_cand + 5,
+            )
+            candidate_source = "vibe-corridor" if ideas else "seed-fallback"
+        except Exception:  # noqa: BLE001
+            ideas = []
+            candidate_source = "seed-fallback"
+
+    # ── Step 3: Grok fallback when < 3 corridor candidates ────────────────────
+    _route_usage: list = []
+    req = AdventureRequest(
+        origin=origin,
+        destination=destination or origin,
+        depart_date=depart_date,
+        adults=1,
+        currency=currency,
+        cabin=CabinClass.ECONOMY,
+        min_stop_days=min_stop,
+        max_stop_days=max_stop,
+        max_candidates=max_cand,
+        vibe=vibe,
+        prompt=prompt,
+        avoid_countries=avoid,
+        visited_countries=visited,
+        trip_kind="detour" if destination else "getaway",
+        include_direct=False,
+    )
+
+    if len(ideas) < 3 and settings.grok_ready():
+        try:
+            async with GrokClient(settings) as grok:
+                grok_req, grok_ideas = await asyncio.wait_for(
+                    grok.translate_adventure(
+                        prompt=prompt,
+                        form={
+                            "origin": origin,
+                            "destination": destination or "",
+                            "depart": depart,
+                            "arrive_by": "",
+                            "min_stop_days": min_stop,
+                            "max_stop_days": max_stop,
+                            "max_candidates": max_cand,
+                            "currency": currency,
+                            "vibe": vibe,
+                            "avoid_countries": avoid,
+                            "visited_countries": visited,
+                        },
+                        default_currency=currency,
+                        seed_learned=True,
+                    ),
+                    timeout=22.0,
+                )
+                _route_usage.append(grok.accumulated_usage)
+            # Merge: corridor ideas first, then Grok ideas for novelty.
+            # Never accept a stopover idea that IS one of the route endpoints.
+            _endpoints = {origin, destination} if destination else {origin}
+            seen = {(i.iata or "").upper() for i in ideas}
+            for gi in grok_ideas:
+                code = (gi.iata or "").upper()
+                if code and code not in seen and code not in _endpoints:
+                    ideas.append(gi.model_copy(update={"source": "grok-fallback"}))
+                    seen.add(code)
+            if not candidate_source.startswith("vibe"):
+                candidate_source = "grok-fallback"
+            # Pin the submitted route: the user chose origin/destination in the
+            # Detour card, so Grok's returned route fields must never override
+            # them.  Only route-free getaways (no destination) may take Grok's
+            # suggested destination.
+            req = grok_req.model_copy(update={
+                "origin": origin,
+                "destination": destination or (grok_req.destination or origin),
+                "trip_kind": "detour" if destination else grok_req.trip_kind,
+                "depart_date": depart_date,
+                "currency": currency,
+                "min_stop_days": min_stop,
+                "max_stop_days": max_stop,
+                "max_candidates": max_cand,
+                "avoid_countries": avoid,
+                "visited_countries": visited,
+                "vibe": vibe,
+                "prompt": prompt,
+                "include_direct": False,
+                "adults": 1,
+                "cabin": CabinClass.ECONOMY,
+            })
+        except Exception:  # noqa: BLE001
+            pass  # corridor candidates alone will be used
+
+    if not ideas:
+        if destination:
+            # When the user submitted an explicit origin→destination route, the
+            # seed catalog must still respect the corridor geometry — otherwise
+            # arbitrary off-route stops get priced.  Retry corridor_candidates
+            # with a generous 2× deviation (capped) before falling back to a
+            # friendly "no detour found" error rather than serving random seeds.
+            try:
+                ideas = corridor_candidates(
+                    origin, destination, vibe,
+                    min_stop_days=min_stop,
+                    max_stop_days=max_stop,
+                    avoid_countries=avoid,
+                    exclude_iatas=set(),
+                    limit=max_cand + 5,
+                    deviation=2.0,
+                )
+            except Exception:  # noqa: BLE001
+                ideas = []
+            candidate_source = "seed-corridor-wide" if ideas else "none"
+        else:
+            # No destination → unrestricted getaway seeds are appropriate
+            ideas = seed_ideas(req)
+            if not candidate_source.startswith(("vibe", "grok")):
+                candidate_source = "seed-fallback"
+
+    # ── Step 4: Price itineraries via plan_adventure ───────────────────────────
+    result = None
+    error_text: str | None = None
+    try:
+        result = await asyncio.wait_for(
+            plan_adventure(req, ideas, settings=settings, include_mock=mock),
+            timeout=60.0,
+        )
+        result = _mark_missing_fares_adventure(result)
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        error_text = "The AI took too long — try again."
+    except Exception as exc:  # noqa: BLE001
+        error_text = f"Detour planning failed — {str(exc)[:120]}"
+
+    if error_text or not result or not result.itineraries:
+        # Preserve the submitted route in the error card so a retry resubmits
+        # the same origin/destination/depart rather than a blank form.
+        html = _render_detour(
+            {
+                "form": {
+                    "prompt": prompt,
+                    "origin": origin,
+                    "destination": destination,
+                    "depart": depart,
+                    "vibe": vibe,
+                },
+                "result": None,
+            },
+            error_message=error_text or "No detour found — try a different destination or prompt.",
+        )
+        return JSONResponse({"ok": False, "error": error_text or "No detour found", "html": html})
+
+    # ── Step 5: Stamp vibe theme ───────────────────────────────────────────────
+    vt = vibe_theme(vibe)
+    try:
+        stamped = [
+            it.model_copy(update={
+                "theme_primary": vt["color"],
+                "theme_accent": vt["deep"],
+                "theme_label": vt["label"],
+            })
+            for it in result.itineraries
+        ]
+        result = result.model_copy(update={"itineraries": stamped})
+    except Exception:  # noqa: BLE001
+        pass
+
+    trip_meta = {
+        "prompt": prompt,
+        "trip_prompt": prompt,
+        "vibe": vibe,
+        "vibe_color": vt["color"],
+        "origin": result.request.origin,
+        "destination": result.request.destination,
+    }
+    form = {
+        **defaults,
+        "prompt": prompt,
+        "origin": result.request.origin,
+        "destination": result.request.destination,
+        "depart": depart,
+        "vibe": vibe,
+        "vibe_color": vt["color"],
+        "min_stop_days": min_stop,
+        "max_stop_days": max_stop,
+    }
+
+    # ── Step 5b: Anchor badges — badge itineraries that connect to saved legs ──
+    try:
+        from yonder.saved import upcoming_anchor_legs as _det_anchors
+        from yonder.adventure import match_anchor as _match_anchor
+
+        anchor_legs = _det_anchors(limit=3)
+        if anchor_legs:
+            _its_a = list(result.itineraries)
+            _changed = False
+            for _ia, _ita in enumerate(_its_a):
+                if getattr(_ita, "anchor_label", None):
+                    continue
+                _legs_a = getattr(_ita, "legs", None) or []
+                if not _legs_a:
+                    continue
+                _last_a = _legs_a[-1]
+                _a_det = _match_anchor(
+                    dest_iata=getattr(_last_a, "to_iata", None),
+                    arrive_date=getattr(_last_a, "depart_date", None),
+                    anchors=anchor_legs,
+                    from_iata=getattr(_last_a, "from_iata", None),
+                )
+                if _a_det:
+                    _its_a[_ia] = _ita.model_copy(update={"anchor_label": _a_det["label"]})
+                    _changed = True
+            if _changed:
+                result = result.model_copy(update={"itineraries": _its_a})
+    except Exception:  # noqa: BLE001
+        pass  # anchor badging is best-effort
+
+    # ── Step 6: Field notes (cache-first) ─────────────────────────────────────
+    place_books: dict = {}
+    try:
+        from yonder.encyclopedia import briefs_for_stops, stops_from_itineraries
+        stops = stops_from_itineraries(result.itineraries, limit=5)
+        place_books = await briefs_for_stops(
+            settings,
+            stops,
+            max_n=3,
+            cache_only=not settings.grok_ready(),
+            user_prompt=prompt,
+            trip_vibe=vibe,
+        )
+    except Exception:  # noqa: BLE001
+        place_books = {}
+
+    # ── Step 7: Persist + render ───────────────────────────────────────────────
+    panel = {
+        "form": form,
+        "result": result,
+        "trip_meta": trip_meta,
+        "place_books": place_books,
+    }
+    try:
+        save_last("detour", session_id=sess, payload={**panel}, pin_first=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+    ai_usage = ""
+    if _route_usage:
+        try:
+            _usage = merge_usage(*_route_usage)
+            ai_usage = fmt_usage(_usage)
+            if _usage.get("total_tokens"):
+                asyncio.create_task(_log_ai_usage("detour", _usage))
+        except Exception:  # noqa: BLE001
+            pass
+
+    html = _render_detour(
+        panel,
+        place_books=place_books,
+        candidate_source=candidate_source,
+        ai_usage_display=ai_usage,
+    )
+    return JSONResponse({"ok": bool(result.itineraries), "html": html})
 
 
 @app.get("/adventure", response_class=HTMLResponse)

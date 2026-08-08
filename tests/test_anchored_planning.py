@@ -373,37 +373,85 @@ def _card_with(html: str, marker: str) -> str:
     return cards[0]
 
 
-def test_explore_renders_anchor_badge_on_detour_cards(monkeypatch):
-    """Mix search: Detour itinerary ending at NRT gets the ⚓ badge.
+def test_explore_mix_shows_detour_button_card_not_eager_cards(monkeypatch):
+    """Mix search: Detour is now on-demand — main page shows a button card, not eager boarding passes.
 
-    Quest is on-demand only (/api/quest/plan) — the main search page renders
-    a 'Plan a Quest' button, not quest cards, so anchor-badge checks for quest
-    belong in the /api/quest/plan test suite (test_quest_ondemand.py).
+    Both Detour and Quest are on-demand only (/api/detour/plan, /api/quest/plan).
     """
     _patch_detour_quest_planners(monkeypatch)
     html = _explore(monkeypatch, [_saved_upcoming_trip()], force_mode="mix")
 
-    assert "Connects to your saved" in html
+    # Detour button card must be present; no eagerly-rendered detour boarding passes
+    assert "btn-plan-detour" in html or "Plan a Detour" in html
+    assert 'data-stop-iata="TPE"' not in html, "Detour is on-demand: boarding passes must not appear on /explore"
+    assert 'data-stop-iata="HKG"' not in html
 
-    # Detour: final leg TPE → NRT connects; HKG → BKK does not
-    det_match = _card_with(html, 'data-stop-iata="TPE"')
-    assert "bp-anchor-label" in det_match
-    assert "Connects to your saved" in det_match
-    det_miss = _card_with(html, 'data-stop-iata="HKG"')
-    assert "bp-anchor-label" not in det_miss
-
-    # Quest is on-demand: main search page shows only the button, not quest cards
+    # Quest is also on-demand
     assert "btn-plan-quest" in html or "Plan a Quest" in html
     assert 'data-quest-exit="NRT"' not in html
     assert 'data-quest-exit="BKK"' not in html
 
 
+def test_detour_plan_api_renders_anchor_badge(monkeypatch):
+    """/api/detour/plan: itinerary with final leg ending at NRT gets the ⚓ anchor badge.
+
+    Detour is on-demand (button-triggered) — anchor badges are applied during
+    the partial template render inside the /api/detour/plan endpoint.
+    """
+    import yonder.saved as _saved_mod
+    import yonder.encyclopedia as enc_mod
+    from datetime import timedelta
+
+    _patch_search_pipeline(monkeypatch)
+    monkeypatch.setattr(_saved_mod, "list_saved", lambda limit=25: [_saved_upcoming_trip()])
+
+    # Stub plan_adventure to return two itineraries: TPE→NRT (connects) and HKG→BKK (does not)
+    async def _fake_plan(req, ideas, **kw):
+        return AdventureResult(request=req, ideas=ideas or [], itineraries=[
+            _stub_itinerary("TPE", "NRT"),
+            _stub_itinerary("HKG", "BKK"),
+        ])
+
+    monkeypatch.setattr(web_module, "plan_adventure", _fake_plan)
+    monkeypatch.setattr(web_module, "corridor_candidates", lambda *a, **kw: [], raising=False)
+
+    async def _no_briefs(*a, **kw):
+        return {}
+
+    monkeypatch.setattr(enc_mod, "briefs_for_stops", _no_briefs)
+
+    client = TestClient(web_module.app, raise_server_exceptions=True)
+    resp = client.post("/api/detour/plan", data={
+        "prompt": "fly from Vancouver to Tokyo",
+        "origin": "YVR",
+        "destination": "NRT",
+        "depart": _E2E_DEPART.isoformat(),
+        "vibe": "adventure",
+    })
+    assert resp.status_code == 200
+    result = resp.json()
+    assert result.get("ok") is True, f"Detour plan failed: {result.get('error')}"
+    html = result["html"]
+
+    # TPE→NRT matches the anchor; HKG→BKK does not
+    det_match = _card_with(html, 'data-stop-iata="TPE"')
+    assert "bp-anchor-label" in det_match
+    assert "Connects to your saved" in det_match
+
+    det_miss = _card_with(html, 'data-stop-iata="HKG"')
+    assert "bp-anchor-label" not in det_miss
+
+
 def test_explore_mix_renders_no_anchor_badge_without_upcoming_saves(monkeypatch):
+    """Without upcoming saves, no anchor badges appear; Detour button is shown."""
     _patch_detour_quest_planners(monkeypatch)
     html = _explore(monkeypatch, [], force_mode="mix")
-    assert 'data-stop-iata="TPE"' in html      # detour panel rendered
+    # Detour is on-demand: no boarding passes in the main search response
+    assert 'data-stop-iata="TPE"' not in html
     # Quest is on-demand: no quest cards in initial search response
     assert 'data-quest-exit="NRT"' not in html
     assert 'data-quest-exit="BKK"' not in html
     assert "Connects to your saved" not in html
     assert "bp-anchor-label" not in html
+    # Both on-demand buttons should be present
+    assert "btn-plan-detour" in html or "Plan a Detour" in html

@@ -258,8 +258,10 @@ class TestMainSearchNoQuestAICall:
         assert not quest_calls, "plan_quest was called from /explore — should be on-demand only"
 
     def test_explore_page_shows_plan_a_quest_button(self, client, monkeypatch):
-        """After a search that produces escape/detour results, the page has a Plan a Quest button."""
+        """After a search that produces escape results, the page has a Plan a Quest button."""
         import yonder.grok as grok_module
+        from datetime import timedelta
+        from yonder.grok import ParsedTrip
 
         settings = Settings(testing=True, xai_api_key="test-key")
         monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
@@ -267,30 +269,33 @@ class TestMainSearchNoQuestAICall:
         monkeypatch.setattr(web_module, "save_last", lambda *a, **kw: None, raising=False)
         monkeypatch.setattr(web_module, "load_last", lambda *a, **kw: None, raising=False)
 
-        # Make escape panel produce a result so the Quest button section is rendered
-        async def _fake_chat(self, *a, **kw):
-            import json
-            return json.dumps({
-                "escape": {
-                    "origin": "YVR", "destination": "NRT",
-                    "depart_date": _FUTURE, "return_date": None,
-                    "currency": "USD", "nonstop_only": False,
-                    "intent_summary": "Japan trip", "assumptions": [],
-                },
-                "detour": {
-                    "trip_kind": "getaway", "origin": "YVR", "destination": "YVR",
-                    "depart_date": _FUTURE, "arrive_by": None, "currency": "USD",
-                    "min_stop_days": 3, "max_stop_days": 5, "vibe": "adventure",
-                    "intent_summary": "escape", "candidates": [],
-                },
-            })
+        # Patch parse_natural_language so the escape fallback path (used when
+        # the unified cold-start call fails or is skipped) returns a valid trip.
+        # The unified call in web.py uses a pre-created httpx client which bypasses
+        # the _chat class-level patch, so we patch at the method level instead.
+        _parsed = ParsedTrip(
+            origin="YVR",
+            destination="NRT",
+            depart_date=date.today() + timedelta(days=40),
+            currency="USD",
+        )
 
-        monkeypatch.setattr(grok_module.GrokClient, "_chat", _fake_chat)
+        async def _fake_parse(self, *a, **kw):
+            return _parsed
+
+        monkeypatch.setattr(grok_module.GrokClient, "parse_natural_language", _fake_parse)
+
+        # Also patch plan_unified so the unified cold-start call produces an
+        # escape ParsedTrip without making real HTTP calls.
+        async def _fake_plan_unified(self, *a, **kw):
+            return {"escape": _parsed, "detour_cities": None, "quest_pairs": []}
+
+        monkeypatch.setattr(grok_module.GrokClient, "plan_unified", _fake_plan_unified)
 
         # Stub search_flights to avoid real API calls
         async def _fake_search(query, *a, **kw):
-            from yonder.types import SearchResult
-            return SearchResult(query=query, offers=[], results=[])
+            from yonder.types import UnifiedSearchResult
+            return UnifiedSearchResult(query=query, offers=[], results=[])
 
         monkeypatch.setattr(web_module, "search_flights", _fake_search)
 

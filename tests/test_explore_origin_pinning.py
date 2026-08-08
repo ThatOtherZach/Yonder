@@ -327,13 +327,16 @@ class TestEscapeRefreshOriginPinned:
 
 
 class TestDetourRefreshOriginPinned:
-    """Refresh + detour path: origin_pinned overrides translate_adventure's
-    returned origin, including updating the destination when trip is a getaway."""
+    """Detour is now on-demand: plan_adventure is never called from /explore.
+    Origin-pinning for the Detour path is exercised at the /api/detour/plan
+    endpoint level (see test_detour_ondemand.py).  These tests document the
+    new /explore invariant — no eager Detour work, no plan_adventure calls."""
 
-    def test_translate_adventure_origin_overridden_on_refresh(
+    def test_plan_adventure_never_called_from_explore_on_detour_refresh(
         self, client, monkeypatch
     ):
-        # translate_adventure returns YYZ; form says YVR; refresh=1 → YVR wins
+        """Detour is on-demand: even with force_mode=detour + multi_city=true +
+        refresh=1, plan_adventure must NOT be called from /explore."""
         captures = _patch_detour(
             monkeypatch, translate_origin="YYZ", translate_dest="YYZ"
         )
@@ -350,13 +353,13 @@ class TestDetourRefreshOriginPinned:
                 "vibe": "adventure",
             },
         )
-        assert resp.status_code == 200
-        assert captures["plan_calls"], "plan_adventure was never called"
-        # Pin must have overridden the YYZ that translate_adventure returned
-        assert captures["plan_calls"][0].origin == "YVR"
+        # plan_adventure must NOT be called from /explore — Detour is on-demand
+        assert not captures["plan_calls"], (
+            "plan_adventure must not be called from /explore — Detour is on-demand"
+        )
 
-    def test_no_pin_without_refresh_flag(self, client, monkeypatch):
-        """Without refresh, translate_adventure's origin is preserved."""
+    def test_plan_adventure_never_called_without_refresh_flag(self, client, monkeypatch):
+        """Without refresh too: plan_adventure is never called from /explore."""
         captures = _patch_detour(
             monkeypatch, translate_origin="SYD", translate_dest="SYD"
         )
@@ -370,13 +373,12 @@ class TestDetourRefreshOriginPinned:
                 "force_mode": "detour",
                 "multi_city": "true",
                 "vibe": "adventure",
-                # NO refresh flag
             },
         )
-        assert resp.status_code == 200
-        assert captures["plan_calls"], "plan_adventure was never called"
-        # translate_adventure's SYD survives because origin_pinned is False
-        assert captures["plan_calls"][0].origin == "SYD"
+        # plan_adventure must NOT be called from /explore — Detour is on-demand
+        assert not captures["plan_calls"], (
+            "plan_adventure must not be called from /explore — Detour is on-demand"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -385,13 +387,13 @@ class TestDetourRefreshOriginPinned:
 
 
 class TestDetourLocalGetawayFallback:
-    """When Grok is offline, _local_getaway_fallback builds a home-city getaway.
-    With refresh=1 and a valid origin field, it must use origin_override (pinned).
-    Without refresh, it uses home_iata from settings (resolved home airport).
-    """
+    """Detour is now on-demand: plan_adventure is never called from /explore,
+    even when Grok is offline.  Origin-pinning for the local-getaway-fallback
+    path inside _do_detour is exercised via /api/detour/plan instead.
+    These tests document the /explore invariant: no eager Detour work."""
 
     def _patch_offline_detour(self, monkeypatch) -> dict[str, list]:
-        """Settings with grok_ready=False to force local fallback path."""
+        """Settings with grok_ready=False; plan_adventure patched to capture calls."""
         captures: dict[str, list] = {"plan_calls": []}
 
         settings = _make_settings(grok_ready=False)
@@ -404,11 +406,12 @@ class TestDetourLocalGetawayFallback:
         monkeypatch.setattr(web_module, "plan_adventure", _fake_plan)
         return captures
 
-    def test_pinned_origin_used_in_fallback_on_refresh(self, client, monkeypatch):
-        """refresh=1 + origin=YVR + Grok offline → fallback getaway departs YVR."""
+    def test_pinned_origin_not_used_from_explore_on_refresh(self, client, monkeypatch):
+        """Detour is on-demand: plan_adventure never called from /explore even
+        with refresh=1 + force_mode=detour + Grok offline."""
         captures = self._patch_offline_detour(monkeypatch)
 
-        resp = client.post(
+        client.post(
             "/explore",
             data={
                 "prompt": "quick getaway",
@@ -420,15 +423,16 @@ class TestDetourLocalGetawayFallback:
                 "vibe": "adventure",
             },
         )
-        assert resp.status_code == 200
-        assert captures["plan_calls"], "plan_adventure was never called"
-        assert captures["plan_calls"][0].origin == "YVR"
+        # plan_adventure must NOT be called from /explore — Detour is on-demand
+        assert not captures["plan_calls"], (
+            "plan_adventure must not be called from /explore — Detour is on-demand"
+        )
 
-    def test_different_pinned_origin_in_fallback(self, client, monkeypatch):
-        """refresh=1 + origin=JFK → fallback getaway departs JFK."""
+    def test_different_origin_not_used_from_explore(self, client, monkeypatch):
+        """Detour is on-demand: plan_adventure never called from /explore."""
         captures = self._patch_offline_detour(monkeypatch)
 
-        resp = client.post(
+        client.post(
             "/explore",
             data={
                 "prompt": "quick getaway",
@@ -440,53 +444,42 @@ class TestDetourLocalGetawayFallback:
                 "vibe": "adventure",
             },
         )
-        assert resp.status_code == 200
-        assert captures["plan_calls"], "plan_adventure was never called"
-        assert captures["plan_calls"][0].origin == "JFK"
+        # plan_adventure must NOT be called from /explore — Detour is on-demand
+        assert not captures["plan_calls"], (
+            "plan_adventure must not be called from /explore — Detour is on-demand"
+        )
 
-    def test_no_refresh_no_origin_field_uses_settings_home_iata(
+    def test_no_refresh_no_origin_plan_adventure_never_called(
         self, client, monkeypatch
     ):
-        """Initial search with NO origin field + Grok offline.
-
-        When the form origin is blank (or absent), origin_override is empty so:
-          • home_iata stays as settings.resolve_home_iata() (not a form override)
-          • origin_pinned is False
-
-        The fallback must still produce a valid 3-letter IATA from settings/guess,
-        and the request must reach plan_adventure (no crash).
-        """
+        """Initial search with no origin field and Grok offline: plan_adventure
+        must still not be called from /explore (Detour is on-demand)."""
         captures = self._patch_offline_detour(monkeypatch)
 
-        resp = client.post(
+        client.post(
             "/explore",
             data={
                 "prompt": "quick getaway somewhere",
-                # origin intentionally omitted — tests the blank-field path
                 "depart": _DEPART,
                 "force_mode": "detour",
                 "multi_city": "true",
                 "vibe": "adventure",
             },
         )
-        assert resp.status_code == 200
-        assert captures["plan_calls"], "plan_adventure was never called"
-        used = captures["plan_calls"][0].origin
-        # Must be a plausible IATA resolved from settings (not a crash/empty string)
-        assert len(used) == 3 and used.isalpha(), f"Expected IATA, got {used!r}"
+        # plan_adventure must NOT be called from /explore — Detour is on-demand
+        assert not captures["plan_calls"], (
+            "plan_adventure must not be called from /explore — Detour is on-demand"
+        )
 
-    def test_pin_requires_valid_three_letter_origin_field(self, client, monkeypatch):
-        """origin_pinned is only set when the form field is a valid 3-letter IATA.
-
-        A malformed field (e.g. two letters) must NOT pin the origin even with refresh=1.
-        """
+    def test_malformed_origin_plan_adventure_never_called(self, client, monkeypatch):
+        """Malformed origin (2 letters): plan_adventure still not called from /explore."""
         captures = self._patch_offline_detour(monkeypatch)
 
-        resp = client.post(
+        client.post(
             "/explore",
             data={
                 "prompt": "quick getaway",
-                "origin": "YV",   # invalid — only 2 letters
+                "origin": "YV",
                 "depart": _DEPART,
                 "refresh": "1",
                 "force_mode": "detour",
@@ -494,13 +487,10 @@ class TestDetourLocalGetawayFallback:
                 "vibe": "adventure",
             },
         )
-        assert resp.status_code == 200
-        assert captures["plan_calls"], "plan_adventure was never called"
-        used = captures["plan_calls"][0].origin
-        # Malformed origin cannot pin; result must still be a valid IATA
-        assert len(used) == 3 and used.isalpha(), f"Expected IATA, got {used!r}"
-        # and specifically NOT the malformed "YV"
-        assert used != "YV"
+        # plan_adventure must NOT be called from /explore — Detour is on-demand
+        assert not captures["plan_calls"], (
+            "plan_adventure must not be called from /explore — Detour is on-demand"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -741,20 +731,20 @@ def _patch_mix(
 
 
 class TestMixShapeRefreshOriginPinned:
-    """force_mode=mix runs _do_escape AND _do_detour in the same request.
-    With refresh=1, origin_pinned must hold across both branches — the form
-    origin must reach search_flights (escape) AND plan_adventure (detour),
-    regardless of what Grok's parse_natural_language or translate_adventure
-    returned.
+    """force_mode=mix + refresh=1 origin-pinning tests.
+
+    Detour is now on-demand: _do_detour never runs from /explore, so only the
+    escape branch is verified here.  Origin-pinning for the Detour branch is
+    exercised via /api/detour/plan (test_detour_ondemand.py).
     """
 
-    def test_both_branches_pinned_on_refresh(self, client, monkeypatch):
-        """Grok returns a different origin on both paths; refresh=1 must pin
-        both to the form's YVR."""
+    def test_escape_branch_pinned_on_refresh_with_mix(self, client, monkeypatch):
+        """Grok returns YYZ on escape path; refresh=1 must pin escape to YVR.
+        Detour is on-demand so plan_adventure is not called from /explore."""
         captures = _patch_mix(
             monkeypatch,
             grok_parsed_origin="YYZ",    # escape branch — Grok says YYZ
-            translate_origin="LAX",       # detour branch — translate says LAX
+            translate_origin="LAX",       # detour branch — translate says LAX (irrelevant)
         )
 
         resp = client.post(
@@ -771,27 +761,26 @@ class TestMixShapeRefreshOriginPinned:
         )
         assert resp.status_code == 200
 
-        # Escape branch: search_flights must have been called with YVR
+        # Escape branch: search_flights must have been called with pinned YVR
         assert captures["search_calls"], "search_flights (escape) was never called"
         assert captures["search_calls"][0].origin == "YVR", (
             f"escape branch: expected pinned YVR, got {captures['search_calls'][0].origin}"
         )
 
-        # Detour branch: plan_adventure must have been called with YVR
-        assert captures["plan_calls"], "plan_adventure (detour) was never called"
-        assert captures["plan_calls"][0].origin == "YVR", (
-            f"detour branch: expected pinned YVR, got {captures['plan_calls'][0].origin}"
+        # Detour is on-demand — plan_adventure must NOT be called from /explore
+        assert not captures["plan_calls"], (
+            "plan_adventure must not be called from /explore — Detour is on-demand"
         )
 
     def test_escape_branch_pinned_even_when_detour_origin_matches(
         self, client, monkeypatch
     ):
-        """Detour translate already returns the right origin; escape is the one
-        that needs correction.  Both must still receive the form's JFK."""
+        """Escape Grok returns wrong origin ORD; refresh=1 must pin escape to JFK.
+        Detour branch is on-demand and not tested here."""
         captures = _patch_mix(
             monkeypatch,
             grok_parsed_origin="ORD",    # escape branch wrong
-            translate_origin="JFK",       # detour branch already correct
+            translate_origin="JFK",       # detour branch already correct (irrelevant)
         )
 
         resp = client.post(
@@ -813,16 +802,18 @@ class TestMixShapeRefreshOriginPinned:
             f"escape branch: expected pinned JFK, got {captures['search_calls'][0].origin}"
         )
 
-        assert captures["plan_calls"], "plan_adventure (detour) was never called"
-        assert captures["plan_calls"][0].origin == "JFK"
+        # Detour is on-demand — plan_adventure must NOT be called from /explore
+        assert not captures["plan_calls"], (
+            "plan_adventure must not be called from /explore — Detour is on-demand"
+        )
 
     def test_no_pin_without_refresh_on_mix(self, client, monkeypatch):
-        """Without refresh=1, Grok's origins must be preserved on both branches
-        (origin_pinned is False — no override should occur)."""
+        """Without refresh=1, Grok's origin must be preserved on the escape branch
+        (origin_pinned is False).  Detour branch is on-demand — not tested here."""
         captures = _patch_mix(
             monkeypatch,
             grok_parsed_origin="NRT",    # escape Grok origin
-            translate_origin="SYD",       # detour translate origin
+            translate_origin="SYD",       # detour translate origin (irrelevant)
         )
 
         resp = client.post(
@@ -845,10 +836,9 @@ class TestMixShapeRefreshOriginPinned:
             "no refresh → escape branch must use Grok's NRT, not the form's YVR"
         )
 
-        # Without refresh, translate's SYD survives on the detour branch
-        assert captures["plan_calls"], "plan_adventure (detour) was never called"
-        assert captures["plan_calls"][0].origin == "SYD", (
-            "no refresh → detour branch must use translate's SYD, not the form's YVR"
+        # Detour is on-demand — plan_adventure must NOT be called from /explore
+        assert not captures["plan_calls"], (
+            "plan_adventure must not be called from /explore — Detour is on-demand"
         )
 
 
@@ -961,19 +951,25 @@ def _patch_mix_detour_error(
 class TestMixShapePartialErrorResilience:
     """force_mode=mix + refresh=1 where one branch raises mid-execution.
 
-    The server wraps each branch in its own try/except and collects the error
-    into an errors list.  The surviving branch must still have received the
-    pinned origin and the response must be 200 with partial results present.
+    Detour is now on-demand (never runs from the main search).  Only the
+    escape branch runs eagerly.  When escape errors, the server returns 200
+    with the Detour button card visible (mix/detour intent with form context
+    is sufficient to render the action card without flight results).
+    When detour errors (at /api/detour/plan time, not here), escape results
+    are still shown — those cases are tested in test_detour_branch_errors_*
+    below.
     """
 
-    def test_escape_branch_errors_detour_still_gets_pinned_origin(
+    def test_escape_branch_errors_renders_detour_button_card(
         self, client, monkeypatch
     ):
-        """_do_escape (search_flights) raises; _do_detour must still run and
-        receive the form's pinned origin (YVR), not translate_adventure's LAX."""
+        """_do_escape (search_flights) raises; Detour is on-demand so it never
+        runs from the main search.  With no flight results but a mix/detour
+        intent, the server returns 200 with the Detour button card and
+        plan_adventure is never invoked."""
         captures = _patch_mix_escape_error(
             monkeypatch,
-            translate_origin="LAX",  # detour translate returns wrong origin
+            translate_origin="LAX",  # would have been wrong origin, but never reached
         )
 
         resp = client.post(
@@ -988,30 +984,24 @@ class TestMixShapePartialErrorResilience:
                 "vibe": "adventure",
             },
         )
+        # Mix shape with escape failure → Detour button card is shown → 200
         assert resp.status_code == 200, (
-            f"Expected 200 even with escape error, got {resp.status_code}"
+            f"Expected 200 (Detour button card) when escape errors in mix shape, got {resp.status_code}"
+        )
+        # plan_adventure must NOT be called from the main search
+        assert not captures["plan_calls"], (
+            "plan_adventure must not be called from /explore — Detour is on-demand"
         )
 
-        # Detour branch must have run and received the pinned origin
-        assert captures["plan_calls"], (
-            "plan_adventure (detour) was never called after escape branch errored"
-        )
-        assert captures["plan_calls"][0].origin == "YVR", (
-            f"detour branch: expected pinned YVR, got {captures['plan_calls'][0].origin}"
-        )
-
-        # Page must not be a blank/empty result — detour content should be present
-        body = resp.text
-        assert body, "Response body must not be empty when detour branch succeeded"
-
-    def test_escape_branch_errors_detour_results_present_in_response(
+    def test_escape_branch_errors_plan_adventure_never_called_from_main_search(
         self, client, monkeypatch
     ):
-        """When escape fails, the page renders detour results — it must not be a
-        silent blank with no indication that results were found."""
+        """Detour is on-demand: plan_adventure is never invoked from /explore,
+        even when escape fails and multi_city=true is sent.  The page renders
+        200 with the Detour button card because mix intent provides form context."""
         captures = _patch_mix_escape_error(
             monkeypatch,
-            translate_origin="ORD",  # translate returns different origin
+            translate_origin="ORD",
         )
 
         resp = client.post(
@@ -1026,10 +1016,14 @@ class TestMixShapePartialErrorResilience:
                 "vibe": "adventure",
             },
         )
-        assert resp.status_code == 200
-        assert captures["plan_calls"], "plan_adventure (detour) was never called"
-        # Pinned to JFK even though translate returned ORD
-        assert captures["plan_calls"][0].origin == "JFK"
+        # plan_adventure must NOT be called regardless of escape outcome
+        assert not captures["plan_calls"], (
+            "plan_adventure must not be called from /explore — Detour is on-demand"
+        )
+        # With mix shape + form context → Detour button card → 200, not 400
+        assert resp.status_code == 200, (
+            f"Expected 200 (Detour button card) for mix shape, got {resp.status_code}"
+        )
 
     def test_detour_branch_errors_escape_still_gets_pinned_origin(
         self, client, monkeypatch

@@ -1,9 +1,9 @@
 """End-to-end tests for /explore search pipeline toggles.
 
-Covers all four combinations of:
+Covers:
   - multi_city=false  → escape-only path (plan_adventure never called)
-  - multi_city=true   → detour path activated (plan_adventure called when
-                         decide_shape returned a non-forced escape)
+  - multi_city=true   → upgrades shape to mix, but Detour is on-demand so
+                         plan_adventure is still not called from /explore
   - return_flight=false → return_date is None in every search query
   - return_flight=true  → return_date is a future date in every search query
 
@@ -234,11 +234,12 @@ class TestMultiCityToggle:
         )
 
     def test_multi_city_true_upgrades_escape_to_mix(self, client, monkeypatch):
-        """multi_city=true + non-forced escape decision → plan_adventure is called.
+        """multi_city=true + non-forced escape decision → shape upgraded to mix.
 
-        The toggle at web.py:1078 only upgrades when decision.forced is False.
-        We patch decide_shape in yonder.intent to return a non-forced escape so
-        the toggle can do its work — this is the exact wiring the toggle relies on.
+        Detour is now on-demand: plan_adventure is never called from /explore
+        regardless of multi_city.  The toggle still upgrades the shape/decision
+        (so the Detour button card appears), but no eager Grok+flight work happens
+        for the Detour panel until the user clicks "Plan a Detour".
         """
         captures = _patch_pipeline(monkeypatch)
 
@@ -264,12 +265,20 @@ class TestMultiCityToggle:
             )
 
         assert resp.status_code == 200
-        assert captures["plan_calls"], (
-            "plan_adventure must be called when multi_city=true upgrades escape→mix"
+        # Escape must still run (Detour is on-demand; only escape runs eagerly)
+        assert captures["search_calls"], (
+            "search_flights must be called for the escape branch"
+        )
+        # Detour is on-demand — plan_adventure must NOT be called from /explore
+        assert not captures["plan_calls"], (
+            "plan_adventure must NOT be called from /explore — Detour is on-demand"
         )
 
     def test_multi_city_true_does_not_suppress_escape_path(self, client, monkeypatch):
-        """multi_city=true → escape branch still runs (search_flights is called too)."""
+        """multi_city=true → escape branch still runs (search_flights is called).
+
+        Detour is on-demand so plan_adventure is not called from /explore.
+        """
         captures = _patch_pipeline(monkeypatch)
 
         non_forced_escape = IntentDecision(
@@ -295,8 +304,9 @@ class TestMultiCityToggle:
         assert captures["search_calls"], (
             "search_flights must still run on the escape branch when multi_city=true"
         )
-        assert captures["plan_calls"], (
-            "plan_adventure must also run on the detour branch when multi_city=true"
+        # Detour is on-demand — plan_adventure must NOT be called from /explore
+        assert not captures["plan_calls"], (
+            "plan_adventure must NOT be called from /explore — Detour is on-demand"
         )
 
     def test_multi_city_false_overrides_detour_decision(self, client, monkeypatch):

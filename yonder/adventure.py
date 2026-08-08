@@ -1452,6 +1452,174 @@ def seed_ideas(
     return _sort_by_comfort(ideas, req, shuffle=shuffle)[: req.max_candidates]
 
 
+# ── Vibe-corridor candidate builder ──────────────────────────────────────────
+
+import functools
+import json as _json
+import math as _math
+import pathlib as _pathlib
+
+
+@functools.lru_cache(maxsize=1)
+def _airport_coords() -> dict[str, tuple[float, float]]:
+    """Load airports_ll.json once; returns {IATA: (lat, lon)}.
+
+    Cached module-level so the ~7 MB file is parsed only on first call.
+    """
+    p = _pathlib.Path(__file__).parent / "static" / "airports_ll.json"
+    try:
+        with open(p) as f:
+            raw = _json.load(f)
+        return {
+            k.upper(): (float(v[0]), float(v[1]))
+            for k, v in raw.items()
+            if v and len(v) >= 2
+        }
+    except Exception:
+        return {}
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in km between two lat/lon points (haversine)."""
+    R = 6371.0
+    phi1, phi2 = _math.radians(lat1), _math.radians(lat2)
+    dphi = _math.radians(lat2 - lat1)
+    dlambda = _math.radians(lon2 - lon1)
+    a = (
+        _math.sin(dphi / 2) ** 2
+        + _math.cos(phi1) * _math.cos(phi2) * _math.sin(dlambda / 2) ** 2
+    )
+    return 2 * R * _math.asin(min(1.0, _math.sqrt(a)))
+
+
+def corridor_candidates(
+    origin_iata: str,
+    dest_iata: str,
+    vibe: str,
+    *,
+    deviation: float = 0.35,
+    min_stop_days: int = 2,
+    max_stop_days: int = 5,
+    avoid_countries: list[str] | None = None,
+    visited_countries: list[str] | None = None,
+    exclude_iatas: set[str] | None = None,
+    limit: int = 10,
+) -> list[StopoverIdea]:
+    """Vibe-scored stopovers within a great-circle corridor between origin and dest.
+
+    A candidate C is 'in corridor' when:
+        dist(O, C) + dist(C, D) ≤ (1 + deviation) * dist(O, D)
+
+    Merges learned signal scores (``scores_for_vibe``) with the static seed
+    catalog and ranks by vibe-tag overlap + signal score.  Each idea's
+    ``source`` is tagged as ``'seed-corridor'`` or ``'vibe-corridor'`` for
+    observability.
+
+    Returns an empty list when the origin or destination lacks coordinates,
+    or when the route is shorter than 200 km (corridor filter would be too
+    tight for very close city pairs).
+    """
+    coords = _airport_coords()
+    origin = origin_iata.upper()
+    dest = dest_iata.upper()
+
+    orig_ll = coords.get(origin)
+    dest_ll = coords.get(dest)
+    if not orig_ll or not dest_ll:
+        return []
+
+    direct_km = _haversine_km(*orig_ll, *dest_ll)
+    if direct_km < 200:
+        return []
+
+    max_detour_km = (1.0 + deviation) * direct_km
+    avoid = {c.upper() for c in (avoid_countries or [])}
+    ban = {c.upper() for c in (exclude_iatas or set())} | {origin, dest}
+
+    stay = max(min_stop_days, min(max_stop_days, (min_stop_days + max_stop_days) // 2))
+
+    # Learned signal scores (empty in MOCK / demo mode)
+    from yonder.vibe_signals import scores_for_vibe as _svs
+
+    vibe_scores: dict[str, float] = _svs(vibe)
+
+    gathered: dict[str, dict] = {}  # IATA → metadata
+
+    # 1. Static seed catalog: always present, tagged seed-corridor
+    for row in SEED_STOPOVERS:
+        code = row["iata"].upper()
+        if code in ban:
+            continue
+        cc = (row.get("country") or country_for_iata(code) or "").upper()
+        if cc and cc in avoid:
+            continue
+        cll = coords.get(code)
+        if not cll:
+            continue
+        detour_km = _haversine_km(*orig_ll, *cll) + _haversine_km(*cll, *dest_ll)
+        if detour_km > max_detour_km:
+            continue
+        gathered[code] = {
+            "city": row["city"],
+            "country": cc or None,
+            "vibe_tags": list(row.get("vibe_tags") or []),
+            "why": row["why"],
+            "source": "seed-corridor",
+        }
+
+    # 2. Learned vibe-signal destinations not already in seed catalog
+    for iata_raw, vscore in sorted(vibe_scores.items(), key=lambda x: -x[1]):
+        if vscore <= 0:
+            continue
+        code = iata_raw.upper()
+        if code in ban or code in gathered:
+            continue
+        cll = coords.get(code)
+        if not cll:
+            continue
+        detour_km = _haversine_km(*orig_ll, *cll) + _haversine_km(*cll, *dest_ll)
+        if detour_km > max_detour_km:
+            continue
+        cc = (country_for_iata(code) or "").upper()
+        if cc and cc in avoid:
+            continue
+        gathered[code] = {
+            "city": code,  # city name not stored in signal table
+            "country": cc or None,
+            "vibe_tags": [],
+            "why": f"vibe-corridor signal score {vscore:.2f}",
+            "source": "vibe-corridor",
+        }
+
+    if not gathered:
+        return []
+
+    ideas: list[StopoverIdea] = [
+        StopoverIdea(
+            iata=code,
+            city=meta["city"],
+            stay_days=stay,
+            why=meta["why"],
+            vibe_tags=meta["vibe_tags"],
+            country=meta.get("country"),
+            source=meta["source"],
+        )
+        for code, meta in gathered.items()
+    ]
+
+    # Rank by vibe-tag overlap + comfort fit (same scorer used for Grok candidates)
+    fake_req = AdventureRequest(
+        origin=origin,
+        destination=dest,
+        depart_date=date.today(),
+        vibe=vibe,
+        avoid_countries=list(avoid_countries or []),
+        visited_countries=list(visited_countries or []),
+    )
+    ideas = _sort_by_comfort(ideas, fake_req)
+    return ideas[:limit]
+
+
 async def plan_adventure(
     req: AdventureRequest,
     ideas: list[StopoverIdea],
