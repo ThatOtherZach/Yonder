@@ -340,3 +340,349 @@ class TestDestinationSeparation:
         assert received.get("exclude_dests") == ["NRT"], (
             f"escape destination not excluded: {received.get('exclude_dests')!r}"
         )
+
+
+class TestDeferredQuestLaunch:
+    """Quest must always receive the Escape destination as its exclusion, even on
+    paths where plan_unified() is skipped or fails (chip-seed, refresh, fallback).
+    """
+
+    def _setup_common(self, monkeypatch):
+        """Shared monkeypatching: stub parse, search, and capture Quest."""
+        import yonder.grok as grok_module
+        from yonder.grok import ParsedTrip
+
+        settings = _settings()
+        monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
+        monkeypatch.setattr(web_module, "detect_trip_gaps", lambda *a, **kw: [])
+        monkeypatch.setattr(web_module, "save_last", lambda *a, **kw: None, raising=False)
+        monkeypatch.setattr(web_module, "load_last", lambda *a, **kw: None, raising=False)
+
+        _parsed = ParsedTrip(
+            origin="YVR", destination="NRT", depart_date=_FUTURE_D, currency="USD"
+        )
+
+        async def _fake_parse(self, *a, **kw):
+            return _parsed
+
+        monkeypatch.setattr(grok_module.GrokClient, "parse_natural_language", _fake_parse)
+
+        async def _fake_search(query, *a, **kw):
+            from yonder.types import UnifiedSearchResult
+            return UnifiedSearchResult(query=query, offers=[], results=[])
+
+        monkeypatch.setattr(web_module, "search_flights", _fake_search)
+
+        received: dict = {}
+
+        async def _capture_quest(*a, **kw):
+            received.update(kw)
+            return []
+
+        monkeypatch.setattr(web_module, "plan_quest", _capture_quest)
+        return settings, received
+
+    def _wait_for_quest(self, client, received):
+        import time
+        for _ in range(50):
+            if received:
+                break
+            time.sleep(0.1)
+            client.get("/api/quest/status/nope")
+
+    def test_chip_seed_path_uses_escape_destination(self, client, monkeypatch):
+        """Chip/fast-seed search skips plan_unified → Quest is deferred to after
+        Escape and receives the Escape destination as its exclude_dests."""
+        import yonder.grok as grok_module
+        settings, received = self._setup_common(monkeypatch)
+
+        # plan_unified must NOT be called on a chip/fast-seed search
+        async def _fail_unified(self, *a, **kw):
+            raise AssertionError("plan_unified must not run on chip-seed search")
+
+        monkeypatch.setattr(grok_module.GrokClient, "plan_unified", _fail_unified)
+
+        # chip_source=chip and seed_iatas=SYD triggers _chip_fast_seeds=True
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": _PROMPT,
+                "origin": "YVR",
+                "depart": _FUTURE,
+                "vibe": "adventure",
+                "chip_source": "chip",
+                "seed_iatas": "SYD",
+            },
+        )
+        assert resp.status_code == 200
+        assert "data-quest-job" in resp.text
+
+        self._wait_for_quest(client, received)
+
+        # Escape parsed NRT as destination; Quest must exclude it
+        assert received.get("exclude_dests") == ["NRT"], (
+            f"chip-seed path: Escape dest not excluded: {received.get('exclude_dests')!r}"
+        )
+
+    def test_unified_fallback_path_uses_escape_destination(self, client, monkeypatch):
+        """When plan_unified raises, Escape re-parses separately; Quest must still
+        receive the Escape destination, not an empty exclusion list."""
+        import yonder.grok as grok_module
+
+        settings, received = self._setup_common(monkeypatch)
+
+        # Force the unified call to fail so Escape falls back to parse_natural_language
+        async def _fail_unified(self, *a, **kw):
+            raise RuntimeError("unified call failed — testing fallback path")
+
+        monkeypatch.setattr(grok_module.GrokClient, "plan_unified", _fail_unified)
+
+        resp = client.post(
+            "/explore",
+            data={
+                "prompt": _PROMPT,
+                "origin": "YVR",
+                "depart": _FUTURE,
+                "vibe": "adventure",
+            },
+        )
+        assert resp.status_code == 200
+        assert "data-quest-job" in resp.text
+
+        self._wait_for_quest(client, received)
+
+        assert received.get("exclude_dests") == ["NRT"], (
+            f"unified-fallback path: Escape dest not excluded: {received.get('exclude_dests')!r}"
+        )
+
+
+class TestStageProgressions:
+    """Stage field surfaces through the status endpoint throughout the job lifecycle."""
+
+    def test_new_job_has_reading_vibe_stage(self, client):
+        """A freshly created pending job starts at reading_vibe."""
+        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        body = client.get(f"/api/quest/status/{job_id}").json()
+        assert body["status"] == "pending"
+        assert body.get("stage") == "reading_vibe"
+
+    def test_stage_advances_to_scouting(self, client):
+        """set_stage() pushes the visible stage to scouting_routes."""
+        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        quest_jobs.set_stage(job_id, "scouting_routes")
+        body = client.get(f"/api/quest/status/{job_id}").json()
+        assert body["status"] == "pending"
+        assert body.get("stage") == "scouting_routes"
+
+    def test_stage_advances_to_pricing(self, client):
+        """set_stage() pushes the visible stage to pricing_flights."""
+        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        quest_jobs.set_stage(job_id, "pricing_flights")
+        body = client.get(f"/api/quest/status/{job_id}").json()
+        assert body["status"] == "pending"
+        assert body.get("stage") == "pricing_flights"
+
+    def test_set_stage_noop_on_done_job(self):
+        """set_stage() is silently ignored on a finished job."""
+        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        quest_jobs.set_done(
+            job_id,
+            quest_panel={"ask": "test", "result": [], "home_iata": "YVR", "vibe": "adventure"},
+        )
+        quest_jobs.set_stage(job_id, "scouting_routes")  # must be no-op
+        job = quest_jobs.get_job(job_id)
+        assert job is not None
+        assert job["status"] == "done"
+        # Stage stored in the dict before done should not be overwritten
+        assert job.get("stage") != "scouting_routes"
+
+    def test_eager_quest_advances_through_stages(self, monkeypatch):
+        """_run_eager_quest transitions the job through scouting→pricing stages."""
+        settings = _settings()
+        stage_calls: list[str] = []
+
+        _orig_set_stage = quest_jobs.set_stage
+
+        def _spy_set_stage(job_id: str, stage: str) -> None:
+            stage_calls.append(stage)
+            _orig_set_stage(job_id, stage)
+
+        monkeypatch.setattr(quest_jobs, "set_stage", _spy_set_stage)
+
+        pricing_stage_cb_called: list[str] = []
+
+        async def _stub_quest(*a, stage_cb=None, **kw):
+            if stage_cb is not None:
+                stage_cb("pricing_flights")
+                pricing_stage_cb_called.append("pricing_flights")
+            return [_fake_idea()]
+
+        monkeypatch.setattr(web_module, "plan_quest", _stub_quest)
+
+        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        _run(web_module._run_eager_quest(job_id, **_job_kwargs(settings)))
+
+        assert "scouting_routes" in stage_calls, f"scouting_routes never set; got: {stage_calls}"
+        assert "pricing_flights" in pricing_stage_cb_called, "stage_cb never called with pricing_flights"
+
+    def test_recycled_hit_skips_stage_cb(self, monkeypatch):
+        """A recycled quest completes directly without going through stage transitions."""
+        monkeypatch.delenv("YONDER_DISABLE_RECYCLE", raising=False)
+        settings = Settings(testing=False, xai_api_key="test-key")
+        recycled = [_fake_idea("LIS", "MAD")]
+        stage_calls: list[str] = []
+
+        import yonder.recycle as recycle_module
+        monkeypatch.setattr(
+            recycle_module, "find_recycled_quest", lambda **kw: recycled, raising=False
+        )
+
+        _orig_set_stage = quest_jobs.set_stage
+
+        def _spy_set_stage(job_id: str, stage: str) -> None:
+            stage_calls.append(stage)
+            _orig_set_stage(job_id, stage)
+
+        monkeypatch.setattr(quest_jobs, "set_stage", _spy_set_stage)
+
+        async def _fail_quest(*a, **kw):
+            raise AssertionError("plan_quest must not run on a recycled hit")
+
+        monkeypatch.setattr(web_module, "plan_quest", _fail_quest)
+
+        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        _run(web_module._run_eager_quest(job_id, **_job_kwargs(settings)))
+
+        job = quest_jobs.get_job(job_id)
+        assert job["status"] == "done"
+        # scouting_routes/pricing_flights must not appear — recycled path is instant
+        assert "scouting_routes" not in stage_calls
+        assert "pricing_flights" not in stage_calls
+
+
+class TestConcurrentPricing:
+    """plan_quest prices all candidate ideas concurrently, then selects by preference."""
+
+    def test_all_ideas_priced_in_single_gather(self, monkeypatch):
+        """With 3 ideas, all 6 legs are priced concurrently (not sequentially)."""
+        settings = _settings()
+        price_call_pairs: list[tuple[str, str]] = []
+
+        async def _counting_price_leg(origin, dest, depart, req, **kw) -> PricedLeg:
+            price_call_pairs.append((origin, dest))
+            return PricedLeg(
+                from_iata=origin,
+                to_iata=dest,
+                depart_date=depart,
+                offer=FlightOffer(
+                    provider="live", price=199.0, currency="USD",
+                    fare_missing=False, price_kind="live",
+                ),
+            )
+
+        async def _fake_pick(*a, **kw):
+            return ["live"]
+
+        monkeypatch.setattr(adventure_module, "_price_leg", _counting_price_leg)
+        monkeypatch.setattr(adventure_module, "pick_pricing_provider", _fake_pick)
+
+        raw = [
+            dict(_RAW_HAN_BKK),
+            {**_RAW_HAN_BKK, "entry_iata": "SIN", "exit_iata": "KUL",
+             "entry_city": "Singapore", "exit_city": "Kuala Lumpur"},
+            {**_RAW_HAN_BKK, "entry_iata": "ICN", "exit_iata": "TPE",
+             "entry_city": "Seoul", "exit_city": "Taipei"},
+        ]
+
+        ideas = _run(
+            adventure_module.plan_quest(
+                _PROMPT, "adventure", "YVR", _FUTURE_D, settings,
+                include_mock=True, raw_ideas=raw,
+            )
+        )
+        assert ideas, "expected a priced idea"
+        # All 6 legs priced (concurrent gather, not early-exit sequential)
+        assert len(price_call_pairs) == 6, (
+            f"expected 6 price calls for concurrent pricing, got {len(price_call_pairs)}: {price_call_pairs}"
+        )
+
+    def test_third_idea_preferred_when_all_have_fares(self, monkeypatch):
+        """The 3rd idea (index 2) is chosen when all three have live fares."""
+        settings = _settings()
+
+        async def _priced_leg(origin, dest, depart, req, **kw) -> PricedLeg:
+            return PricedLeg(
+                from_iata=origin, to_iata=dest, depart_date=depart,
+                offer=FlightOffer(
+                    provider="live", price=250.0, currency="USD",
+                    fare_missing=False, price_kind="live",
+                ),
+            )
+
+        async def _fake_pick(*a, **kw):
+            return ["live"]
+
+        monkeypatch.setattr(adventure_module, "_price_leg", _priced_leg)
+        monkeypatch.setattr(adventure_module, "pick_pricing_provider", _fake_pick)
+
+        raw = [
+            {**_RAW_HAN_BKK, "entry_iata": "MXP", "exit_iata": "LIS",
+             "entry_city": "Milan", "exit_city": "Lisbon"},
+            {**_RAW_HAN_BKK, "entry_iata": "PRG", "exit_iata": "VIE",
+             "entry_city": "Prague", "exit_city": "Vienna"},
+            {**_RAW_HAN_BKK, "entry_iata": "FCO", "exit_iata": "ATH",
+             "entry_city": "Rome", "exit_city": "Athens"},
+        ]
+
+        ideas = _run(
+            adventure_module.plan_quest(
+                _PROMPT, "adventure", "YVR", _FUTURE_D, settings,
+                include_mock=True, raw_ideas=raw,
+            )
+        )
+        assert ideas, "expected a priced idea"
+        assert ideas[0].entry_iata == "FCO", (
+            f"expected 3rd idea (FCO), got {ideas[0].entry_iata}"
+        )
+
+    def test_falls_back_to_second_when_third_has_missing_fares(self, monkeypatch):
+        """When the 3rd idea has missing fares, the 2nd idea is chosen."""
+        settings = _settings()
+
+        # FCO (idea3) → fare-missing; PRG (idea2) → live fare
+        async def _selective_price_leg(origin, dest, depart, req, **kw) -> PricedLeg:
+            fare_missing = dest in ("FCO",) or origin in ("ATH",)
+            return PricedLeg(
+                from_iata=origin, to_iata=dest, depart_date=depart,
+                offer=FlightOffer(
+                    provider="live", price=0.0 if fare_missing else 199.0,
+                    currency="USD", fare_missing=fare_missing,
+                    price_kind="mock" if fare_missing else "live",
+                ),
+            )
+
+        async def _fake_pick(*a, **kw):
+            return ["live"]
+
+        monkeypatch.setattr(adventure_module, "_price_leg", _selective_price_leg)
+        monkeypatch.setattr(adventure_module, "pick_pricing_provider", _fake_pick)
+
+        raw = [
+            {**_RAW_HAN_BKK, "entry_iata": "MXP", "exit_iata": "LIS",
+             "entry_city": "Milan", "exit_city": "Lisbon"},
+            {**_RAW_HAN_BKK, "entry_iata": "PRG", "exit_iata": "VIE",
+             "entry_city": "Prague", "exit_city": "Vienna"},
+            {**_RAW_HAN_BKK, "entry_iata": "FCO", "exit_iata": "ATH",
+             "entry_city": "Rome", "exit_city": "Athens"},
+        ]
+
+        ideas = _run(
+            adventure_module.plan_quest(
+                _PROMPT, "adventure", "YVR", _FUTURE_D, settings,
+                include_mock=True, raw_ideas=raw,
+            )
+        )
+        assert ideas, "expected a priced idea"
+        assert ideas[0].entry_iata == "PRG", (
+            f"expected fallback to 2nd idea (PRG), got {ideas[0].entry_iata}"
+        )

@@ -2428,6 +2428,7 @@ async def plan_quest(
     raw_ideas: list[dict] | None = None,
     anchor_legs: list[dict] | None = None,
     exclude_dests: list[str] | None = None,
+    stage_cb: "Callable[[str], None] | None" = None,
 ) -> list[QuestIdea]:
     """Propose 1–3 open-jaw Quest itineraries and price both legs per idea.
 
@@ -2472,6 +2473,13 @@ async def plan_quest(
 
     if not raw_ideas:
         return []
+
+    # Notify caller that ideas are in hand and pricing is about to begin
+    if stage_cb is not None:
+        try:
+            stage_cb("pricing_flights")
+        except Exception:  # noqa: BLE001
+            pass
 
     # ── Destination separation: prefer ideas that differ from excluded dests ─
     # Escape's destination is passed in exclude_dests so Quest answers with a
@@ -2577,20 +2585,29 @@ async def plan_quest(
                 theme_label=vt["label"],
             )
 
-        # Price only one idea: prefer the 3rd (most surprising/wildcard pick),
-        # fall back to the 2nd then 1st if that idea has no live fares.
-        # This cuts live API calls from 3×2=6 to 2 in the normal case.
-        ordered = list(reversed(raw_ideas[:3]))  # [idea3, idea2, idea1]
-        chosen: QuestIdea | None = None
-        last_result: QuestIdea | None = None
-        for row in ordered:
-            last_result = await _price_idea(row)
-            if last_result.total_price is not None:
-                chosen = last_result
-                break
-        if chosen is None:
-            # All tried ideas had missing fares; return the last attempted so the
-            # UI can still render the card with "Check Fares" CTAs.
-            chosen = last_result
-        results = [chosen] if chosen is not None else []
+        # Price all candidate ideas concurrently, then pick the first
+        # fully-priced one in preference order (3rd > 2nd > 1st).
+        # Running all in parallel avoids the serial fallback latency while
+        # preserving the wildcard-first selection semantics.
+        _candidates = raw_ideas[:3]
+        if not _candidates:
+            results = []
+        else:
+            priced_all: list[QuestIdea] = list(
+                await asyncio.gather(*[_price_idea(row) for row in _candidates])
+            )
+            # Pick first fully-priced in preference order: 3rd > 2nd > 1st
+            _ordered_priced = list(reversed(priced_all))  # [priced[2], priced[1], priced[0]]
+            chosen: QuestIdea | None = None
+            for candidate in _ordered_priced:
+                if candidate.total_price is not None:
+                    chosen = candidate
+                    break
+            if chosen is None:
+                # All ideas have missing fares; fall back to the first idea in
+                # original order (index 0) so the UI can still render a card
+                # with "Check Fares" CTAs — matches the old sequential fallback
+                # where the "last tried" was always the first candidate.
+                chosen = _ordered_priced[-1] if _ordered_priced else None
+            results = [chosen]
     return results

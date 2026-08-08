@@ -2077,6 +2077,62 @@ async def explore_run(request: Request) -> HTMLResponse:
             except Exception as _uni_exc:  # noqa: BLE001 — fall back to 2 calls
                 errors.append(f"Unified plan fell back: {str(_uni_exc)[:80]}")
 
+        # ── Eager Quest (phase 1): start concurrently with Escape pricing ─────
+        # When the unified parse succeeded we have the Escape destination before
+        # flight-pricing begins; fire Quest now so its AI call overlaps the slow
+        # flight-search and field-note phases (saves ~20-30 s).
+        # When no destination is known yet (chip-seed, refresh, unified fallback)
+        # we only create the job so the placeholder shows immediately in the HTML
+        # but defer firing the background task to phase 2 (after Escape) where
+        # the confirmed destination is available as the exclusion.
+        quest_job_id: str | None = None
+        _quest_task_fired = False
+        if prompt and not (search_id and is_cancelled(search_id)):
+            try:
+                from yonder import quest_jobs as _qjobs
+
+                try:
+                    _q_depart_dt = date.fromisoformat(depart)
+                except (ValueError, TypeError):
+                    _q_depart_dt = date.today() + timedelta(days=45)
+                quest_job_id = _qjobs.create_job(home_iata=home_iata, vibe=vibe)
+
+                # Determine whether we can fire the task now with a correct exclusion.
+                # Reliable sources: unified parse (_uni_trip) or recycled escape route.
+                _q_excl_early: list[str] = []
+                _can_launch_early = False
+                if _uni_trip is not None:
+                    _uni_dest = str(getattr(_uni_trip, "destination", "") or "").upper()
+                    if len(_uni_dest) == 3 and _uni_dest.isalpha():
+                        _q_excl_early = [_uni_dest]
+                    _can_launch_early = True  # always launch when parse ran, even if no valid dest
+                elif _recycled_esc is not None and resolved_route:
+                    _q_excl_early = [resolved_route[1]]
+                    _can_launch_early = True
+
+                if _can_launch_early:
+                    asyncio.create_task(
+                        _run_eager_quest(
+                            quest_job_id,
+                            settings=settings,
+                            prompt=prompt,
+                            vibe=vibe,
+                            home_iata=home_iata,
+                            depart_dt=_q_depart_dt,
+                            currency=currency,
+                            quest_days=quest_days,
+                            mock=mock,
+                            avoid=avoid,
+                            visited=visited,
+                            anchor_legs=anchor_legs,
+                            exclude_dests=_q_excl_early,
+                        )
+                    )
+                    _quest_task_fired = True
+            except Exception:  # noqa: BLE001 — eager quest must never break search
+                quest_job_id = None
+                _quest_task_fired = False
+
         # ── Run only panels not covered by the recycle pool ────────────────────
         # Each recycled panel saves one Grok call + N flight-API calls.
         # Quest and Detour are on-demand — the main search runs Escape only.
@@ -2463,34 +2519,32 @@ async def explore_run(request: Request) -> HTMLResponse:
         else:
             err_msg = " · ".join(notes) if notes else None
 
-        # ── Eager Quest: every main search kicks off Quest planning in the ──
-        # background. The page returns fast with Escape; the Quest panel polls
-        # /api/quest/status/{id} and fills in when ideas arrive. Escape's
-        # destination is excluded so the two products answer differently.
-        quest_job_id: str | None = None
-        if prompt and not (search_id and is_cancelled(search_id)):
+        # ── Eager Quest (phase 2): deferred launch for paths without an early ──
+        # exclusion (chip-seed, refresh, unified-plan fallback). The job was
+        # already created in phase 1 so the placeholder is visible in the HTML;
+        # the background task fires here with the confirmed Escape destination.
+        if not _quest_task_fired and quest_job_id is not None and not (search_id and is_cancelled(search_id)):
             try:
-                from yonder import quest_jobs as _qjobs
+                from yonder import quest_jobs as _qjobs_late
 
-                _q_excl: list[str] = []
+                _q_excl_late: list[str] = []
                 _esc_tm_q = escape_override.get("trip_meta") or {}
-                _q_dest = str(
+                _q_dest_late = str(
                     _esc_tm_q.get("destination")
                     or (escape_override.get("form") or {}).get("destination")
                     or ""
                 ).upper()
-                if len(_q_dest) != 3 or not _q_dest.isalpha():
+                if len(_q_dest_late) != 3 or not _q_dest_late.isalpha():
                     _esc_res_q = escape_override.get("result")
-                    _q_dest = str(
+                    _q_dest_late = str(
                         getattr(getattr(_esc_res_q, "query", None), "destination", "") or ""
                     ).upper()
-                if len(_q_dest) == 3 and _q_dest.isalpha():
-                    _q_excl = [_q_dest]
+                if len(_q_dest_late) == 3 and _q_dest_late.isalpha():
+                    _q_excl_late = [_q_dest_late]
                 try:
-                    _q_depart_dt = date.fromisoformat(depart)
+                    _q_depart_dt_late = date.fromisoformat(depart)
                 except (ValueError, TypeError):
-                    _q_depart_dt = date.today() + timedelta(days=45)
-                quest_job_id = _qjobs.create_job(home_iata=home_iata, vibe=vibe)
+                    _q_depart_dt_late = date.today() + timedelta(days=45)
                 asyncio.create_task(
                     _run_eager_quest(
                         quest_job_id,
@@ -2498,14 +2552,14 @@ async def explore_run(request: Request) -> HTMLResponse:
                         prompt=prompt,
                         vibe=vibe,
                         home_iata=home_iata,
-                        depart_dt=_q_depart_dt,
+                        depart_dt=_q_depart_dt_late,
                         currency=currency,
                         quest_days=quest_days,
                         mock=mock,
                         avoid=avoid,
                         visited=visited,
                         anchor_legs=anchor_legs,
-                        exclude_dests=_q_excl,
+                        exclude_dests=_q_excl_late,
                     )
                 )
             except Exception:  # noqa: BLE001 — eager quest must never break search
@@ -2828,6 +2882,13 @@ async def _run_eager_quest(
                     ok=False,
                 )
                 return
+            # Advance stage: AI ideation about to start
+            _qjobs.set_stage(job_id, "scouting_routes")
+
+            def _stage_cb(stage: str) -> None:
+                """Forward plan_quest stage transitions to the job store."""
+                _qjobs.set_stage(job_id, stage)
+
             quest_ideas = await asyncio.wait_for(
                 plan_quest(
                     prompt,
@@ -2841,6 +2902,7 @@ async def _run_eager_quest(
                     visited=visited,
                     anchor_legs=anchor_legs,
                     exclude_dests=exclude_dests,
+                    stage_cb=_stage_cb,
                 ),
                 timeout=80.0,
             )
@@ -2923,7 +2985,11 @@ async def quest_status_api(job_id: str, request: Request):
         return JSONResponse({"status": "error", "ok": False, "error": _err, "html": html})
 
     if job.get("status") == "pending":
-        return JSONResponse({"status": "pending", "ok": False})
+        return JSONResponse({
+            "status": "pending",
+            "ok": False,
+            "stage": job.get("stage", "reading_vibe"),
+        })
 
     _home = job.get("home_iata") or ""
     _vibe = job.get("vibe") or "adventure"

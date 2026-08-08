@@ -113,6 +113,25 @@
     .quest-vibe-shuffle.did-shuffle { transform: scaleX(-1); }
     label.quest-origin-label,
     label.quest-date-label { height: 2.75rem; }
+    /* ── Quest eager-loader staged progress ── */
+    .quest-eager-loader { padding: 0.4rem 0 0.2rem; }
+    .quest-stage-msg {
+      font-size: 0.95rem;
+      color: var(--muted);
+      margin: 0 0 0.3rem;
+      animation: pb-pulse 1.4s ease-in-out infinite;
+    }
+    .quest-expect-msg {
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin: 0 0 0.45rem;
+    }
+    /* Arrival fade-slide when results replace the loader */
+    @keyframes quest-arrive {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    #quest-results.quest-arriving > .card { animation: quest-arrive 0.38s ease-out forwards; }
     .quest-days-label {
       display: inline-flex;
       flex-direction: row;
@@ -1667,8 +1686,12 @@
         </div>
         <div id="quest-card-body">
           {% if quest_job_id is defined and quest_job_id %}
-          <p class="muted quest-progress" id="quest-progress" role="status" aria-live="polite"
-            data-quest-job="{{ quest_job_id }}">🗺️ Planning your Quest — a different destination on the same vibe…</p>
+          <div class="quest-eager-loader" id="quest-progress" role="status" aria-live="polite"
+            data-quest-job="{{ quest_job_id }}">
+            <p class="quest-stage-msg" id="quest-stage-msg">🗺️ Reading your vibe&hellip;</p>
+            <p class="quest-expect-msg">Crafting a roundtrip adventure — up to a minute</p>
+            <p class="fs-progress-promo pb-fn-promo" style="margin:0"></p>
+          </div>
           {% else %}
           <button type="button" class="btn-plan-quest" id="btn-plan-quest">
             🗺️ Plan a Quest
@@ -3379,6 +3402,20 @@
           bootPlanQuestButton();
         }
 
+        // Stage → human-readable label for the loader copy
+        var _STAGE_LABELS = {
+          "reading_vibe":    "\uD83D\uDDFA\uFE0F Reading your vibe\u2026",
+          "scouting_routes": "\uD83E\uDDED Scouting overland routes\u2026",
+          "pricing_flights": "\u2708\uFE0F Pricing the best flights\u2026"
+        };
+
+        function _updateStageLabel(stage) {
+          var el = document.getElementById("quest-stage-msg");
+          if (!el || !stage) return;
+          var label = _STAGE_LABELS[stage];
+          if (label) el.textContent = label;
+        }
+
         function tick() {
           var questResults = document.getElementById("quest-results");
           // Panel gone (results cleared) or placeholder replaced — stop polling
@@ -3393,10 +3430,14 @@
                   _retryCard("The AI took too long \u2014 try again.");
                   return;
                 }
+                _updateStageLabel(json.stage);
                 setTimeout(tick, 2500);
                 return;
               }
               if (json.html) {
+                // Animate the swap so a user who waited sees the payoff
+                if (qr.classList) qr.classList.add("quest-arriving");
+                setTimeout(function() { if (qr.classList) qr.classList.remove("quest-arriving"); }, 500);
                 qr.innerHTML = json.html;
                 if (json.status === "done" && json.ok) {
                   // Persist like a manual Plan so refresh restores without a new AI call

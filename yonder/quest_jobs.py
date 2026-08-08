@@ -40,8 +40,22 @@ def create_job(*, home_iata: str, vibe: str) -> str:
             "created": now,
             "home_iata": home_iata,
             "vibe": vibe,
+            "stage": "reading_vibe",
         }
     return job_id
+
+
+def set_stage(job_id: str, stage: str) -> None:
+    """Update the visible stage label for a pending job.
+
+    Valid stages (in order): reading_vibe → scouting_routes → pricing_flights.
+    No-ops on completed/error/unknown jobs so callers never need to guard.
+    """
+    with _LOCK:
+        job = _JOBS.get(job_id)
+        if job is None or job.get("status") != "pending":
+            return
+        job["stage"] = stage
 
 
 def set_done(job_id: str, *, quest_panel: dict, place_books: dict | None = None, ok: bool = True) -> None:
