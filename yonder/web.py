@@ -63,6 +63,7 @@ from yonder.saved import (
     list_quests,
     list_saved,
     save_itinerary,
+    top_quest_routes,
     update_from_itinerary,
 )
 from yonder.settings_store import MANAGED_KEYS, settings_view, write_env
@@ -4022,6 +4023,12 @@ async def quests_browse_page(
     except Exception:
         pass
 
+    board_quests: list[dict] = []
+    try:
+        board_quests = top_quest_routes(limit=12, origin=origin_n)
+    except Exception:
+        pass
+
     return templates.TemplateResponse(
         request,
         "quests.html",
@@ -4034,6 +4041,7 @@ async def quests_browse_page(
             "page": page,
             "total": total,
             "total_pages": total_pages,
+            "board_quests": board_quests,
         },
     )
 

@@ -6,6 +6,111 @@
 {% block og_description %}Browse open-jaw Quest adventures. Filter by departure airport and find roundtrip journeys with an overland leg in between.{% endblock %}
 
 {% block extra_css %}
+  /* ── Flip board ── */
+  .flipboard-section {
+    margin-bottom: 2rem;
+  }
+  .flipboard-section h2 {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 0.55rem;
+  }
+  .fb-wrap {
+    background: #16171a;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.28);
+    font-family: 'Courier New', Courier, monospace;
+    color: #f5a800;
+  }
+  .fb-header {
+    display: grid;
+    grid-template-columns: 6ch 1fr 1fr 10ch;
+    gap: 0;
+    padding: 0.42rem 0.75rem;
+    background: #0e0f11;
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #7a6020;
+    border-bottom: 1px solid #2a2b2e;
+  }
+  .fb-body {
+    min-height: 2.5rem;
+  }
+  .fb-row {
+    display: grid;
+    grid-template-columns: 6ch 1fr 1fr 10ch;
+    gap: 0;
+    padding: 0.52rem 0.75rem;
+    border-bottom: 1px solid #222327;
+    align-items: center;
+    transition: background 0.15s;
+  }
+  .fb-row:last-child {
+    border-bottom: none;
+  }
+  .fb-row:hover {
+    background: #1e1f23;
+  }
+  /* Character cell (flip unit) */
+  .fc {
+    display: inline-block;
+    min-width: 0.9ch;
+    text-align: center;
+  }
+  .fb-col-from {
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: #f5a800;
+    white-space: nowrap;
+  }
+  .fb-col-entry,
+  .fb-col-exit {
+    font-size: 0.88rem;
+    color: #e8c86a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 0.5rem;
+  }
+  .fb-col-vibe {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #9e7b1a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* Mobile: 2-col layout, hide VIBE */
+  @media (max-width: 500px) {
+    .fb-header {
+      grid-template-columns: 6ch 1fr;
+    }
+    .fb-header .fb-col-vibe,
+    .fb-header .fb-col-exit {
+      display: none;
+    }
+    .fb-row {
+      grid-template-columns: 6ch 1fr;
+    }
+    .fb-col-exit,
+    .fb-col-vibe {
+      display: none;
+    }
+    .fb-col-entry {
+      font-size: 0.82rem;
+    }
+  }
+  /* ── end flip board ── */
+
   .quests-filter-bar {
     display: flex;
     flex-wrap: wrap;
@@ -164,6 +269,23 @@
 </header>
 
 <main id="main-content" class="container">
+  {# ── Flip board ── #}
+  {% if board_quests %}
+  <section class="flipboard-section" aria-label="Most saved quests departure board">
+    <h2>Most saved quests</h2>
+    <div class="fb-wrap" role="table" aria-label="Top quest routes">
+      <div class="fb-header" role="row">
+        <span class="fb-col-from" role="columnheader">FROM</span>
+        <span class="fb-col-entry" role="columnheader">ENTRY CITY</span>
+        <span class="fb-col-exit" role="columnheader">EXIT CITY</span>
+        <span class="fb-col-vibe" role="columnheader">VIBE</span>
+      </div>
+      <div class="fb-body" id="fb-body" role="rowgroup"></div>
+    </div>
+  </section>
+  <script id="fb-data" type="application/json">{{ board_quests | tojson }}</script>
+  {% endif %}
+
   {# ── Filter bar ── #}
   <form method="get" action="/quests" class="quests-filter-bar">
     <label>
@@ -294,4 +416,161 @@
   Yonder.City does not sell or provide proof of purchase &middot;
   Designed by <a href="https://saymservices.com" target="_blank" rel="noopener" style="color:#e8590c;text-decoration:none">Saym Services Inc.</a> of Vancouver, Canada
 </footer>
+
+{% if board_quests %}
+<script>
+(function () {
+  'use strict';
+
+  var dataEl = document.getElementById('fb-data');
+  if (!dataEl) return;
+  var routes;
+  try { routes = JSON.parse(dataEl.textContent); } catch (e) { return; }
+  if (!routes || !routes.length) return;
+
+  var body = document.getElementById('fb-body');
+  if (!body) return;
+
+  var VISIBLE = 6;            // max rows shown at once
+  var ROTATE_MS = 7000;       // time between rotations
+  var FLIP_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ·—';
+  var FLIP_STEPS = 8;         // shuffles before landing
+  var FLIP_STEP_MS = 45;      // ms per shuffle step
+  var ROW_DELAY_MS = 80;      // stagger between rows
+
+  /* ── helpers ── */
+  function pad(s, n) {
+    s = String(s || '');
+    while (s.length < n) s = s + ' ';
+    return s.slice(0, n);
+  }
+
+  function rndChar() {
+    return FLIP_CHARS[Math.floor(Math.random() * FLIP_CHARS.length)];
+  }
+
+  /* Animate a single <span class="fc"> to a target character */
+  function flipCell(span, target, delay) {
+    var step = 0;
+    setTimeout(function tick() {
+      if (step < FLIP_STEPS) {
+        span.textContent = rndChar();
+        step++;
+        setTimeout(tick, FLIP_STEP_MS);
+      } else {
+        span.textContent = target;
+      }
+    }, delay);
+  }
+
+  /* Animate every .fc in a row element to match a new text string */
+  function animateRow(rowEl, newTexts, baseDelay) {
+    var spans = rowEl.querySelectorAll('.fc');
+    var idx = 0;
+    newTexts.forEach(function (text) {
+      var chars = text.split('');
+      chars.forEach(function (ch) {
+        if (idx < spans.length) {
+          flipCell(spans[idx], ch, baseDelay);
+        }
+        idx++;
+      });
+    });
+  }
+
+  /* Build a cell with one .fc span per character */
+  function makeCell(cls, text, maxLen) {
+    var d = document.createElement('div');
+    d.className = cls;
+    d.setAttribute('role', 'cell');
+    var str = pad(text, maxLen);
+    str.split('').forEach(function (ch) {
+      var s = document.createElement('span');
+      s.className = 'fc';
+      s.textContent = ch;
+      d.appendChild(s);
+    });
+    return d;
+  }
+
+  /* Build a row DOM element for a route object */
+  function buildRow(route) {
+    var row = document.createElement('div');
+    row.className = 'fb-row';
+    row.setAttribute('role', 'row');
+    row.appendChild(makeCell('fb-col-from',  route.origin || '---', 4));
+    row.appendChild(makeCell('fb-col-entry', route.entry  || '???', 18));
+    row.appendChild(makeCell('fb-col-exit',  route.exit   || '???', 18));
+    row.appendChild(makeCell('fb-col-vibe',  route.vibe   || '',    10));
+    return row;
+  }
+
+  /* Initial render: fill visible rows, animate each with a stagger */
+  var currentOffset = 0;   // which route index the first visible slot shows
+  var rowEls = [];          // DOM row elements, fixed length
+
+  var visCount = Math.min(VISIBLE, routes.length);
+  for (var i = 0; i < visCount; i++) {
+    var row = buildRow(routes[i]);
+    body.appendChild(row);
+    rowEls.push(row);
+    /* stagger the initial flip animation row by row */
+    (function (r, delay) {
+      var route = routes[rowEls.indexOf(r)];
+      animateRow(r, [
+        pad(route.origin || '---', 4),
+        pad(route.entry  || '???', 18),
+        pad(route.exit   || '???', 18),
+        pad(route.vibe   || '',   10)
+      ], delay);
+    })(row, i * ROW_DELAY_MS);
+  }
+
+  /* Rotation: only runs when there are more routes than visible slots */
+  if (routes.length <= VISIBLE) return;
+
+  var nextRouteIdx = VISIBLE;  /* next route to roll into the board */
+  var nextRowSlot  = 0;        /* which visible row slot rotates next */
+
+  setInterval(function () {
+    var slot    = nextRowSlot % visCount;
+    var routeI  = nextRouteIdx % routes.length;
+    var route   = routes[routeI];
+    var rowEl   = rowEls[slot];
+
+    /* Replace cell text content with new padded strings, then animate */
+    function updateCells(el, texts) {
+      var spans = el.querySelectorAll('.fc');
+      var idx = 0;
+      texts.forEach(function (text) {
+        text.split('').forEach(function (ch) {
+          if (idx < spans.length) spans[idx].textContent = ch;
+          idx++;
+        });
+      });
+    }
+
+    /* Rebuild cell character counts if needed (lengths match pad above) */
+    var newTexts = [
+      pad(route.origin || '---', 4),
+      pad(route.entry  || '???', 18),
+      pad(route.exit   || '???', 18),
+      pad(route.vibe   || '',   10)
+    ];
+
+    /* Rebuild cells to ensure correct character count */
+    while (rowEl.firstChild) rowEl.removeChild(rowEl.firstChild);
+    rowEl.appendChild(makeCell('fb-col-from',  route.origin || '---', 4));
+    rowEl.appendChild(makeCell('fb-col-entry', route.entry  || '???', 18));
+    rowEl.appendChild(makeCell('fb-col-exit',  route.exit   || '???', 18));
+    rowEl.appendChild(makeCell('fb-col-vibe',  route.vibe   || '',    10));
+
+    animateRow(rowEl, newTexts, 0);
+
+    nextRowSlot++;
+    nextRouteIdx++;
+  }, ROTATE_MS);
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -713,6 +713,69 @@ def count_quests(*, origin: str | None = None) -> int:
     return int(row["n"]) if row else 0
 
 
+def top_quest_routes(*, limit: int = 12, origin: str | None = None) -> list[dict]:
+    """Return top saved quest routes grouped by (origin, entry city, exit city).
+
+    When *origin* is given (a normalised IATA code) only routes from that
+    departure airport are returned.  Results are ordered by save count
+    descending, then by recency.
+
+    Each row is a dict with keys: entry, exit, origin, vibe, accent.
+    """
+    limit = max(1, min(50, limit))
+    origin_n = (origin or "").strip().upper() or None
+    params: list = [limit]
+    origin_clause = ""
+    if origin_n:
+        origin_clause = "AND UPPER(COALESCE(origin, '')) = %s"
+        params = [origin_n, limit]
+
+    sql = f"""
+        SELECT
+            UPPER(COALESCE(NULLIF(TRIM(origin), ''), '')) AS origin,
+            COALESCE(
+                NULLIF(TRIM(itinerary_json::json->>'entry_city'), ''),
+                NULLIF(TRIM(itinerary_json::json->>'entry_iata'), '')
+            ) AS entry,
+            COALESCE(
+                NULLIF(TRIM(itinerary_json::json->>'exit_city'), ''),
+                NULLIF(TRIM(itinerary_json::json->>'exit_iata'), '')
+            ) AS exit_city,
+            MAX(vibe) AS vibe,
+            MAX(theme_accent) AS accent,
+            MAX(theme_label) AS vibe_label,
+            COUNT(*) AS save_count
+        FROM saved_itineraries
+        WHERE kind = 'quest'
+          {origin_clause}
+          AND COALESCE(
+                NULLIF(TRIM(itinerary_json::json->>'entry_city'), ''),
+                NULLIF(TRIM(itinerary_json::json->>'entry_iata'), '')
+              ) IS NOT NULL
+          AND COALESCE(
+                NULLIF(TRIM(itinerary_json::json->>'exit_city'), ''),
+                NULLIF(TRIM(itinerary_json::json->>'exit_iata'), '')
+              ) IS NOT NULL
+        GROUP BY 1, 2, 3
+        ORDER BY COUNT(*) DESC, MAX(saved_at) DESC
+        LIMIT %s
+    """
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    result = []
+    for r in rows:
+        result.append(
+            {
+                "entry": str(r["entry"] or ""),
+                "exit": str(r["exit_city"] or ""),
+                "origin": str(r["origin"] or ""),
+                "vibe": str(r["vibe_label"] or r["vibe"] or ""),
+                "accent": str(r["accent"] or "#f5a800"),
+            }
+        )
+    return result
+
+
 def update_from_itinerary(
     saved_id: str,
     itinerary: dict[str, Any],
