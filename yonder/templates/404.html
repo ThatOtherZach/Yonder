@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Page Not Found · Yonder{% endblock %}
+{% block meta_description %}The page you were looking for doesn't exist on Yonder.{% endblock %}
+{% block body %}
+<main id="main-content" class="container" style="padding-top: 4rem; padding-bottom: 4rem; text-align: center; max-width: 36rem;">
+  <p style="font-size: 4rem; margin: 0 0 0.5rem; line-height: 1;">✈️</p>
+  <h1 style="font-family: var(--font-display); font-weight: 400; font-size: clamp(2rem, 6vw, 2.6rem); letter-spacing: -0.025em; margin: 0 0 0.6rem; color: var(--ink);">
+    Off the map
+  </h1>
+  <p style="color: var(--ink-soft); font-size: 1.05rem; margin: 0 0 2rem;">
+    That page doesn't exist — it may have moved or the link could be wrong.
+  </p>
+  <a href="/" class="btn" style="display: inline-flex;">Back to Explore</a>
+</main>
+{% endblock %}

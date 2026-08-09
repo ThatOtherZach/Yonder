@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Something Went Wrong · Yonder{% endblock %}
+{% block meta_description %}Yonder hit an unexpected snag. Please try again.{% endblock %}
+{% block body %}
+<main id="main-content" class="container" style="padding-top: 4rem; padding-bottom: 4rem; text-align: center; max-width: 36rem;">
+  <p style="font-size: 4rem; margin: 0 0 0.5rem; line-height: 1;">🛑</p>
+  <h1 style="font-family: var(--font-display); font-weight: 400; font-size: clamp(2rem, 6vw, 2.6rem); letter-spacing: -0.025em; margin: 0 0 0.6rem; color: var(--ink);">
+    Something went wrong
+  </h1>
+  <p style="color: var(--ink-soft); font-size: 1.05rem; margin: 0 0 2rem;">
+    Yonder hit an unexpected snag on our end. Give it a moment and try again.
+  </p>
+  <a href="/" class="btn" style="display: inline-flex;">Back to Explore</a>
+</main>
+{% endblock %}

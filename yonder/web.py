@@ -392,6 +392,35 @@ templates.env.globals["vibes_v"] = _vv_boot
 app.mount("/static", StaticFiles(directory=str(_PKG / "static")), name="static")
 
 
+def _error_ctx() -> dict:
+    """Minimal template context for error pages (no AI or DB calls)."""
+    try:
+        saved = count_saved()
+    except Exception:
+        saved = 0
+    return {
+        "nav": "",
+        "vibe_theme": None,
+        "saved_count": saved,
+    }
+
+
+from fastapi import HTTPException
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> HTMLResponse:
+    if exc.status_code == 404:
+        return templates.TemplateResponse(request, "404.html", _error_ctx(), status_code=404)
+    return templates.TemplateResponse(request, "500.html", _error_ctx(), status_code=exc.status_code)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> HTMLResponse:
+    return templates.TemplateResponse(request, "500.html", _error_ctx(), status_code=500)
+
+
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots_txt() -> PlainTextResponse:
     return PlainTextResponse(
