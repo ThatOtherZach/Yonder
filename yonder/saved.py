@@ -333,6 +333,17 @@ def save_itinerary(
     """Persist an adventure itinerary snapshot. Prices are frozen until refresh."""
     meta = dict(trip_meta or {})
     origin, dest = _legs_origin_dest(itinerary)
+    # Quest itineraries carry entry_iata/exit_iata instead of legs[].
+    # Make origin/dest extraction explicit so the DB columns are always populated.
+    if str(itinerary.get("kind") or "").lower() == "quest":
+        if not origin:
+            origin = (
+                str(meta.get("origin") or "").strip().upper()
+                or str(itinerary.get("origin") or "").strip().upper()
+                or None
+            )
+        if not dest:
+            dest = str(itinerary.get("entry_iata") or "").strip().upper() or None
     currency = (itinerary.get("currency") or meta.get("currency") or "USD").upper()
     total = itinerary.get("total_price")
     display = itinerary.get("display_price")
@@ -488,17 +499,21 @@ def save_itinerary(
             row,
         )
         conn.commit()
-    # FIFO eviction: only for genuinely new rows (not refreshes or duplicate re-saves)
-    if replace_id is None and dedup_id is None:
+    # FIFO eviction: only for genuinely new rows (not refreshes or duplicate re-saves).
+    # Quests are exempt — they form a public library that must grow beyond SAVE_LIMIT,
+    # and they are not subject to the per-user private saved-trip cap.
+    is_quest = str(itinerary.get("kind") or "").lower() == "quest"
+    if replace_id is None and dedup_id is None and not is_quest:
         with get_conn() as conn:
             cnt_row = conn.execute(
-                "SELECT COUNT(*) AS n FROM saved_itineraries"
+                "SELECT COUNT(*) AS n FROM saved_itineraries WHERE kind != 'quest'"
             ).fetchone()
             cnt = int(cnt_row["n"]) if cnt_row else 0
             if cnt > SAVE_LIMIT:
                 conn.execute(
-                    "DELETE FROM saved_itineraries WHERE id = ("
-                    "SELECT id FROM saved_itineraries ORDER BY saved_at ASC LIMIT 1"
+                    "DELETE FROM saved_itineraries WHERE kind != 'quest' AND id = ("
+                    "SELECT id FROM saved_itineraries WHERE kind != 'quest'"
+                    " ORDER BY saved_at ASC LIMIT 1"
                     ")"
                 )
                 conn.commit()
@@ -645,6 +660,56 @@ def import_rows(items: list[dict[str, Any]]) -> tuple[int, int]:
 def count_saved() -> int:
     with get_conn() as conn:
         row = conn.execute("SELECT COUNT(*) AS n FROM saved_itineraries").fetchone()
+    return int(row["n"]) if row else 0
+
+
+def list_quests(
+    *,
+    origin: str | None = None,
+    limit: int = 10,
+    offset: int = 0,
+) -> list[SavedItinerary]:
+    """Return quest itineraries ordered newest → oldest, with optional origin filter."""
+    limit = max(1, min(50, limit))
+    offset = max(0, offset)
+    origin_n = (origin or "").strip().upper() or None
+    with get_conn() as conn:
+        if origin_n:
+            rows = conn.execute(
+                """
+                SELECT * FROM saved_itineraries
+                WHERE kind = 'quest' AND UPPER(origin) = %s
+                ORDER BY saved_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (origin_n, limit, offset),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT * FROM saved_itineraries
+                WHERE kind = 'quest'
+                ORDER BY saved_at DESC
+                LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            ).fetchall()
+    return [_row_to_saved(r) for r in rows]
+
+
+def count_quests(*, origin: str | None = None) -> int:
+    """Count saved quest itineraries, optionally filtered by origin airport."""
+    origin_n = (origin or "").strip().upper() or None
+    with get_conn() as conn:
+        if origin_n:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM saved_itineraries WHERE kind = 'quest' AND UPPER(origin) = %s",
+                (origin_n,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM saved_itineraries WHERE kind = 'quest'"
+            ).fetchone()
     return int(row["n"]) if row else 0
 
 

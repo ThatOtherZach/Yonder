@@ -56,9 +56,11 @@ from yonder.quota import budgets_snapshot, choose_providers, get_registry
 from yonder.saved import (
     SAVE_LIMIT,
     clear_all_saves,
+    count_quests,
     count_saved,
     delete as delete_saved,
     get as get_saved,
+    list_quests,
     list_saved,
     save_itinerary,
     update_from_itinerary,
@@ -456,6 +458,7 @@ Yonder.City is a flight-finder tool for spontaneous travelers. Users describe a 
 async def sitemap_xml() -> Response:
     urls = [
         "https://yonder.city/",
+        "https://yonder.city/quests",
         "https://yonder.city/packing",
     ]
     lines = [
@@ -3956,6 +3959,83 @@ async def shared_trip_page(request: Request, share_id: str) -> HTMLResponse:
     if "/" in share_id:
         return RedirectResponse(url="/", status_code=302)
     return await _render_shared_trip(request, share_id)
+
+
+_QUESTS_PER_PAGE = 10
+
+
+@app.get("/quests", response_class=HTMLResponse)
+async def quests_browse_page(
+    request: Request,
+    page: int = 1,
+    origin: str | None = None,
+) -> HTMLResponse:
+    """Public browse page for all saved Quest itineraries."""
+    page = max(1, page)
+
+    # Distinguish "param absent" (None) from "param present but empty" ("").
+    # - absent  → pre-populate from user's home airport
+    # - ""      → explicit "show all", no filter
+    # - "JFK"   → filter by that origin
+    origin_param_given = origin is not None
+    origin_n = (origin or "").strip().upper()[:4] or None
+
+    if not origin_param_given:
+        # No ?origin in URL — fall back to user's saved home airport.
+        try:
+            settings = reload_settings()
+            home = settings.resolve_home_iata()
+            if home:
+                origin_n = home.upper()
+        except Exception:
+            pass
+
+    offset = (page - 1) * _QUESTS_PER_PAGE
+
+    total = count_quests(origin=origin_n)
+    total_pages = max(1, (total + _QUESTS_PER_PAGE - 1) // _QUESTS_PER_PAGE)
+    # Clamp page to valid range
+    if page > total_pages and total > 0:
+        page = total_pages
+        offset = (page - 1) * _QUESTS_PER_PAGE
+
+    quests = list_quests(origin=origin_n, limit=_QUESTS_PER_PAGE, offset=offset)
+
+    # Build share packs for each quest (same stable-hash approach as /saved).
+    quest_cards: list[dict] = []
+    for s in quests:
+        share: dict | None = None
+        try:
+            share = _share_quest(
+                request,
+                s.itinerary or {},
+                s.origin or "",
+                {**(s.trip_meta or {}), "saved_id": s.id},
+            )
+        except Exception:
+            share = None
+        quest_cards.append({"saved": s, "share": share})
+
+    saved_count = 0
+    try:
+        saved_count = count_saved()
+    except Exception:
+        pass
+
+    return templates.TemplateResponse(
+        request,
+        "quests.html",
+        {
+            "nav": "quests",
+            "saved_count": saved_count,
+            "vibe_theme": None,
+            "quest_cards": quest_cards,
+            "origin_filter": origin_n or "",
+            "page": page,
+            "total": total,
+            "total_pages": total_pages,
+        },
+    )
 
 
 @app.get("/saved", response_class=HTMLResponse)

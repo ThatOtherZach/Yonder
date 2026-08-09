@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}Quest Library · Yonder{% endblock %}
+{% block canonical_url %}https://yonder.city/quests{% endblock %}
+{% block meta_description %}Browse Yonder's library of open-jaw Quest adventures — filter by departure airport and find your next overland journey.{% endblock %}
+{% block og_title %}Quest Library · Yonder.City{% endblock %}
+{% block og_description %}Browse open-jaw Quest adventures. Filter by departure airport and find roundtrip journeys with an overland leg in between.{% endblock %}
+
+{% block extra_css %}
+  .quests-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+  .quests-filter-bar label {
+    flex: 1 1 10rem;
+    min-width: 8rem;
+    max-width: 16rem;
+  }
+  .quests-filter-bar input[type="text"] {
+    text-transform: uppercase;
+  }
+  .quests-filter-bar .btn {
+    flex-shrink: 0;
+    align-self: flex-end;
+  }
+  .quest-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .quest-card {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.2rem 1.3rem 1rem;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .quest-card-accent {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    border-radius: var(--radius) var(--radius) 0 0;
+    background: var(--sky-bright);
+  }
+  .quest-card-vibe {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 0.25rem;
+  }
+  .quest-card-vibe-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--sky-bright);
+    flex-shrink: 0;
+  }
+  .quest-card-route {
+    font-family: var(--font-display);
+    font-size: 1.18rem;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    line-height: 1.25;
+    margin: 0;
+  }
+  .quest-card-arrow {
+    color: var(--muted);
+    font-style: normal;
+    font-size: 0.9em;
+  }
+  .quest-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+  .quest-card-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .quest-card-cta {
+    margin-top: auto;
+    padding-top: 0.65rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .quest-card-cta a {
+    font-size: 0.84rem;
+    padding: 0.42rem 0.95rem;
+  }
+  .quests-empty {
+    text-align: center;
+    padding: 3rem 1.25rem;
+  }
+  .quests-empty p:first-child {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    margin: 0 0 0.4rem;
+    color: var(--ink);
+  }
+  .quests-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    padding: 0.5rem 0 1.5rem;
+  }
+  .quests-pagination a,
+  .quests-pagination span {
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 0.42rem 1rem;
+    border-radius: 999px;
+    text-decoration: none;
+    border: 1.5px solid var(--line);
+    color: var(--ink-soft);
+    background: var(--white);
+  }
+  .quests-pagination a:hover {
+    background: var(--paper-2);
+    border-color: var(--line-strong);
+    color: var(--ink);
+  }
+  .quests-pagination span.current {
+    background: var(--ink);
+    color: var(--white);
+    border-color: var(--ink);
+  }
+  .quests-pagination span.disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .quests-count-label {
+    font-size: 0.88rem;
+    color: var(--muted);
+    margin-bottom: 0.75rem;
+  }
+{% endblock %}
+
+{% block body %}
+<header class="page-head container">
+  <h1>Quest Library</h1>
+  <p>Open-jaw adventures — fly in, travel overland, fly out. Filter by your departure airport.</p>
+</header>
+
+<main id="main-content" class="container">
+  {# ── Filter bar ── #}
+  <form method="get" action="/quests" class="quests-filter-bar">
+    <label>
+      Departure airport
+      <input
+        type="text"
+        name="origin"
+        value="{{ origin_filter | upper }}"
+        placeholder="e.g. JFK"
+        maxlength="4"
+        pattern="[A-Za-z]{3,4}"
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="Filter by departure airport IATA code"
+      />
+    </label>
+    <button type="submit" class="btn secondary">Filter</button>
+    {% if origin_filter %}
+      <a href="/quests" class="btn secondary">Clear</a>
+    {% endif %}
+  </form>
+
+  {% if quest_cards %}
+    <p class="quests-count-label">
+      {{ total }} quest{{ 's' if total != 1 else '' }} found
+      {%- if origin_filter %} from <strong>{{ origin_filter | upper }}</strong>{% endif %}
+      &nbsp;·&nbsp; page {{ page }} of {{ total_pages }}
+    </p>
+
+    <div class="quest-grid">
+      {% for card in quest_cards %}
+        {% set s = card.saved %}
+        {% set share = card.share %}
+        {% set accent = s.theme_accent or '#2a6fad' %}
+        {% set vibe_label = s.theme_label or (s.vibe or '') | capitalize %}
+        {% set it = s.itinerary %}
+        {% set entry_city = it.get('entry_city') or it.get('entry_iata') or s.destination or '?' %}
+        {% set exit_city = it.get('exit_city') or it.get('exit_iata') or '?' %}
+        {% set depart_date = it.get('depart_date') or '' %}
+
+        <article class="quest-card">
+          <div class="quest-card-accent" style="background: {{ accent }};"></div>
+
+          {% if vibe_label %}
+            <div class="quest-card-vibe">
+              <span class="quest-card-vibe-dot" style="background: {{ accent }};"></span>
+              {{ vibe_label }}
+            </div>
+          {% endif %}
+
+          <p class="quest-card-route">
+            {{ entry_city }}
+            <span class="quest-card-arrow"> ⟶ </span>
+            {{ exit_city }}
+          </p>
+
+          <div class="quest-card-meta">
+            {% if s.origin %}
+              <span class="quest-card-meta-item" title="Departure airport">
+                ✈ {{ s.origin | upper }}
+              </span>
+            {% endif %}
+            {% if depart_date %}
+              <span class="quest-card-meta-item" title="Departure date">
+                📅 {{ depart_date }}
+              </span>
+            {% endif %}
+            <span class="quest-card-meta-item" title="Saved on">
+              🗓 {{ s.saved_at_iso }}
+            </span>
+          </div>
+
+          <div class="quest-card-cta">
+            {% if share and share.path %}
+              <a class="btn btn-gold" href="{{ share.path }}" target="_blank" rel="noopener">
+                View trip ↗
+              </a>
+            {% else %}
+              <a class="btn secondary" href="/?mode=quest&amp;origin={{ s.origin | urlencode if s.origin else '' }}">
+                Plan this Quest
+              </a>
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+
+    {# ── Pagination ── #}
+    {% if total_pages > 1 %}
+      <nav class="quests-pagination" aria-label="Quest pagination">
+        {% if page > 1 %}
+          <a href="/quests?page={{ page - 1 }}{% if origin_filter %}&amp;origin={{ origin_filter | urlencode }}{% endif %}"
+             aria-label="Previous page">← Prev</a>
+        {% else %}
+          <span class="disabled">← Prev</span>
+        {% endif %}
+
+        <span class="current">{{ page }} / {{ total_pages }}</span>
+
+        {% if page < total_pages %}
+          <a href="/quests?page={{ page + 1 }}{% if origin_filter %}&amp;origin={{ origin_filter | urlencode }}{% endif %}"
+             aria-label="Next page">Next →</a>
+        {% else %}
+          <span class="disabled">Next →</span>
+        {% endif %}
+      </nav>
+    {% endif %}
+
+  {% else %}
+    <div class="quests-empty">
+      <p>No quests yet</p>
+      <p class="muted" style="margin: 0 0 1.25rem">
+        {% if origin_filter %}
+          No Quest adventures found departing from <strong>{{ origin_filter | upper }}</strong>.
+          <a href="/quests">Browse all quests</a> or generate one from the home page.
+        {% else %}
+          No Quest adventures have been saved yet. Plan one from the home page to see it here.
+        {% endif %}
+      </p>
+      <a class="btn btn-gold" href="/?mode=quest">Plan a Quest</a>
+    </div>
+  {% endif %}
+</main>
+
+<footer class="site-foot container">
+  Vibes aren't tickets — always check live fares and providers for current rates.
+  Culture notes are short takes, not gospel. Some links earn a commission.
+  Yonder.City does not sell or provide proof of purchase &middot;
+  Designed by <a href="https://saymservices.com" target="_blank" rel="noopener" style="color:#e8590c;text-decoration:none">Saym Services Inc.</a> of Vancouver, Canada
+</footer>
+{% endblock %}

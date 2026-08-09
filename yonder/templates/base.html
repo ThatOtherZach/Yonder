@@ -1684,6 +1684,7 @@
       <a class="brand" href="/">Yon<span>der</span><span class="tld">.city</span></a>
       <div class="nav-links">
         <a href="/" class="{% if nav in ('home', 'search', 'adventure') %}active{% endif %}">Explore</a>
+        <a href="/quests" class="{% if nav == 'quests' %}active{% endif %}">Quests</a>
         <a href="/saved" class="{% if nav == 'saved' %}active{% endif %}">
           Saved<span class="saved-count">{% if saved_count %} ({{ saved_count }}){% endif %}</span>
         </a>
