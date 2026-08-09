@@ -14,6 +14,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+# Canonical production URL — used for og:image and share links so crawlers
+# always receive an https:// URL even when the dev proxy rewrites base_url.
+PRODUCTION_URL = "https://yonder.city"
+
 from yonder.adventure import (
     AdventureItinerary,
     AdventureRequest,
@@ -155,7 +159,7 @@ def _share_pack(request: Request, *, kind: str, title: str, payload: dict) -> di
                 part.pop("model_source", None)
         packed.pop("model_source", None)
     trip = create_share(kind=kind, title=title, payload=packed)
-    base = str(request.base_url).rstrip("/")
+    base = PRODUCTION_URL
     url = f"{base}{trip.path}"
     return {
         "id": trip.id,
@@ -508,6 +512,8 @@ def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
         "stop_max_days": settings.detour_stop_defaults()[1],
         "home_resolved": settings.resolve_home_iata(),
         "return_days": _compute_return_days(),
+        # Always an https:// URL so crawlers (Twitter, Slack, iMessage) load it.
+        "og_image": f"{PRODUCTION_URL}/static/share_bg.jpg",
     }
 
 
@@ -3802,7 +3808,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
             },
             status_code=404,
         )
-    base = str(request.base_url).rstrip("/")
+    base = PRODUCTION_URL
     url = f"{base}{share.path}"
     kind_label = {
         "escape": "Escape",
