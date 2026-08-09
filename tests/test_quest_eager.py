@@ -343,8 +343,11 @@ class TestDestinationSeparation:
 
 
 class TestDeferredQuestLaunch:
-    """Quest must always receive the Escape destination as its exclusion, even on
-    paths where plan_unified() is skipped or fails (chip-seed, refresh, fallback).
+    """Quest launches immediately alongside Escape on every path (Task 604).
+    Exclusions are best-effort hints known at launch time (unified parse,
+    resolved route, prompt text, chip seed) — never deferred until after
+    Escape completes. When no hint exists, Quest launches with an empty
+    exclusion list (soft exclusion — plan_quest only reorders anyway).
     """
 
     def _setup_common(self, monkeypatch):
@@ -390,9 +393,9 @@ class TestDeferredQuestLaunch:
             time.sleep(0.1)
             client.get("/api/quest/status/nope")
 
-    def test_chip_seed_path_uses_escape_destination(self, client, monkeypatch):
-        """Chip/fast-seed search skips plan_unified → Quest is deferred to after
-        Escape and receives the Escape destination as its exclude_dests."""
+    def test_chip_seed_path_uses_chip_seed_hint(self, client, monkeypatch):
+        """Chip/fast-seed search skips plan_unified → Quest launches immediately
+        with the chip-seed IATA as its best-effort exclusion hint."""
         import yonder.grok as grok_module
         settings, received = self._setup_common(monkeypatch)
 
@@ -419,14 +422,16 @@ class TestDeferredQuestLaunch:
 
         self._wait_for_quest(client, received)
 
-        # Escape parsed NRT as destination; Quest must exclude it
-        assert received.get("exclude_dests") == ["NRT"], (
-            f"chip-seed path: Escape dest not excluded: {received.get('exclude_dests')!r}"
+        # Quest fires at launch time with the chip-seed IATA as the hint —
+        # it does not wait for Escape's parse (soft exclusion only).
+        assert received.get("exclude_dests") == ["SYD"], (
+            f"chip-seed path: seed hint not used: {received.get('exclude_dests')!r}"
         )
 
-    def test_unified_fallback_path_uses_escape_destination(self, client, monkeypatch):
-        """When plan_unified raises, Escape re-parses separately; Quest must still
-        receive the Escape destination, not an empty exclusion list."""
+    def test_unified_fallback_path_launches_without_waiting(self, client, monkeypatch):
+        """When plan_unified raises and no destination hint is known at launch,
+        Quest still fires immediately with an empty exclusion list rather than
+        waiting for Escape's fallback parse (soft exclusion)."""
         import yonder.grok as grok_module
 
         settings, received = self._setup_common(monkeypatch)
@@ -451,8 +456,8 @@ class TestDeferredQuestLaunch:
 
         self._wait_for_quest(client, received)
 
-        assert received.get("exclude_dests") == ["NRT"], (
-            f"unified-fallback path: Escape dest not excluded: {received.get('exclude_dests')!r}"
+        assert received.get("exclude_dests") == [], (
+            f"unified-fallback path: expected empty hint list: {received.get('exclude_dests')!r}"
         )
 
 

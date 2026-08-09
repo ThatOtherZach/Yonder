@@ -2116,16 +2116,14 @@ async def explore_run(request: Request) -> HTMLResponse:
             except Exception as _uni_exc:  # noqa: BLE001 — fall back to 2 calls
                 errors.append(f"Unified plan fell back: {str(_uni_exc)[:80]}")
 
-        # ── Eager Quest (phase 1): start concurrently with Escape pricing ─────
-        # When the unified parse succeeded we have the Escape destination before
-        # flight-pricing begins; fire Quest now so its AI call overlaps the slow
-        # flight-search and field-note phases (saves ~20-30 s).
-        # When no destination is known yet (chip-seed, refresh, unified fallback)
-        # we only create the job so the placeholder shows immediately in the HTML
-        # but defer firing the background task to phase 2 (after Escape) where
-        # the confirmed destination is available as the exclusion.
+        # ── Eager Quest: launch concurrently with Escape on EVERY search ──────
+        # Quest has no correctness dependency on Escape's resolved destination:
+        # plan_quest's exclude_dests is a soft, reorder-only hint. Fire the
+        # background task immediately with whatever destination hints are
+        # already known (unified parse, recycled route, form text, chip seed);
+        # when none are known, launch with an empty exclusion list rather than
+        # waiting ~40-50 s for Escape's pipeline to finish.
         quest_job_id: str | None = None
-        _quest_task_fired = False
         if prompt and not (search_id and is_cancelled(search_id)):
             try:
                 from yonder import quest_jobs as _qjobs
@@ -2136,41 +2134,48 @@ async def explore_run(request: Request) -> HTMLResponse:
                     _q_depart_dt = date.today() + timedelta(days=45)
                 quest_job_id = _qjobs.create_job(home_iata=home_iata, vibe=vibe)
 
-                # Determine whether we can fire the task now with a correct exclusion.
-                # Reliable sources: unified parse (_uni_trip) or recycled escape route.
+                # Best-effort exclusion hints, in reliability order:
+                # unified parse > recycled/resolved route > prompt text > chip seeds.
                 _q_excl_early: list[str] = []
-                _can_launch_early = False
                 if _uni_trip is not None:
                     _uni_dest = str(getattr(_uni_trip, "destination", "") or "").upper()
                     if len(_uni_dest) == 3 and _uni_dest.isalpha():
                         _q_excl_early = [_uni_dest]
-                    _can_launch_early = True  # always launch when parse ran, even if no valid dest
-                elif _recycled_esc is not None and resolved_route:
+                if not _q_excl_early and resolved_route:
                     _q_excl_early = [resolved_route[1]]
-                    _can_launch_early = True
+                if not _q_excl_early:
+                    try:
+                        _q_route_hint = detect_route_iatas(prompt)
+                        if _q_route_hint:
+                            _q_excl_early = [_q_route_hint[1]]
+                    except Exception:  # noqa: BLE001 — hint only
+                        pass
+                if not _q_excl_early and chip_seeds:
+                    _q_excl_early = [
+                        (h.get("iata") or "").upper()
+                        for h in chip_seeds
+                        if len(h.get("iata") or "") == 3
+                    ][:1]
 
-                if _can_launch_early:
-                    asyncio.create_task(
-                        _run_eager_quest(
-                            quest_job_id,
-                            settings=settings,
-                            prompt=prompt,
-                            vibe=vibe,
-                            home_iata=home_iata,
-                            depart_dt=_q_depart_dt,
-                            currency=currency,
-                            quest_days=quest_days,
-                            mock=mock,
-                            avoid=avoid,
-                            visited=visited,
-                            anchor_legs=anchor_legs,
-                            exclude_dests=_q_excl_early,
-                        )
+                asyncio.create_task(
+                    _run_eager_quest(
+                        quest_job_id,
+                        settings=settings,
+                        prompt=prompt,
+                        vibe=vibe,
+                        home_iata=home_iata,
+                        depart_dt=_q_depart_dt,
+                        currency=currency,
+                        quest_days=quest_days,
+                        mock=mock,
+                        avoid=avoid,
+                        visited=visited,
+                        anchor_legs=anchor_legs,
+                        exclude_dests=_q_excl_early,
                     )
-                    _quest_task_fired = True
+                )
             except Exception:  # noqa: BLE001 — eager quest must never break search
                 quest_job_id = None
-                _quest_task_fired = False
 
         # ── Run only panels not covered by the recycle pool ────────────────────
         # Each recycled panel saves one Grok call + N flight-API calls.
@@ -2558,51 +2563,8 @@ async def explore_run(request: Request) -> HTMLResponse:
         else:
             err_msg = " · ".join(notes) if notes else None
 
-        # ── Eager Quest (phase 2): deferred launch for paths without an early ──
-        # exclusion (chip-seed, refresh, unified-plan fallback). The job was
-        # already created in phase 1 so the placeholder is visible in the HTML;
-        # the background task fires here with the confirmed Escape destination.
-        if not _quest_task_fired and quest_job_id is not None and not (search_id and is_cancelled(search_id)):
-            try:
-                from yonder import quest_jobs as _qjobs_late
-
-                _q_excl_late: list[str] = []
-                _esc_tm_q = escape_override.get("trip_meta") or {}
-                _q_dest_late = str(
-                    _esc_tm_q.get("destination")
-                    or (escape_override.get("form") or {}).get("destination")
-                    or ""
-                ).upper()
-                if len(_q_dest_late) != 3 or not _q_dest_late.isalpha():
-                    _esc_res_q = escape_override.get("result")
-                    _q_dest_late = str(
-                        getattr(getattr(_esc_res_q, "query", None), "destination", "") or ""
-                    ).upper()
-                if len(_q_dest_late) == 3 and _q_dest_late.isalpha():
-                    _q_excl_late = [_q_dest_late]
-                try:
-                    _q_depart_dt_late = date.fromisoformat(depart)
-                except (ValueError, TypeError):
-                    _q_depart_dt_late = date.today() + timedelta(days=45)
-                asyncio.create_task(
-                    _run_eager_quest(
-                        quest_job_id,
-                        settings=settings,
-                        prompt=prompt,
-                        vibe=vibe,
-                        home_iata=home_iata,
-                        depart_dt=_q_depart_dt_late,
-                        currency=currency,
-                        quest_days=quest_days,
-                        mock=mock,
-                        avoid=avoid,
-                        visited=visited,
-                        anchor_legs=anchor_legs,
-                        exclude_dests=_q_excl_late,
-                    )
-                )
-            except Exception:  # noqa: BLE001 — eager quest must never break search
-                quest_job_id = None
+        # Eager Quest launches in a single site above, concurrent with Escape;
+        # by this point the job (if any) is already running.
 
         ctx = _compose_page_ctx(
             settings,
