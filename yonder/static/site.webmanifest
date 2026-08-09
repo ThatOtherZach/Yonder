@@ -1,0 +1,21 @@
+{
+  "name": "Yonder.City",
+  "short_name": "Yonder",
+  "description": "Spontaneous flight finder by vibe",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#141c28",
+  "theme_color": "#141c28",
+  "icons": [
+    {
+      "src": "/static/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
