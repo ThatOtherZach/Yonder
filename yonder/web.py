@@ -3825,16 +3825,8 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
     if not share:
         return templates.TemplateResponse(
             request,
-            "trip.html",
-            {
-                "nav": "home",
-                **_base_ctx(settings),
-                "share": None,
-                "error": "This shared trip is missing or expired.",
-                "share_url": str(request.url),
-                "qr_svg": "",
-                "kind_label": "trip",
-            },
+            "404.html",
+            _error_ctx(),
             status_code=404,
         )
     base = PRODUCTION_URL
