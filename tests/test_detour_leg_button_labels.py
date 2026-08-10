@@ -59,6 +59,9 @@ _RETURN_DATE = date.today() + timedelta(days=37)
 _URL_LEG1 = aviasales_url("YVR", "DXB", _DEPART_DATE)
 _URL_LEG2 = aviasales_url("DXB", "YVR", _RETURN_DATE)
 
+# Stable session ID used for saved-mode tests so owner_sess matches the cookie
+_SAVED_SESS = "test-detour-label-sess-01"
+
 
 # ---------------------------------------------------------------------------
 # Helpers: build Pydantic objects for direct macro rendering
@@ -336,8 +339,8 @@ class TestDetourSavedButtonLabels:
     """detour_card in saved mode must render per-leg route labels."""
 
     def _html(self, client, payload: dict) -> str:
-        saved_module.save_itinerary(payload["itinerary"])
-        resp = client.get("/saved")
+        saved_module.save_itinerary(payload["itinerary"], owner_sess=_SAVED_SESS)
+        resp = client.get("/saved", cookies={"yv_sess": _SAVED_SESS})
         assert resp.status_code == 200
         return resp.text
 
@@ -550,8 +553,8 @@ class TestDetourRtPickerSegments:
 
     def test_saved_two_leg_rt_segs_leg1(self, client):
         """Saved two-leg detour page must include the outbound leg segment."""
-        saved_module.save_itinerary(_two_leg_payload()["itinerary"])
-        resp = client.get("/saved")
+        saved_module.save_itinerary(_two_leg_payload()["itinerary"], owner_sess=_SAVED_SESS)
+        resp = client.get("/saved", cookies={"yv_sess": _SAVED_SESS})
         assert resp.status_code == 200
         seg = self._expected_seg("YVR", "DXB", _DEPART_DATE)
         assert seg in resp.text, (
@@ -560,8 +563,8 @@ class TestDetourRtPickerSegments:
 
     def test_saved_two_leg_rt_segs_leg2(self, client):
         """Saved two-leg detour page must include the return leg segment."""
-        saved_module.save_itinerary(_two_leg_payload()["itinerary"])
-        resp = client.get("/saved")
+        saved_module.save_itinerary(_two_leg_payload()["itinerary"], owner_sess=_SAVED_SESS)
+        resp = client.get("/saved", cookies={"yv_sess": _SAVED_SESS})
         assert resp.status_code == 200
         seg = self._expected_seg("DXB", "YVR", _RETURN_DATE)
         assert seg in resp.text, (

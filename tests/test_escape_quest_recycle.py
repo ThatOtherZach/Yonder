@@ -129,6 +129,8 @@ def _detour_itinerary(*, origin: str = "YVR", dest: str = "KIX") -> dict[str, An
 
 def _patch_pool(monkeypatch, saved: list[SavedItinerary]) -> None:
     monkeypatch.setattr(recycle_module, "list_saved", lambda *a, **kw: saved)
+    # find_recycled_quest now reads the global quest library via list_quests
+    monkeypatch.setattr(recycle_module, "list_quests", lambda *a, **kw: saved)
 
 
 # ---------------------------------------------------------------------------

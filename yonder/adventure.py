@@ -1101,7 +1101,7 @@ VIBE_TAG_MAP: dict[str, frozenset[str]] = {
 RECENT_HISTORY_DECAY = 3
 
 
-def _recent_history_iatas() -> set[str]:
+def _recent_history_iatas(owner_sess: str | None = None) -> set[str]:
     """IATA codes from the user's recent trip history (saved + recycled trips).
 
     Unions destination IATAs from:
@@ -1115,13 +1115,13 @@ def _recent_history_iatas() -> set[str]:
     try:
         from yonder.saved import saved_destination_iatas
 
-        iatas |= saved_destination_iatas(limit=200) or set()
+        iatas |= saved_destination_iatas(limit=200, owner_sess=owner_sess) or set()
     except Exception:  # noqa: BLE001
         pass
     try:
         from yonder.recycle import recycled_destination_iatas
 
-        iatas |= recycled_destination_iatas(limit=200) or set()
+        iatas |= recycled_destination_iatas(limit=200, owner_sess=owner_sess) or set()
     except Exception:  # noqa: BLE001
         pass
     return iatas
@@ -1133,6 +1133,7 @@ def _sort_by_comfort(
     *,
     shuffle: bool = False,
     recent_iatas: set[str] | None = None,
+    owner_sess: str | None = None,
 ) -> list[StopoverIdea]:
     """Reorder *ideas* by vibe-tag overlap + traveler comfort fit.
 
@@ -1147,7 +1148,7 @@ def _sort_by_comfort(
     import random
 
     if recent_iatas is None:
-        recent_iatas = _recent_history_iatas()
+        recent_iatas = _recent_history_iatas(owner_sess=owner_sess)
     _recent = {c.upper() for c in recent_iatas if c}
 
     vibe = (req.vibe or "").lower()
@@ -1228,7 +1229,7 @@ def _sort_by_comfort(
     return ideas
 
 
-def detect_trip_gaps(*, last_n: int = 5) -> "list[Any]":
+def detect_trip_gaps(*, last_n: int = 5, owner_sess: str | None = None) -> "list[Any]":
     """Read the last N saves and return structural TripGap objects.
 
     Returns an empty list when the user has no saves or saves have no
@@ -1239,7 +1240,7 @@ def detect_trip_gaps(*, last_n: int = 5) -> "list[Any]":
     from yonder.types import TripGap
 
     try:
-        saves = list_saved(limit=last_n)
+        saves = list_saved(limit=last_n, owner_sess=owner_sess)
     except Exception:
         return []
 
@@ -1405,6 +1406,7 @@ def seed_ideas(
     *,
     exclude_iatas: set[str] | None = None,
     shuffle: bool = False,
+    owner_sess: str | None = None,
 ) -> list[StopoverIdea]:
     import random
 
@@ -1449,7 +1451,7 @@ def seed_ideas(
             )
         )
     # Sort by vibe-tag overlap + comfort fit (same pass used for Grok candidates).
-    return _sort_by_comfort(ideas, req, shuffle=shuffle)[: req.max_candidates]
+    return _sort_by_comfort(ideas, req, shuffle=shuffle, owner_sess=owner_sess)[: req.max_candidates]
 
 
 # ── Vibe-corridor candidate builder ──────────────────────────────────────────
@@ -1504,6 +1506,7 @@ def corridor_candidates(
     visited_countries: list[str] | None = None,
     exclude_iatas: set[str] | None = None,
     limit: int = 10,
+    owner_sess: str | None = None,
 ) -> list[StopoverIdea]:
     """Vibe-scored stopovers within a great-circle corridor between origin and dest.
 
@@ -1616,7 +1619,7 @@ def corridor_candidates(
         avoid_countries=list(avoid_countries or []),
         visited_countries=list(visited_countries or []),
     )
-    ideas = _sort_by_comfort(ideas, fake_req)
+    ideas = _sort_by_comfort(ideas, fake_req, owner_sess=owner_sess)
     return ideas[:limit]
 
 
@@ -1629,6 +1632,7 @@ async def plan_adventure(
     include_mock: bool = False,
     cancel_id: str | None = None,
     exclude_iatas: set[str] | None = None,
+    owner_sess: str | None = None,
 ) -> AdventureResult:
     """Plan an adventure itinerary.
 
@@ -1697,7 +1701,7 @@ async def plan_adventure(
     ideas = unique_ideas
     # Apply comfort-fit reranking — same scoring pass as seeds — so
     # Grok-sourced candidates are ordered by comfort fit before pricing.
-    ideas = _sort_by_comfort(ideas, req)
+    ideas = _sort_by_comfort(ideas, req, owner_sess=owner_sess)
     # Route knowledge: candidates whose route from the origin recently failed
     # move to the back of the line — viable candidates get priced first, the
     # fresh-failed ones surface the no-flight treatment instantly without an

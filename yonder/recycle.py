@@ -13,7 +13,7 @@ from datetime import date
 from typing import Any
 
 from yonder.adventure import AdventureItinerary, AdventureRequest, AdventureResult, PricedLeg, QuestIdea
-from yonder.saved import SavedItinerary, _STOP_WORDS, list_saved
+from yonder.saved import SavedItinerary, _STOP_WORDS, list_quests, list_saved
 from yonder.types import CabinClass, FlightOffer, SearchQuery, UnifiedSearchResult
 
 # Notes that would hint the trip is an old snapshot / demo — never show these
@@ -110,6 +110,7 @@ def find_recycled_result(
     limit: int = 5,
     exclude_iatas: set[str] | None = None,
     min_score: float = 1.5,
+    owner_sess: str | None = None,
 ) -> AdventureResult | None:
     """Best saved-trip matches for a search, packaged like a fresh result.
 
@@ -140,7 +141,7 @@ def find_recycled_result(
     want_lang = detect_lang(prompt)
 
     scored: list[tuple[float, SavedItinerary]] = []
-    for s in list_saved(limit=200):
+    for s in list_saved(limit=200, owner_sess=owner_sess):
         if _is_mock_saved(s):
             continue
         if detect_lang(f"{s.trip_prompt or ''} {s.title or ''}") != want_lang:
@@ -203,7 +204,7 @@ def find_recycled_result(
     return AdventureResult(request=req, ideas=[], itineraries=itineraries)
 
 
-def recycled_destination_iatas(*, limit: int = 200) -> set[str]:
+def recycled_destination_iatas(*, limit: int = 200, owner_sess: str | None = None) -> set[str]:
     """IATA codes of destinations from non-mock saved trips (the recycling pool).
 
     These are cities the user has already seen via the recycled-result path —
@@ -212,7 +213,7 @@ def recycled_destination_iatas(*, limit: int = 200) -> set[str]:
     """
     try:
         out: set[str] = set()
-        for s in list_saved(limit=limit):
+        for s in list_saved(limit=limit, owner_sess=owner_sess):
             if _is_mock_saved(s):
                 continue
             stop = (s.stop_iata or "").strip().upper()
@@ -235,6 +236,7 @@ def find_recycled_escape(
     depart: str | None = None,
     currency: str = "USD",
     min_score: float = 2.0,
+    owner_sess: str | None = None,
 ) -> UnifiedSearchResult | None:
     """Best saved escape-trip match packaged as a fare-missing UnifiedSearchResult.
 
@@ -265,7 +267,7 @@ def find_recycled_escape(
         want_lang = "en"
 
     scored: list[tuple[float, Any]] = []
-    for s in list_saved(limit=200):
+    for s in list_saved(limit=200, owner_sess=owner_sess):
         if _is_mock_saved(s):
             continue
         it_d = s.itinerary or {}
@@ -367,14 +369,14 @@ def find_recycled_quest(
     except Exception:
         want_lang = "en"
 
+    # Quest recycling reads the SHARED quest library (all owners) — this is
+    # intentional per the design: the Quest fast path stays a public pool so
+    # even browsers with no saves see recycled quest results.
     scored: list[tuple[float, Any]] = []
-    for s in list_saved(limit=200):
+    for s in list_quests(limit=200):
         if _is_mock_saved(s):
             continue
         it_d = s.itinerary or {}
-        kind = (it_d.get("kind") or s.kind or "").lower()
-        if kind not in ("quest",):
-            continue
         if not it_d.get("entry_iata") or not it_d.get("exit_iata"):
             continue
         try:

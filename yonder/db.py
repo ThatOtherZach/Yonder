@@ -79,9 +79,12 @@ CREATE TABLE IF NOT EXISTS saved_itineraries (
     all_in_display TEXT,
     notes_json TEXT,
     itinerary_json TEXT NOT NULL,
-    trip_meta_json TEXT
+    trip_meta_json TEXT,
+    owner_sess TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_saved_at ON saved_itineraries(saved_at DESC);
+ALTER TABLE saved_itineraries ADD COLUMN IF NOT EXISTS owner_sess TEXT;
+CREATE INDEX IF NOT EXISTS idx_saved_owner ON saved_itineraries(owner_sess);
 
 CREATE TABLE IF NOT EXISTS shared_trips (
     id TEXT PRIMARY KEY,

@@ -73,6 +73,10 @@ def _labeled_itinerary(title: str = "YVR → CDG") -> dict:
     return itin
 
 
+# Stable session ID so saved rows' owner_sess matches the cookie on /saved
+_SAVED_SESS = "test-legacy-model-sess-01"
+
+
 # ---------------------------------------------------------------------------
 # /saved page — legacy row
 # ---------------------------------------------------------------------------
@@ -80,9 +84,9 @@ def _labeled_itinerary(title: str = "YVR → CDG") -> dict:
 
 def test_saved_page_legacy_row_no_via_text(client):
     """/saved renders a legacy row without any 'via ' text in the HTML."""
-    saved_module.save_itinerary(_legacy_itinerary(), trip_meta={})
+    saved_module.save_itinerary(_legacy_itinerary(), trip_meta={}, owner_sess=_SAVED_SESS)
 
-    resp = client.get("/saved")
+    resp = client.get("/saved", cookies={"yv_sess": _SAVED_SESS})
     assert resp.status_code == 200
     html = resp.text
 
@@ -97,9 +101,10 @@ def test_saved_page_labeled_row_shows_via(client):
     saved_module.save_itinerary(
         _labeled_itinerary(),
         trip_meta={"model_source": "Grok (Server)"},
+        owner_sess=_SAVED_SESS,
     )
 
-    resp = client.get("/saved")
+    resp = client.get("/saved", cookies={"yv_sess": _SAVED_SESS})
     assert resp.status_code == 200
     html = resp.text
     assert "via Grok (Server)" in html
@@ -107,13 +112,14 @@ def test_saved_page_labeled_row_shows_via(client):
 
 def test_saved_page_mixed_rows_no_template_error(client):
     """/saved renders both a legacy and a labeled row without errors."""
-    saved_module.save_itinerary(_legacy_itinerary("YVR → NRT"), trip_meta={})
+    saved_module.save_itinerary(_legacy_itinerary("YVR → NRT"), trip_meta={}, owner_sess=_SAVED_SESS)
     saved_module.save_itinerary(
         _labeled_itinerary("YVR → CDG"),
         trip_meta={"model_source": "BYOM, llama-3"},
+        owner_sess=_SAVED_SESS,
     )
 
-    resp = client.get("/saved")
+    resp = client.get("/saved", cookies={"yv_sess": _SAVED_SESS})
     assert resp.status_code == 200
     html = resp.text
     # Labeled row is shown

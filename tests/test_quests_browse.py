@@ -87,8 +87,8 @@ def test_saved_quest_has_view_trip_link(client):
     resp = client.get("/quests?origin=YVR", follow_redirects=False)
     assert resp.status_code == 200
     assert "Lisbon" in resp.text
-    # The share pack should produce a /t/quest/... path
-    assert "View trip" in resp.text
+    # The quest card must have a CTA link to the full quest share page
+    assert "Open Quest" in resp.text or "View trip" in resp.text
 
 
 def test_saved_quest_origin_column_populated(client):

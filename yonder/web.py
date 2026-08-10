@@ -630,12 +630,12 @@ def _detour_panel(settings, session_id: str, override: dict | None = None) -> di
     return base
 
 
-def _saved_shuffle_pool(limit: int = 100) -> list[dict]:
+def _saved_shuffle_pool(limit: int = 100, session_id: str | None = None) -> list[dict]:
     """Distinct {prompt, vibe} pairs from saved trips for the compose shuffle."""
     pool: list[dict] = []
     seen: set[tuple[str, str]] = set()
     try:
-        for s in list_saved(limit=limit):
+        for s in list_saved(limit=limit, owner_sess=session_id):
             prompt = (s.trip_prompt or "").strip()
             vibe = (s.vibe or "").strip().lower()
             # Old rows may hold free text in the vibe column; ids are short slugs.
@@ -715,7 +715,7 @@ def _compose_page_ctx(
         "escape_panel": esc,
         "detour_panel": det,
         "lock_vibe": bool(lock_vibe),
-        "saved_shuffle": _saved_shuffle_pool(),
+        "saved_shuffle": _saved_shuffle_pool(session_id=session_id),
     }
     form_vibe = form.get("vibe") if isinstance(form, dict) else None
     # Page chrome vibe only when locked (post-search); otherwise JS picks random
@@ -1208,7 +1208,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     try:
         from yonder.saved import saved_destination_iatas
 
-        save_ban = saved_destination_iatas(limit=200) or set()
+        save_ban = saved_destination_iatas(limit=200, owner_sess=sess) or set()
     except Exception:  # noqa: BLE001
         save_ban = set()
     exclude_iatas |= save_ban
@@ -1392,6 +1392,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                         ),
                         exclude_iatas=exclude_iatas,
                         shuffle=True,
+                        owner_sess=sess,
                     )
                     if pool:
                         trip = trip.model_copy(
@@ -1611,7 +1612,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 proximity_mode=_has_proximity(prompt),
             )
             local_ideas = seed_ideas(
-                local_req, exclude_iatas=exclude_iatas, shuffle=is_refresh
+                local_req, exclude_iatas=exclude_iatas, shuffle=is_refresh, owner_sess=sess,
             )
             if not local_ideas:
                 msg = "No unvisited getaway cities left after passport map."
@@ -1722,7 +1723,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                     req = req.model_copy(update=upd)
                 if not ideas:
                     ideas = seed_ideas(
-                        req, exclude_iatas=exclude_iatas, shuffle=is_refresh
+                        req, exclude_iatas=exclude_iatas, shuffle=is_refresh, owner_sess=sess,
                     )
             except Exception as exc:  # noqa: BLE001
                 req, ideas = _local_getaway_fallback(str(exc)[:120])
@@ -1734,7 +1735,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             ideas = [i for i in ideas if (i.iata or "").upper() not in exclude_iatas]
             if not ideas:
                 ideas = seed_ideas(
-                    req, exclude_iatas=exclude_iatas, shuffle=True
+                    req, exclude_iatas=exclude_iatas, shuffle=True, owner_sess=sess,
                 )
 
         # Optional non-Save chip seeds only (dataset pattern, not ★ Saves)
@@ -1742,7 +1743,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             from yonder.adventure import StopoverIdea
 
             if not ideas:
-                ideas = seed_ideas(req, exclude_iatas=exclude_iatas)
+                ideas = seed_ideas(req, exclude_iatas=exclude_iatas, owner_sess=sess)
             for h in reversed(chip_seeds):
                 code = h["iata"]
                 if code in exclude_iatas:
@@ -1762,7 +1763,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 )
         elif req is not None and not ideas:
             ideas = seed_ideas(
-                req, exclude_iatas=exclude_iatas, shuffle=is_refresh
+                req, exclude_iatas=exclude_iatas, shuffle=is_refresh, owner_sess=sess,
             )
 
         # Pin user-named stops as first candidates and build multi-stop chain.
@@ -1819,6 +1820,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             include_mock=mock,
             cancel_id=search_id or None,
             exclude_iatas=exclude_iatas,
+            owner_sess=sess,
         )
         result = _mark_missing_fares_adventure(result)
         # Refresh found nothing new → restore first result set
@@ -1944,6 +1946,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                     origin=home_iata,
                     depart=depart,
                     currency=currency,
+                    owner_sess=sess,
                 )
         except Exception:  # noqa: BLE001
             _recycled_esc = None
@@ -2044,7 +2047,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         # ── Trip-gap awareness: read saved-trip gaps before launching panels ────
         # Fast sync DB read — never blocks meaningful work.
         try:
-            trip_gaps = detect_trip_gaps(last_n=5)
+            trip_gaps = detect_trip_gaps(last_n=5, owner_sess=sess)
         except Exception:
             trip_gaps = []
 
@@ -2054,7 +2057,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         try:
             from yonder.saved import upcoming_anchor_legs as _upcoming_anchors
 
-            anchor_legs = _upcoming_anchors(limit=3)
+            anchor_legs = _upcoming_anchors(limit=3, owner_sess=sess)
         except Exception:
             anchor_legs = []
 
@@ -2669,7 +2672,7 @@ async def quest_plan_api(request: Request):
     try:
         anchor_legs: list = []
         from yonder.saved import upcoming_anchor_legs as _quest_anchors
-        anchor_legs = _quest_anchors(limit=3)
+        anchor_legs = _quest_anchors(limit=3, owner_sess=_req_sess(request))
     except Exception:
         anchor_legs = []
 
@@ -3110,6 +3113,7 @@ async def detour_plan_api(request: Request):
                 depart=depart,
                 currency=currency,
                 limit=max_cand,
+                owner_sess=sess,
             )
     except Exception:  # noqa: BLE001
         _recycled_det = None
@@ -3189,6 +3193,7 @@ async def detour_plan_api(request: Request):
                 avoid_countries=avoid,
                 exclude_iatas=set(),
                 limit=max_cand + 5,
+                owner_sess=sess,
             )
             candidate_source = "vibe-corridor" if ideas else "seed-fallback"
         except Exception:  # noqa: BLE001
@@ -3291,13 +3296,14 @@ async def detour_plan_api(request: Request):
                     exclude_iatas=set(),
                     limit=max_cand + 5,
                     deviation=2.0,
+                    owner_sess=sess,
                 )
             except Exception:  # noqa: BLE001
                 ideas = []
             candidate_source = "seed-corridor-wide" if ideas else "none"
         else:
             # No destination → unrestricted getaway seeds are appropriate
-            ideas = seed_ideas(req)
+            ideas = seed_ideas(req, owner_sess=sess)
             if not candidate_source.startswith(("vibe", "grok")):
                 candidate_source = "seed-fallback"
 
@@ -3306,7 +3312,7 @@ async def detour_plan_api(request: Request):
     error_text: str | None = None
     try:
         result = await asyncio.wait_for(
-            plan_adventure(req, ideas, settings=settings, include_mock=mock),
+            plan_adventure(req, ideas, settings=settings, include_mock=mock, owner_sess=sess),
             timeout=60.0,
         )
         result = _mark_missing_fares_adventure(result)
@@ -3373,7 +3379,7 @@ async def detour_plan_api(request: Request):
         from yonder.saved import upcoming_anchor_legs as _det_anchors
         from yonder.adventure import match_anchor as _match_anchor
 
-        anchor_legs = _det_anchors(limit=3)
+        anchor_legs = _det_anchors(limit=3, owner_sess=sess)
         if anchor_legs:
             _its_a = list(result.itineraries)
             _changed = False
@@ -3542,7 +3548,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
                 trip_kind="detour" if _route else "getaway",
                 include_direct=False,
             )
-            local_ideas = seed_ideas(local_req)
+            local_ideas = seed_ideas(local_req, owner_sess=sess)
             if not local_ideas:
                 msg = (
                     "No unvisited getaway cities left after applying your passport map. "
@@ -3613,7 +3619,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
                     )
                     # Grok returned empty candidates — fill from passport-aware seeds
                     if not ideas:
-                        ideas = seed_ideas(req)
+                        ideas = seed_ideas(req, owner_sess=sess)
                     _adv_usage.append(grok.accumulated_usage)
                 except Exception as exc:  # noqa: BLE001
                     # Open getaways don't need a second city — map + home guess is enough
@@ -3645,7 +3651,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
             )
 
         if not ideas:
-            ideas = seed_ideas(req)
+            ideas = seed_ideas(req, owner_sess=sess)
         if not ideas:
             raise ValueError(
                 "No candidate cities after applying your visited/avoid map. "
@@ -3655,7 +3661,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
         # Force include_direct off for speed (baseline is optional noise under soft aim)
         req = req.model_copy(update={"include_direct": False})
         result = await plan_adventure(
-            req, ideas, settings=settings, include_mock=mock
+            req, ideas, settings=settings, include_mock=mock, owner_sess=sess
         )
 
         form.update(
@@ -3981,7 +3987,7 @@ async def quests_browse_page(
 
     saved_count = 0
     try:
-        saved_count = count_saved()
+        saved_count = count_saved(owner_sess=_req_sess(request))
     except Exception:
         pass
 
@@ -4015,7 +4021,17 @@ async def saved_list_page(
     err: str | None = None,
 ) -> HTMLResponse:
     settings = reload_settings()
-    items = list_saved(limit=100)
+
+    # Resolve (or mint) the browser session id before loading saved trips so
+    # list_saved can filter to this browser's rows.
+    import uuid as _uuid
+
+    sess = (request.cookies.get("yv_sess") or "").strip()[:64]
+    need_cookie = not sess
+    if need_cookie:
+        sess = _uuid.uuid4().hex[:32]
+
+    items = list_saved(limit=100, owner_sess=sess)
     cards = _saved_cards(items)
     for card in cards:
         s = card.get("saved")
@@ -4077,12 +4093,6 @@ async def saved_list_page(
 
     # Vibe-learning: visiting /saved is a tier-2 "reviewed" re-engagement signal
     # for the saved destinations — gated to once per session per destination.
-    import uuid as _uuid
-
-    sess = (request.cookies.get("yv_sess") or "").strip()[:64]
-    need_cookie = not sess
-    if need_cookie:
-        sess = _uuid.uuid4().hex[:32]
     try:
         from yonder.vibe_signals import REVIEWED, upsert_signal
 
@@ -4188,8 +4198,17 @@ async def api_save_itinerary(request: Request):
     settings = reload_settings()
     trip_meta.setdefault("visited", settings.visited_country_list())
     trip_meta.setdefault("avoid", settings.effective_avoid_country_list())
+    # Scope the save to this browser so /saved stays private per session.
+    # Mint a session id if the browser has none yet, mirroring the /saved
+    # page cookie logic so the first save is immediately visible on reload.
+    import uuid as _uuid_save
+
+    owner = _req_sess(request)
+    need_sess_cookie = not owner
+    if need_sess_cookie:
+        owner = _uuid_save.uuid4().hex[:32]
     try:
-        saved = save_itinerary(itinerary, trip_meta=trip_meta)
+        saved = save_itinerary(itinerary, trip_meta=trip_meta, owner_sess=owner or None)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
     # Funnel: Save is the strong preference label + affiliate path quality signal
@@ -4243,25 +4262,37 @@ async def api_save_itinerary(request: Request):
         )
     except Exception:
         pass
-    return JSONResponse(
+    resp = JSONResponse(
         {
             "ok": True,
             "id": saved.id,
             "title": saved.title,
             "display_price": saved.display_price,
-            "saved_count": count_saved(),
+            "saved_count": count_saved(owner_sess=owner or None),
             "save_limit": SAVE_LIMIT,
         }
     )
+    if need_sess_cookie:
+        resp.set_cookie("yv_sess", owner, httponly=True, samesite="lax")
+    return resp
 
 
 @app.post("/saved/{saved_id}/refresh", response_class=HTMLResponse)
 async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
     settings = reload_settings()
+    owner = _req_sess(request)
     item = get_saved(saved_id)
     if not item:
         return RedirectResponse(
             url="/saved?err=" + quote("Itinerary not found"), status_code=302
+        )
+    # Ownership check: only the browser that saved the trip can refresh it.
+    # For legacy rows (owner_sess is NULL) we skip the check so pre-migration
+    # trips can still be refreshed.
+    item_owner = (getattr(item, "owner_sess", None) or "").strip()[:64] or None
+    if item_owner and owner != item_owner:
+        return RedirectResponse(
+            url="/saved?err=" + quote("Not authorised"), status_code=302
         )
 
     form_data = await request.form()
@@ -4291,10 +4322,13 @@ async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
             "last_refresh_provider": rmeta.get("provider"),
             "prev_total_before_refresh": rmeta.get("prev_total"),
         }
+        # Pass owner_sess so the UPSERT preserves ownership and the refreshed
+        # row remains visible on the browser's private /saved list.
         update_from_itinerary(
             saved_id,
             refreshed.model_dump(mode="json"),
             trip_meta=trip_meta,
+            owner_sess=item_owner or owner or None,
         )
         status = rmeta.get("status") or "failed"
         if status == "failed":
@@ -4323,7 +4357,8 @@ async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
 
 @app.post("/saved/{saved_id}/delete", response_class=HTMLResponse)
 async def saved_delete(request: Request, saved_id: str) -> HTMLResponse:
-    ok = delete_saved(saved_id)
+    owner = _req_sess(request)
+    ok = delete_saved(saved_id, owner_sess=owner or None)
     if ok:
         return RedirectResponse(
             url="/saved?flash=" + quote("Removed from list"), status_code=302
@@ -4334,9 +4369,10 @@ async def saved_delete(request: Request, saved_id: str) -> HTMLResponse:
 
 @app.post("/api/clear-saves", response_class=HTMLResponse)
 async def api_clear_saves(request: Request) -> HTMLResponse:
-    """Delete all saved itineraries for the current user — Remove All action."""
+    """Delete all saved itineraries for the current browser — Remove All action."""
+    owner = _req_sess(request)
     try:
-        count = clear_all_saves()
+        count = clear_all_saves(owner_sess=owner or None)
         msg = "Fresh start — all trips cleared" if count > 0 else "Nothing to clear"
         return RedirectResponse(
             url="/saved?flash=" + quote(msg), status_code=302
@@ -4967,6 +5003,7 @@ async def api_nearest_airport(lat: float, lon: float) -> JSONResponse:
 
 @app.get("/api/suggest")
 async def api_suggest(
+    request: Request,
     vibe: str = Query(""),
     origin: str | None = None,
 ) -> JSONResponse:
@@ -4984,6 +5021,7 @@ async def api_suggest(
         origin=home,
         visited=settings.visited_country_list(),
         avoid=settings.effective_avoid_country_list(),
+        owner_sess=_req_sess(request),
     )
     return JSONResponse(
         {

@@ -227,7 +227,9 @@ class TestSavedPage:
         """Visiting /saved should write a REVIEWED (tier-2) signal for each saved dest."""
         from yonder.saved import save_itinerary
 
-        # Save one itinerary with a known IATA
+        _tier2_sess = "test-tier2-signal-sess-01"
+
+        # Save one itinerary with a known IATA, stamped with the test session
         save_itinerary(
             {
                 "title": "Test Trip",
@@ -241,9 +243,10 @@ class TestSavedPage:
                 "vibe": "adventure",
             },
             trip_meta={"mock": False, "origin": "YVR", "destination": "NRT"},
+            owner_sess=_tier2_sess,
         )
 
-        resp = client.get("/saved", follow_redirects=True)
+        resp = client.get("/saved", cookies={"yv_sess": _tier2_sess}, follow_redirects=True)
         assert resp.status_code == 200
 
         # Give the executor a moment to flush (TestClient runs sync but executor is threaded)
@@ -263,6 +266,8 @@ class TestSavedPage:
         """Second visit in the same session must not insert a duplicate tier-2 row."""
         from yonder.saved import save_itinerary
 
+        _tier2_once_sess = "test-tier2-once-sess-01"
+
         save_itinerary(
             {
                 "title": "Test Trip",
@@ -276,10 +281,11 @@ class TestSavedPage:
                 "vibe": "culture",
             },
             trip_meta={"mock": False, "origin": "YVR", "destination": "CDG"},
+            owner_sess=_tier2_once_sess,
         )
 
-        resp1 = client.get("/saved", follow_redirects=True)
-        sess = resp1.cookies.get("yv_sess", "")
+        resp1 = client.get("/saved", cookies={"yv_sess": _tier2_once_sess}, follow_redirects=True)
+        sess = resp1.cookies.get("yv_sess", _tier2_once_sess)
 
         import time as _time
         _time.sleep(0.1)

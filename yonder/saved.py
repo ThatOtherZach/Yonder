@@ -50,6 +50,7 @@ class SavedItinerary:
     notes: list[str]
     itinerary: dict[str, Any]
     trip_meta: dict[str, Any]
+    owner_sess: str | None = None
 
     @property
     def model_source(self) -> str:
@@ -178,6 +179,7 @@ def _row_to_saved(row: dict[str, Any]) -> SavedItinerary:
         notes=[str(n) for n in notes],
         itinerary=itinerary,
         trip_meta=trip_meta,
+        owner_sess=row.get("owner_sess") or None,
     )
 
 
@@ -191,7 +193,8 @@ def _anchor_city(iata: str) -> str:
 
 
 def upcoming_anchor_legs(
-    *, today: "datetime.date | None" = None, limit: int = 3
+    *, today: "datetime.date | None" = None, limit: int = 3,
+    owner_sess: str | None = None,
 ) -> list[dict[str, Any]]:
     """Future-dated legs from saved trips, usable as planning anchors.
 
@@ -204,7 +207,7 @@ def upcoming_anchor_legs(
 
     today = today or _date.today()
     try:
-        saves = list_saved(limit=25)
+        saves = list_saved(limit=25, owner_sess=owner_sess)
     except Exception:
         return []
 
@@ -286,12 +289,16 @@ def _find_duplicate_id(
     *,
     origin: str | None,
     dest: str | None,
+    owner_sess: str | None = None,
 ) -> str | None:
     """Existing row id matching this itinerary's route signature, if any.
 
     Uses the same key as import dedup: kind + origin + dest + first-leg
     depart date + title. Prevents recycled results from piling up as
     duplicate rows when re-saved.
+
+    Scoped to ``owner_sess`` so a stranger's matching save never triggers
+    dedup for this user.
     """
     legs = itinerary.get("legs") or []
     depart = legs[0].get("depart_date") if legs and isinstance(legs[0], dict) else None
@@ -305,10 +312,17 @@ def _find_duplicate_id(
     if not key[1] and not key[2]:
         return None
     with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT id, kind, origin, destination, title, itinerary_json "
-            "FROM saved_itineraries"
-        ).fetchall()
+        if owner_sess:
+            rows = conn.execute(
+                "SELECT id, kind, origin, destination, title, itinerary_json "
+                "FROM saved_itineraries WHERE owner_sess = %s",
+                (owner_sess,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, kind, origin, destination, title, itinerary_json "
+                "FROM saved_itineraries WHERE owner_sess IS NULL"
+            ).fetchall()
     for r in rows:
         k = _route_key(
             {
@@ -329,9 +343,17 @@ def save_itinerary(
     *,
     trip_meta: dict[str, Any] | None = None,
     replace_id: str | None = None,
+    owner_sess: str | None = None,
 ) -> SavedItinerary:
-    """Persist an adventure itinerary snapshot. Prices are frozen until refresh."""
+    """Persist an adventure itinerary snapshot. Prices are frozen until refresh.
+
+    ``owner_sess`` scopes the row to a specific browser session so that each
+    browser has its own private /saved list.  Pass the ``yv_sess`` cookie value
+    from the request.  Omit (or pass ``None``) only for internal/background
+    callers (e.g. quest recycling) where no browser session is available.
+    """
     meta = dict(trip_meta or {})
+    owner = (owner_sess or "").strip()[:64] or None
     origin, dest = _legs_origin_dest(itinerary)
     # Quest itineraries carry entry_iata/exit_iata instead of legs[].
     # Make origin/dest extraction explicit so the DB columns are always populated.
@@ -391,10 +413,13 @@ def save_itinerary(
 
     now = time.time()
     # Re-saving an identical trip (e.g. a recycled result) updates the existing
-    # row instead of inserting a visible duplicate.
+    # row instead of inserting a visible duplicate.  Scoped to this owner so a
+    # stranger's matching row never hijacks or collapses into this user's save.
     dedup_id = None
     if not replace_id:
-        dedup_id = _find_duplicate_id(itinerary, origin=origin, dest=dest)
+        dedup_id = _find_duplicate_id(
+            itinerary, origin=origin, dest=dest, owner_sess=owner
+        )
     sid = replace_id or dedup_id or str(uuid.uuid4())
     priced_at = now if total is not None else None
 
@@ -457,13 +482,14 @@ def save_itinerary(
         json.dumps(notes, default=str),
         json.dumps(itinerary, default=str),
         json.dumps(meta, default=str),
+        owner,
     )
     with get_conn() as conn:
         conn.execute(
             """
             INSERT INTO saved_itineraries (
-                id, saved_at, priced_at, title, kind, currency, total_price, display_price, stop_city, stop_iata, stay_days, origin, destination, adults, cabin, vibe, trip_prompt, theme_country, theme_primary, theme_accent, theme_gradient, theme_flag_img, theme_label, google_flights_url, kayak_url, ground_display, ground_compare_line, all_in_display, notes_json, itinerary_json, trip_meta_json
-            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                id, saved_at, priced_at, title, kind, currency, total_price, display_price, stop_city, stop_iata, stay_days, origin, destination, adults, cabin, vibe, trip_prompt, theme_country, theme_primary, theme_accent, theme_gradient, theme_flag_img, theme_label, google_flights_url, kayak_url, ground_display, ground_compare_line, all_in_display, notes_json, itinerary_json, trip_meta_json, owner_sess
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT (id) DO UPDATE SET
                 saved_at = EXCLUDED.saved_at,
                 priced_at = EXCLUDED.priced_at,
@@ -494,7 +520,8 @@ def save_itinerary(
                 all_in_display = EXCLUDED.all_in_display,
                 notes_json = EXCLUDED.notes_json,
                 itinerary_json = EXCLUDED.itinerary_json,
-                trip_meta_json = EXCLUDED.trip_meta_json
+                trip_meta_json = EXCLUDED.trip_meta_json,
+                owner_sess = EXCLUDED.owner_sess
             """,
             row,
         )
@@ -502,21 +529,44 @@ def save_itinerary(
     # FIFO eviction: only for genuinely new rows (not refreshes or duplicate re-saves).
     # Quests are exempt — they form a public library that must grow beyond SAVE_LIMIT,
     # and they are not subject to the per-user private saved-trip cap.
+    # The cap is per-owner so one busy browser can't evict another browser's trips.
     is_quest = str(itinerary.get("kind") or "").lower() == "quest"
     if replace_id is None and dedup_id is None and not is_quest:
         with get_conn() as conn:
-            cnt_row = conn.execute(
-                "SELECT COUNT(*) AS n FROM saved_itineraries WHERE kind != 'quest'"
-            ).fetchone()
-            cnt = int(cnt_row["n"]) if cnt_row else 0
-            if cnt > SAVE_LIMIT:
-                conn.execute(
-                    "DELETE FROM saved_itineraries WHERE kind != 'quest' AND id = ("
-                    "SELECT id FROM saved_itineraries WHERE kind != 'quest'"
-                    " ORDER BY saved_at ASC LIMIT 1"
-                    ")"
-                )
-                conn.commit()
+            if owner:
+                cnt_row = conn.execute(
+                    "SELECT COUNT(*) AS n FROM saved_itineraries"
+                    " WHERE kind != 'quest' AND owner_sess = %s",
+                    (owner,),
+                ).fetchone()
+                cnt = int(cnt_row["n"]) if cnt_row else 0
+                if cnt > SAVE_LIMIT:
+                    conn.execute(
+                        "DELETE FROM saved_itineraries"
+                        " WHERE kind != 'quest' AND owner_sess = %s AND id = ("
+                        "  SELECT id FROM saved_itineraries"
+                        "  WHERE kind != 'quest' AND owner_sess = %s"
+                        "  ORDER BY saved_at ASC LIMIT 1"
+                        ")",
+                        (owner, owner),
+                    )
+                    conn.commit()
+            else:
+                cnt_row = conn.execute(
+                    "SELECT COUNT(*) AS n FROM saved_itineraries"
+                    " WHERE kind != 'quest' AND owner_sess IS NULL"
+                ).fetchone()
+                cnt = int(cnt_row["n"]) if cnt_row else 0
+                if cnt > SAVE_LIMIT:
+                    conn.execute(
+                        "DELETE FROM saved_itineraries"
+                        " WHERE kind != 'quest' AND owner_sess IS NULL AND id = ("
+                        "  SELECT id FROM saved_itineraries"
+                        "  WHERE kind != 'quest' AND owner_sess IS NULL"
+                        "  ORDER BY saved_at ASC LIMIT 1"
+                        ")"
+                    )
+                    conn.commit()
     saved = get(sid)
     assert saved is not None
     return saved
@@ -530,32 +580,83 @@ def get(saved_id: str) -> SavedItinerary | None:
     return _row_to_saved(row) if row else None
 
 
-def list_saved(*, limit: int = 50) -> list[SavedItinerary]:
+def list_saved(*, limit: int = 50, owner_sess: str | None = None) -> list[SavedItinerary]:
+    """Return saved trips for *owner_sess* only.
+
+    Rows with a NULL ``owner_sess`` (legacy pre-migration rows) are hidden and
+    NOT returned; a one-time log statement reports the orphan count so we can
+    track them.
+    """
+    owner = (owner_sess or "").strip()[:64] or None
     with get_conn() as conn:
-        rows = conn.execute(
-            """
-            SELECT * FROM saved_itineraries
-            ORDER BY saved_at DESC
-            LIMIT %s
-            """,
-            (max(1, min(200, limit)),),
-        ).fetchall()
+        if owner:
+            rows = conn.execute(
+                """
+                SELECT * FROM saved_itineraries
+                WHERE owner_sess = %s
+                ORDER BY saved_at DESC
+                LIMIT %s
+                """,
+                (owner, max(1, min(200, limit))),
+            ).fetchall()
+        else:
+            # No session: return nothing.  Also log orphan count for visibility.
+            try:
+                orphan_row = conn.execute(
+                    "SELECT COUNT(*) AS n FROM saved_itineraries"
+                    " WHERE owner_sess IS NULL AND kind != 'quest'"
+                ).fetchone()
+                orphan_n = int(orphan_row["n"]) if orphan_row else 0
+                if orphan_n:
+                    import logging as _logging
+                    _logging.getLogger(__name__).info(
+                        "saved: %d orphaned rows with owner_sess=NULL (pre-migration)",
+                        orphan_n,
+                    )
+            except Exception:
+                pass
+            rows = []
     return [_row_to_saved(r) for r in rows]
 
 
-def delete(saved_id: str) -> bool:
+def delete(saved_id: str, *, owner_sess: str | None = None) -> bool:
+    """Delete a saved itinerary by id.
+
+    When ``owner_sess`` is provided the DELETE is scoped to that owner so one
+    browser cannot remove another browser's saved trips.
+    """
+    owner = (owner_sess or "").strip()[:64] or None
     with get_conn() as conn:
-        cur = conn.execute(
-            "DELETE FROM saved_itineraries WHERE id = %s", (saved_id,)
-        )
+        if owner:
+            cur = conn.execute(
+                "DELETE FROM saved_itineraries WHERE id = %s AND owner_sess = %s",
+                (saved_id, owner),
+            )
+        else:
+            cur = conn.execute(
+                "DELETE FROM saved_itineraries WHERE id = %s AND owner_sess IS NULL",
+                (saved_id,),
+            )
         conn.commit()
         return cur.rowcount > 0
 
 
-def clear_all_saves() -> int:
-    """Delete every saved itinerary. Returns the number of rows deleted."""
+def clear_all_saves(*, owner_sess: str | None = None) -> int:
+    """Delete all saved itineraries for *owner_sess*.  Returns the number deleted.
+
+    When ``owner_sess`` is provided only that browser's rows are removed.
+    """
+    owner = (owner_sess or "").strip()[:64] or None
     with get_conn() as conn:
-        cur = conn.execute("DELETE FROM saved_itineraries")
+        if owner:
+            cur = conn.execute(
+                "DELETE FROM saved_itineraries WHERE owner_sess = %s AND kind != 'quest'",
+                (owner,),
+            )
+        else:
+            cur = conn.execute(
+                "DELETE FROM saved_itineraries WHERE owner_sess IS NULL AND kind != 'quest'"
+            )
         conn.commit()
         return cur.rowcount
 
@@ -566,7 +667,7 @@ _EXPORT_COLUMNS = (
     "adults", "cabin", "vibe", "trip_prompt", "theme_country", "theme_primary",
     "theme_accent", "theme_gradient", "theme_flag_img", "theme_label",
     "google_flights_url", "kayak_url", "ground_display", "ground_compare_line",
-    "all_in_display", "notes_json", "itinerary_json", "trip_meta_json",
+    "all_in_display", "notes_json", "itinerary_json", "trip_meta_json", "owner_sess",
 )
 
 
@@ -657,9 +758,20 @@ def import_rows(items: list[dict[str, Any]]) -> tuple[int, int]:
     return imported, skipped
 
 
-def count_saved() -> int:
+def count_saved(*, owner_sess: str | None = None) -> int:
+    """Total saved non-quest rows, optionally scoped to a browser session."""
+    owner = (owner_sess or "").strip()[:64] or None
     with get_conn() as conn:
-        row = conn.execute("SELECT COUNT(*) AS n FROM saved_itineraries").fetchone()
+        if owner:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM saved_itineraries"
+                " WHERE kind != 'quest' AND owner_sess = %s",
+                (owner,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM saved_itineraries WHERE kind != 'quest'"
+            ).fetchone()
     return int(row["n"]) if row else 0
 
 
@@ -781,12 +893,24 @@ def update_from_itinerary(
     itinerary: dict[str, Any],
     *,
     trip_meta: dict[str, Any] | None = None,
+    owner_sess: str | None = None,
 ) -> SavedItinerary | None:
+    """Update an existing saved row with a repriced itinerary.
+
+    ``owner_sess`` is forwarded to ``save_itinerary`` so the UPSERT preserves
+    (or sets) the row's owner.  Always pass the request session here so a
+    refresh can never clobber another browser's ownership or orphan the row
+    under NULL.
+    """
     existing = get(saved_id)
     if not existing:
         return None
     meta = {**existing.trip_meta, **(trip_meta or {})}
-    return save_itinerary(itinerary, trip_meta=meta, replace_id=saved_id)
+    # Preserve the row's original owner if the caller did not provide one.
+    effective_owner = (owner_sess or "").strip()[:64] or None
+    return save_itinerary(
+        itinerary, trip_meta=meta, replace_id=saved_id, owner_sess=effective_owner
+    )
 
 
 def escape_offer_to_itinerary(
@@ -838,6 +962,7 @@ def similar_saves(
     origin: str | None = None,
     vibe: str | None = None,
     limit: int = 8,
+    owner_sess: str | None = None,
 ) -> list[SavedItinerary]:
     """v1 keyword retrieval — only over explicit user Saves (never raw searches)."""
     tokens = {
@@ -847,7 +972,7 @@ def similar_saves(
     }
     origin_u = (origin or "").strip().upper() or None
     vibe_l = (vibe or "").strip().lower() or None
-    items = list_saved(limit=100)
+    items = list_saved(limit=100, owner_sess=owner_sess)
     scored: list[tuple[float, SavedItinerary]] = []
     for s in items:
         score = 0.0
@@ -892,14 +1017,14 @@ def seed_cities_from_saves(saves: list[SavedItinerary]) -> list[dict[str, str]]:
     return out
 
 
-def saved_destination_iatas(*, limit: int = 200) -> set[str]:
+def saved_destination_iatas(*, limit: int = 200, owner_sess: str | None = None) -> set[str]:
     """IATA codes the user has already ★ Saved — never re-offer on invent/board.
 
     Prefer stop_iata (getaway X / stopover city). Only use destination when it
     is not the same as origin (so getaway home=YVR is not banned as a hub).
     """
     out: set[str] = set()
-    for s in list_saved(limit=limit):
+    for s in list_saved(limit=limit, owner_sess=owner_sess):
         stop = (s.stop_iata or "").strip().upper()
         dest = (s.destination or "").strip().upper()
         origin = (s.origin or "").strip().upper()
@@ -917,6 +1042,7 @@ def ranking_from_saves(
     visited: list[str] | None = None,
     avoid: list[str] | None = None,
     demo: bool = False,
+    owner_sess: str | None = None,
 ) -> dict[str, Any]:
     """★ Save metrics for ranking dataset-completion chips (not chip content).
 
@@ -930,7 +1056,7 @@ def ranking_from_saves(
     origin_u = (origin or "").strip().upper() or None
     visited_set = {c.upper() for c in (visited or []) if c}
     avoid_set = {c.upper() for c in (avoid or []) if c}
-    items = list_saved(limit=100)
+    items = list_saved(limit=100, owner_sess=owner_sess)
 
     # Pattern keys align with client dataset-completion chips
     pattern_w: dict[str, float] = {

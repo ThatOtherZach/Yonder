@@ -50,6 +50,10 @@ def _isolated(pg_schema, monkeypatch):
     yield
 
 
+# Stable session ID so saved rows' owner_sess matches the cookie on /saved
+_SAVED_SESS = "test-bp-struct-sess-01"
+
+
 @pytest.fixture()
 def client():
     return TestClient(web_module.app, raise_server_exceptions=True)
@@ -276,8 +280,8 @@ class TestCanonicalStructure:
     # -- Saved mode ----------------------------------------------------------
 
     def test_detour_saved_has_all_sections(self, client):
-        saved_module.save_itinerary(_minimal_itinerary_dict())
-        resp = client.get("/saved")
+        saved_module.save_itinerary(_minimal_itinerary_dict(), owner_sess=_SAVED_SESS)
+        resp = client.get("/saved", cookies={"yv_sess": _SAVED_SESS})
         assert resp.status_code == 200
         html = resp.text
         for section in self.SECTIONS:
@@ -439,8 +443,8 @@ class TestSavedHooks:
     """Saved cards must keep refresh and delete forms."""
 
     def _saved_html(self, client) -> str:
-        saved_module.save_itinerary(_minimal_itinerary_dict())
-        resp = client.get("/saved")
+        saved_module.save_itinerary(_minimal_itinerary_dict(), owner_sess=_SAVED_SESS)
+        resp = client.get("/saved", cookies={"yv_sess": _SAVED_SESS})
         assert resp.status_code == 200
         return resp.text
 

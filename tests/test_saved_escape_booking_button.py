@@ -28,6 +28,10 @@ _DEPART = (date.today() + timedelta(days=30)).isoformat()
 _AVIA_URL = f"https://www.aviasales.com/search/{_ORIGIN}{_DEST}"
 _EXPECTED_LABEL = f"{_ORIGIN} \u279c {_DEST} \u2197"  # "YVR ➜ NRT ↗"
 
+# Stable session id used by every save/GET in this module so the saved rows
+# are visible when the test client hits /saved with this cookie.
+_SESS = "testescapeclient0000testescapecl"
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -76,13 +80,17 @@ def _make_offer(with_url: bool = True) -> dict:
 
 
 def _save_escape(with_url: bool = True) -> saved_module.SavedItinerary:
-    """Build an escape itinerary via the canonical helper and persist it."""
+    """Build an escape itinerary via the canonical helper and persist it.
+
+    Saves under ``_SESS`` so the row is visible when the test client GETs
+    /saved with ``cookies={"yv_sess": _SESS}``.
+    """
     itinerary = saved_module.escape_offer_to_itinerary(
         query=_make_query(),
         offer=_make_offer(with_url=with_url),
         vibe="adventure",
     )
-    return saved_module.save_itinerary(itinerary)
+    return saved_module.save_itinerary(itinerary, owner_sess=_SESS)
 
 
 # ===========================================================================
@@ -103,7 +111,7 @@ class TestSavedEscapeBookingButton:
     def test_saved_page_returns_200(self, client):
         """GET /saved must succeed when an escape trip is saved."""
         _save_escape()
-        resp = client.get("/saved")
+        resp = client.get("/saved", cookies={"yv_sess": _SESS})
         assert resp.status_code == 200, (
             f"Expected 200 from GET /saved with a saved escape trip, got {resp.status_code}"
         )
@@ -111,7 +119,7 @@ class TestSavedEscapeBookingButton:
     def test_booking_button_label_contains_iata_pair(self, client):
         """Booking button on /saved must show 'YVR ➜ NRT ↗' for this route."""
         _save_escape(with_url=True)
-        resp = client.get("/saved")
+        resp = client.get("/saved", cookies={"yv_sess": _SESS})
         assert resp.status_code == 200
         assert _EXPECTED_LABEL in resp.text, (
             f"Expected booking button label '{_EXPECTED_LABEL}' on /saved for "
@@ -122,7 +130,7 @@ class TestSavedEscapeBookingButton:
     def test_booking_button_label_has_origin_iata(self, client):
         """Origin IATA must appear in the /saved page HTML."""
         _save_escape(with_url=True)
-        resp = client.get("/saved")
+        resp = client.get("/saved", cookies={"yv_sess": _SESS})
         assert resp.status_code == 200
         assert _ORIGIN in resp.text, (
             f"Expected origin IATA '{_ORIGIN}' to appear on /saved page"
@@ -131,7 +139,7 @@ class TestSavedEscapeBookingButton:
     def test_booking_button_label_has_dest_iata(self, client):
         """Destination IATA must appear in the /saved page HTML."""
         _save_escape(with_url=True)
-        resp = client.get("/saved")
+        resp = client.get("/saved", cookies={"yv_sess": _SESS})
         assert resp.status_code == 200
         assert _DEST in resp.text, (
             f"Expected destination IATA '{_DEST}' to appear on /saved page"
@@ -140,7 +148,7 @@ class TestSavedEscapeBookingButton:
     def test_booking_button_absent_when_no_url(self, client):
         """Without google_flights_url the route-label button must not appear."""
         _save_escape(with_url=False)
-        resp = client.get("/saved")
+        resp = client.get("/saved", cookies={"yv_sess": _SESS})
         assert resp.status_code == 200
         assert _EXPECTED_LABEL not in resp.text, (
             f"Expected no '{_EXPECTED_LABEL}' button when offer has no google_flights_url"
@@ -157,7 +165,7 @@ class TestSavedEscapeBookingButton:
     def test_booking_button_label_does_not_show_reversed_route(self, client):
         """The button must not display the reversed route (NRT ➜ YVR ↗)."""
         _save_escape(with_url=True)
-        resp = client.get("/saved")
+        resp = client.get("/saved", cookies={"yv_sess": _SESS})
         assert resp.status_code == 200
         reversed_label = f"{_DEST} \u279c {_ORIGIN} \u2197"
         assert reversed_label not in resp.text, (

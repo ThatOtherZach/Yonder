@@ -50,7 +50,7 @@ def _save(kind: str, itinerary: dict, origin: str = "YVR", sid: str = "s1") -> S
 # ── Anchor extraction ────────────────────────────────────────────────────────
 
 def test_no_saves_yields_no_anchors(monkeypatch):
-    monkeypatch.setattr(saved_mod, "list_saved", lambda limit=25: [])
+    monkeypatch.setattr(saved_mod, "list_saved", lambda *a, **kw: [])
     assert upcoming_anchor_legs(today=TODAY) == []
 
 
@@ -59,7 +59,7 @@ def test_past_dated_legs_never_anchor(monkeypatch):
         {"from_iata": "ICN", "to_iata": "YVR", "depart_date": "2026-07-01"},
         {"from_iata": "ICN", "to_iata": "YVR", "depart_date": "2026-08-03"},  # today
     ]})
-    monkeypatch.setattr(saved_mod, "list_saved", lambda limit=25: [s])
+    monkeypatch.setattr(saved_mod, "list_saved", lambda *a, **kw: [s])
     assert upcoming_anchor_legs(today=TODAY) == []
 
 
@@ -68,7 +68,7 @@ def test_quest_save_yields_both_flight_legs(monkeypatch):
         "entry_iata": "NRT", "exit_iata": "ICN",
         "depart_date": "2026-09-10", "outbound_date": "2026-09-20",
     })
-    monkeypatch.setattr(saved_mod, "list_saved", lambda limit=25: [s])
+    monkeypatch.setattr(saved_mod, "list_saved", lambda *a, **kw: [s])
     anchors = upcoming_anchor_legs(today=TODAY)
     routes = [(a["from_iata"], a["to_iata"], a["depart_date"]) for a in anchors]
     assert ("YVR", "NRT", "2026-09-10") in routes
@@ -82,7 +82,7 @@ def test_anchors_sorted_soonest_first_and_capped(monkeypatch):
         ("EEE", "FFF", "2026-10-01"), ("GGG", "HHH", "2026-11-01"),
     ]]
     s = _save("detour", {"legs": legs})
-    monkeypatch.setattr(saved_mod, "list_saved", lambda limit=25: [s])
+    monkeypatch.setattr(saved_mod, "list_saved", lambda *a, **kw: [s])
     anchors = upcoming_anchor_legs(today=TODAY, limit=3)
     assert [a["depart_date"] for a in anchors] == [
         "2026-09-01", "2026-10-01", "2026-11-01"
@@ -275,7 +275,7 @@ def _patch_search_pipeline(monkeypatch) -> None:
 
 def _explore(monkeypatch, saves: list[SavedItinerary], force_mode: str = "escape") -> str:
     _patch_search_pipeline(monkeypatch)
-    monkeypatch.setattr(saved_mod, "list_saved", lambda limit=25: saves)
+    monkeypatch.setattr(saved_mod, "list_saved", lambda *a, **kw: saves)
     client = TestClient(web_module.app, raise_server_exceptions=True)
     resp = client.post("/explore", data={
         "prompt": "fly from Vancouver to Tokyo",
@@ -403,7 +403,7 @@ def test_detour_plan_api_renders_anchor_badge(monkeypatch):
     from datetime import timedelta
 
     _patch_search_pipeline(monkeypatch)
-    monkeypatch.setattr(_saved_mod, "list_saved", lambda limit=25: [_saved_upcoming_trip()])
+    monkeypatch.setattr(_saved_mod, "list_saved", lambda *a, **kw: [_saved_upcoming_trip()])
 
     # Stub plan_adventure to return two itineraries: TPE→NRT (connects) and HKG→BKK (does not)
     async def _fake_plan(req, ideas, **kw):

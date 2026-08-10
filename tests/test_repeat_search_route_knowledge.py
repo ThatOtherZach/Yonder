@@ -131,7 +131,7 @@ def _stub_pipeline(monkeypatch, calls: list[tuple[str, str]], dead: tuple[str, s
         raise RuntimeError("no price history in test")
 
     monkeypatch.setattr(adventure, "route_stats", _no_stats)
-    monkeypatch.setattr(adventure, "_recent_history_iatas", lambda: set())
+    monkeypatch.setattr(adventure, "_recent_history_iatas", lambda *a, **kw: set())
 
     async def fake_col(*a, **kw):
         return {}
