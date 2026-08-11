@@ -1,9 +1,10 @@
-﻿.venv/
+.venv/
 venv/
 __pycache__/
 *.py[cod]
 .env
 .quota_cache.json
+.last_provider_errors.json
 price_history_export.jsonl
 *.egg-info/
 dist/
