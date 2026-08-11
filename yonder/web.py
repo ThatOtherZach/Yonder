@@ -5751,6 +5751,21 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
             validate_byom_url(saved_byom_url)
         except BYOMUrlError as exc:
             byom_url_warning = str(exc)
+    # ── Owner-only: surface when all configured providers are currently failing ──
+    from yonder.quota import get_registry as _get_registry
+    _reg = _get_registry()
+    _configured = settings.configured_providers()
+    _all_providers_down = bool(_configured) and all(
+        (not _reg.get(n)) or (not _reg.get(n).is_usable())
+        for n in _configured
+    )
+    if _all_providers_down:
+        import logging as _plog
+        _plog.getLogger("yonder.web").warning(
+            "SETTINGS PAGE: all configured providers are currently down: %s",
+            ", ".join(_configured),
+        )
+
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -5761,6 +5776,7 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
             "is_deployed": bool(_os.environ.get("REPLIT_DOMAINS")),
             "xp_profile": xp_profile,
             "byom_url_warning": byom_url_warning,
+            "all_providers_down": _all_providers_down,
             **_base_ctx(settings),
         },
     )

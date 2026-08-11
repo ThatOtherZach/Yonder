@@ -1436,6 +1436,15 @@
 
     /* ── Check Fares (per-leg on-demand fare lookup) ── */
     .cf-slot { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; }
+    /* Gentle note shown when live fare unavailable (historical estimate or no history) */
+    .fare-note {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+      font-style: italic;
+      max-width: 22rem;
+    }
     button.btn-check-fares {
       background: var(--paper);
       border: 1.5px solid var(--line);

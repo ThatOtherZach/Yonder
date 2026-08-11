@@ -829,6 +829,13 @@
         {# — Provider status — #}
         <div class="dev-section">
           <div class="section-title">Provider status</div>
+          {% if all_providers_down %}
+          <div class="provider-down-banner" style="background:color-mix(in srgb,var(--err,#c0392b) 10%,var(--paper));border:1.5px solid color-mix(in srgb,var(--err,#c0392b) 50%,transparent);border-radius:8px;padding:0.6rem 0.85rem;margin-bottom:0.75rem;font-size:0.88rem">
+            <strong style="color:var(--err,#c0392b)">⚠ All fare providers are currently down.</strong>
+            Travelers will see affiliate links with fare history notes instead of live prices.
+            Check budgets below — quota exhausted, cooldown, or auth failure.
+          </div>
+          {% endif %}
           <p class="muted" style="margin:0 0 0.75rem;font-size:0.88rem">
             Keys present ≠ active. Router probes health first, then budgets.
             <button type="button" id="btn-probe" class="secondary" style="padding:0.3rem 0.6rem;font-size:0.8rem;margin-left:0.4rem">Re-probe now</button>

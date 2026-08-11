@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Iterable
 
 import httpx
@@ -8,11 +9,13 @@ import httpx
 from yonder.config import Settings, get_settings
 from yonder.currency import convert_offers
 from yonder.history import record_offers, route_stats
-from yonder.links import attach_links_to_offer
+from yonder.links import attach_links_to_offer, aviasales_url
 from yonder.money import price_display
 from yonder.providers import build_providers
 from yonder.quota import choose_providers
 from yonder.types import FlightOffer, SearchQuery, UnifiedSearchResult
+
+logger = logging.getLogger("yonder.engine")
 
 
 def _dedupe_key(o: FlightOffer) -> tuple:
@@ -90,7 +93,9 @@ async def search_flights(
             settings, http, include_mock=include_mock, only=selected
         )
         if not providers:
-            return UnifiedSearchResult(query=query, results=[], offers=[])
+            # No providers available — still return a card with an affiliate link
+            fallback = _build_fallback_offer(query, target, results=[])
+            return UnifiedSearchResult(query=query, results=[], offers=[fallback])
 
         results = await asyncio.wait_for(
             asyncio.gather(*(p.safe_search(query) for p in providers)),
@@ -104,6 +109,26 @@ async def search_flights(
 
         # Booking links: Google Flights + Kayak/airline backup
         all_offers = [attach_links_to_offer(o, query) for o in all_offers]
+
+        # ── Pricing failed / no offers: build a fallback card with affiliate link ──
+        if not all_offers:
+            real_results = [r for r in results if r.provider != "mock"]
+            failed = [r for r in real_results if not r.ok]
+            # Log prominently when ALL real providers are down (quota/error)
+            if real_results and len(failed) == len(real_results):
+                logger.warning(
+                    "ALL PROVIDERS DOWN for %s→%s: %s",
+                    query.origin,
+                    query.destination,
+                    "; ".join(
+                        f"{r.provider}[{r.failure_kind or 'error'}]: {(r.error or '')[:80]}"
+                        for r in failed
+                    ),
+                )
+            fallback = _build_fallback_offer(query, target, results=list(results))
+            return UnifiedSearchResult(
+                query=query, results=list(results), offers=[fallback]
+            )
 
         # Persist samples (builds your local historical dataset)
         try:
@@ -148,3 +173,60 @@ async def search_flights(
     finally:
         if owns:
             await http.aclose()
+
+
+# ── Currency symbol helper (avoids importing the full money._SYMBOLS dict) ───
+_CURRENCY_SYMS: dict[str, str] = {
+    "USD": "$", "CAD": "C$", "EUR": "€", "GBP": "£",
+    "AUD": "A$", "NZD": "NZ$", "SGD": "S$", "HKD": "HK$",
+    "MXN": "MX$", "JPY": "¥", "CHF": "CHF ", "INR": "₹",
+}
+
+
+def _build_fallback_offer(
+    query: SearchQuery,
+    currency: str,
+    *,
+    results: list,
+) -> FlightOffer:
+    """Return a fare-missing offer that carries an affiliate link and a gentle note.
+
+    Tier 2 — route has price history: "recently ~$420"
+    Tier 3 — no history at all:       "No fare history for this exact route — check live prices"
+
+    The offer is never shown as a real fare (fare_missing=True); its only purpose
+    is to ensure the booking CTA renders even when all providers are down.
+    """
+    try:
+        hist = route_stats(query.origin, query.destination, currency=currency)
+    except Exception:
+        hist = None  # type: ignore[assignment]
+
+    has_hist = hist is not None and hist.n > 0 and hist.median is not None
+    if has_hist:
+        sym = _CURRENCY_SYMS.get(currency, currency + " ")
+        fare_note = f"recently ~{sym}{hist.median:.0f}"
+        hist_price = hist.median
+    else:
+        fare_note = "No fare history for this exact route — check live prices"
+        hist_price = 0.0
+
+    # Affiliate link — the whole point of this fallback
+    aff_url = aviasales_url(
+        query.origin,
+        query.destination,
+        query.depart_date,
+        return_date=query.return_date,
+        adults=query.adults,
+    )
+
+    return FlightOffer(
+        provider="fallback",
+        price=float(hist_price or 0.0),
+        currency=currency,
+        price_kind="live",
+        fare_missing=True,
+        fare_note=fare_note,
+        google_flights_url=aff_url,
+        booking_url=aff_url,
+    )

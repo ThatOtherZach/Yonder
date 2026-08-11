@@ -61,6 +61,9 @@ class FlightOffer(BaseModel):
     # no provider was available — UI shows a "Check Fares" button instead.
     fare_missing: bool = False
     notes: str | None = None
+    # Gentle fallback note shown when fare_missing=True:
+    #   "recently ~$420" (historical) or "No fare history for this exact route"
+    fare_note: str | None = None
     # Set after history pass — schema: ~C$420▼ / ~C$420▲ (vs history)
     display_price: str | None = None  # e.g. ~C$420▼
     display_price_base: str | None = None  # e.g. ~C$420 (no glyph)
@@ -90,6 +93,9 @@ class ProviderResult(BaseModel):
     error: str | None = None
     latency_ms: int | None = None
     meta: dict[str, Any] = Field(default_factory=dict)
+    # Failure classification: "not_configured" | "quota_exhausted" | "cooldown" |
+    # "inactive" | "error" | "no_offers" | None (ok)
+    failure_kind: str | None = None
 
 
 class UnifiedSearchResult(BaseModel):

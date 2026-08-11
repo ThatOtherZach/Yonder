@@ -37,6 +37,7 @@ class FlightProvider(ABC):
                 provider=self.name,
                 ok=False,
                 error="not configured (missing API credentials)",
+                failure_kind="not_configured",
             )
         reg = get_registry()
         budget = reg.ensure(self.name, configured=True)
@@ -45,29 +46,35 @@ class FlightProvider(ABC):
                 provider=self.name,
                 ok=False,
                 error=f"cooldown ({budget.last_error or 'rate limit'})",
+                failure_kind="cooldown",
             )
         if budget.monthly_remaining is not None and budget.monthly_remaining <= 0:
             return ProviderResult(
                 provider=self.name,
                 ok=False,
                 error="monthly quota exhausted",
+                failure_kind="quota_exhausted",
             )
         if budget.active is False:
             return ProviderResult(
                 provider=self.name,
                 ok=False,
                 error=f"inactive: {budget.last_error or 'health probe failed'}",
+                failure_kind="inactive",
             )
 
         started = time.perf_counter()
         try:
             offers = await self.search(query)
             ms = int((time.perf_counter() - started) * 1000)
+            # Distinguish genuine empty results from error
+            fk = "no_offers" if not offers else None
             return ProviderResult(
                 provider=self.name,
                 ok=True,
                 offers=offers,
                 latency_ms=ms,
+                failure_kind=fk,
             )
         except Exception as exc:  # noqa: BLE001
             ms = int((time.perf_counter() - started) * 1000)
@@ -90,4 +97,5 @@ class FlightProvider(ABC):
                 ok=False,
                 error=msg,
                 latency_ms=ms,
+                failure_kind="error",
             )

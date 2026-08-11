@@ -66,6 +66,7 @@
               <button type="button" class="btn-check-fares">Check Fares</button>
               <span class="cf-error" hidden></span>
             </span>
+            {% if o.fare_note %}<span class="fare-note">{{ o.fare_note }}</span>{% endif %}
             {% endif %}
           {% else %}{{ fare }}{% endif %}
         </div>
@@ -384,6 +385,7 @@
               <button type="button" class="btn-check-fares">Check Fares</button>
               <span class="cf-error" hidden></span>
             </span>
+            {% if leg.offer and leg.offer.fare_note %}<span class="fare-note">{{ leg.offer.fare_note }}</span>{% endif %}
             {% endif %}
           {% elif leg.offer %}
             {{ leg.offer.display_price_base or leg.offer.display_price or (('~' ~ (leg.offer.currency or '') ~ ' ' ~ '%.0f'|format(leg.offer.price)) if leg.offer.price is defined and leg.offer.price is not none else '—') }}
@@ -572,7 +574,15 @@
       </div>
       {% endif %}
       {% for leg in (it.legs or []) %}
-      {% set _leg_url = leg.google_flights_url or (leg.offer and leg.offer.google_flights_url) %}
+      {%- set _leg_url = leg.google_flights_url or (leg.offer and leg.offer.google_flights_url) -%}
+      {%- if not _leg_url and leg.from_iata and leg.to_iata and leg.depart_date -%}
+        {%- if leg.depart_date is string -%}
+          {%- set _leg_ddmm = leg.depart_date[8:10] ~ leg.depart_date[5:7] -%}
+        {%- else -%}
+          {%- set _leg_ddmm = leg.depart_date.strftime('%d%m') -%}
+        {%- endif -%}
+        {%- set _leg_url = 'https://www.aviasales.com/search/' ~ leg.from_iata ~ _leg_ddmm ~ leg.to_iata ~ '1?marker=756039.Zza75700ced74b488c8090948-756039&sub_id=YonderFlights' -%}
+      {%- endif -%}
       {% if _leg_url %}
       <a class="btn secondary" href="{{ _leg_url }}" target="_blank" rel="noopener">{{ leg.from_iata }} ➜ {{ leg.to_iata }} ↗</a>
       {% endif %}
@@ -843,6 +853,7 @@
               <button type="button" class="btn-check-fares">Check Fares</button>
               <span class="cf-error" hidden></span>
             </span>
+            {% if ib_leg and ib_leg.offer and ib_leg.offer.fare_note %}<span class="fare-note">{{ ib_leg.offer.fare_note }}</span>{% endif %}
             {% endif %}
           {% elif ib_leg and ib_leg.offer %}
             {{ ib_leg.offer.display_price_base or ib_leg.offer.display_price or ('~' ~ idea.currency ~ ' ' ~ '%.0f'|format(ib_leg.offer.price)) }}
@@ -874,6 +885,7 @@
               <button type="button" class="btn-check-fares">Check Fares</button>
               <span class="cf-error" hidden></span>
             </span>
+            {% if ob_leg and ob_leg.offer and ob_leg.offer.fare_note %}<span class="fare-note">{{ ob_leg.offer.fare_note }}</span>{% endif %}
             {% endif %}
           {% elif ob_leg and ob_leg.offer %}
             {{ ob_leg.offer.display_price_base or ob_leg.offer.display_price or ('~' ~ idea.currency ~ ' ' ~ '%.0f'|format(ob_leg.offer.price)) }}
@@ -892,11 +904,29 @@
 
     {# Booking links + saved actions #}
     <div class="bp-actions">
-      {% if ib_leg and ib_leg.google_flights_url %}
-      <a class="btn secondary" href="{{ ib_leg.google_flights_url }}" target="_blank" rel="noopener">Book {{ home_iata }} → {{ idea.entry_iata }} ↗</a>
+      {%- set _ib_url = (ib_leg.google_flights_url if ib_leg else none) -%}
+      {%- if not _ib_url and home_iata and idea.entry_iata and idea.depart_date -%}
+        {%- if idea.depart_date is string -%}
+          {%- set _ib_ddmm = idea.depart_date[8:10] ~ idea.depart_date[5:7] -%}
+        {%- else -%}
+          {%- set _ib_ddmm = idea.depart_date.strftime('%d%m') -%}
+        {%- endif -%}
+        {%- set _ib_url = 'https://www.aviasales.com/search/' ~ home_iata ~ _ib_ddmm ~ idea.entry_iata ~ '1?marker=756039.Zza75700ced74b488c8090948-756039&sub_id=YonderFlights' -%}
+      {%- endif -%}
+      {%- set _ob_url = (ob_leg.google_flights_url if ob_leg else none) -%}
+      {%- if not _ob_url and idea.exit_iata and home_iata and idea.outbound_date -%}
+        {%- if idea.outbound_date is string -%}
+          {%- set _ob_ddmm = idea.outbound_date[8:10] ~ idea.outbound_date[5:7] -%}
+        {%- else -%}
+          {%- set _ob_ddmm = idea.outbound_date.strftime('%d%m') -%}
+        {%- endif -%}
+        {%- set _ob_url = 'https://www.aviasales.com/search/' ~ idea.exit_iata ~ _ob_ddmm ~ home_iata ~ '1?marker=756039.Zza75700ced74b488c8090948-756039&sub_id=YonderFlights' -%}
+      {%- endif -%}
+      {% if _ib_url %}
+      <a class="btn secondary" href="{{ _ib_url }}" target="_blank" rel="noopener">Book {{ home_iata }} → {{ idea.entry_iata }} ↗</a>
       {% endif %}
-      {% if ob_leg and ob_leg.google_flights_url %}
-      <a class="btn secondary" href="{{ ob_leg.google_flights_url }}" target="_blank" rel="noopener">Book {{ idea.exit_iata }} → {{ home_iata }} ↗</a>
+      {% if _ob_url %}
+      <a class="btn secondary" href="{{ _ob_url }}" target="_blank" rel="noopener">Book {{ idea.exit_iata }} → {{ home_iata }} ↗</a>
       {% endif %}
       {% if mode == 'saved' and s %}
       <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form" style="margin-left: auto;">
