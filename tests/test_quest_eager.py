@@ -223,6 +223,32 @@ class TestEagerQuestJobLifecycle:
         assert body["status"] == "error" and body["ok"] is False
         assert "btn-plan-quest" in body["html"]  # retry path stays available
 
+    def test_timeout_retries_once_then_succeeds(self, monkeypatch):
+        """First plan_quest attempt times out → one automatic retry succeeds.
+
+        Mirrors /api/quest/plan: the eager job must not park an error after a
+        single timeout when a second attempt would have produced a plan.
+        """
+        settings = _settings()
+        ideas = [_fake_idea()]
+        attempts: list = []
+
+        async def _flaky_quest(*a, **kw):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise asyncio.TimeoutError()
+            return ideas
+
+        monkeypatch.setattr(web_module, "plan_quest", _flaky_quest)
+
+        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        _run(web_module._run_eager_quest(job_id, **_job_kwargs(settings)))
+
+        assert len(attempts) == 2
+        job = quest_jobs.get_job(job_id)
+        assert job["status"] == "done" and job["ok"] is True
+        assert job["quest_panel"]["result"] == ideas
+
     def test_no_ai_key_completes_without_plan(self, monkeypatch):
         """Missing AI key → done-with-note, never a stuck pending job."""
         settings = Settings(testing=True, xai_api_key="")

@@ -3393,7 +3393,7 @@
         var jobId = progressEl.getAttribute("data-quest-job");
         if (!jobId) return;
         var started = Date.now();
-        var MAX_MS = 120000; // hard client budget — beyond the server's 80s guard
+        var MAX_MS = 175000; // hard client budget — covers the server's 2×80s (retry-on-timeout) guard
 
         function _retryCard(msg) {
           var questResults = document.getElementById("quest-results");

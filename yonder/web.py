@@ -3054,23 +3054,40 @@ async def _run_eager_quest(
                 """Forward plan_quest stage transitions to the job store."""
                 _qjobs.set_stage(job_id, stage)
 
-            quest_ideas = await asyncio.wait_for(
-                plan_quest(
-                    prompt,
-                    vibe,
-                    home_iata,
-                    depart_dt,
-                    settings,
-                    quest_days=quest_days,
-                    include_mock=mock,
-                    avoid=avoid,
-                    visited=visited,
-                    anchor_legs=anchor_legs,
-                    exclude_dests=exclude_dests,
-                    stage_cb=_stage_cb,
-                ),
-                timeout=80.0,
-            )
+            # Same budget + retry behavior as /api/quest/plan: 80 s per
+            # attempt with one automatic retry on timeout, so the automatic
+            # panel finishes as reliably as the Try Again button.
+            async def _run_quest() -> list:
+                return await asyncio.wait_for(
+                    plan_quest(
+                        prompt,
+                        vibe,
+                        home_iata,
+                        depart_dt,
+                        settings,
+                        quest_days=quest_days,
+                        include_mock=mock,
+                        avoid=avoid,
+                        visited=visited,
+                        anchor_legs=anchor_legs,
+                        exclude_dests=exclude_dests,
+                        stage_cb=_stage_cb,
+                    ),
+                    timeout=80.0,
+                )
+
+            _timed_out = False
+            for _attempt in range(2):
+                _timed_out = False
+                try:
+                    quest_ideas = await _run_quest()
+                    break
+                except (asyncio.TimeoutError, asyncio.CancelledError, httpx.TimeoutException):
+                    _timed_out = True
+                    continue  # retry once on timeout only
+            if _timed_out:
+                _qjobs.set_error(job_id, "The AI took too long — try again.")
+                return
     except (asyncio.TimeoutError, asyncio.CancelledError, httpx.TimeoutException):
         _qjobs.set_error(job_id, "The AI took too long — try again.")
         return
