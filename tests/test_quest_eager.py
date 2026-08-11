@@ -45,12 +45,44 @@ def client():
 
 
 @pytest.fixture(autouse=True)
-def _clean_env(monkeypatch):
+def _clean_env(pg_schema, monkeypatch):
+    # pg_schema patches quest_jobs.get_conn to a throwaway schema BEFORE any
+    # clear_all() runs — without it, clear_all() would wipe real users'
+    # in-flight quest jobs in the configured (shared/prod) database.
     monkeypatch.delenv("XAI_API_KEY", raising=False)
     monkeypatch.delenv("MOCK", raising=False)
     quest_jobs.clear_all()
     yield
     quest_jobs.clear_all()
+
+
+def test_job_store_uses_isolated_schema(pg_schema):
+    """Regression: quest job ops must hit the patched test schema, not public.
+
+    Creates a job through the module API and asserts the row landed in the
+    isolated schema's quest_jobs table (visible via the patched get_conn) and
+    NOT in the default public.quest_jobs table.
+    """
+    job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+    with pg_schema() as conn:
+        row = conn.execute(
+            "SELECT job_id FROM quest_jobs WHERE job_id = %s", (job_id,)
+        ).fetchone()
+    assert row is not None and row["job_id"] == job_id
+    # The same row must be absent from the real public schema.
+    import os
+    import psycopg2 as _pg
+    raw = _pg.connect(os.environ["DATABASE_URL"])
+    try:
+        with raw.cursor() as cur:
+            cur.execute("SELECT to_regclass('public.quest_jobs')")
+            if cur.fetchone()[0] is not None:
+                cur.execute(
+                    "SELECT 1 FROM public.quest_jobs WHERE job_id = %s", (job_id,)
+                )
+                assert cur.fetchone() is None, "job leaked into public schema"
+    finally:
+        raw.close()
 
 
 def _settings() -> Settings:
