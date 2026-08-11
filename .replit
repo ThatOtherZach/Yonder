@@ -73,4 +73,4 @@ timeoutMs = 60000
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "-w=4", "-k=uvicorn.workers.UvicornWorker", "yonder.web:app"]
+run = ["gunicorn", "--bind=0.0.0.0:5000", "--reuse-port", "-w=4", "--timeout=180", "--graceful-timeout=90", "-k=uvicorn.workers.UvicornWorker", "yonder.web:app"]

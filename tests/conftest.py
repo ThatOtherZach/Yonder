@@ -32,6 +32,7 @@ _PG_MODULES = [
     "yonder.share",
     "yonder.fare_estimates",
     "yonder.history",
+    "yonder.quest_jobs",
     "yonder.knowledge",
     "yonder.ad_pipeline",
     "yonder.ads_api",

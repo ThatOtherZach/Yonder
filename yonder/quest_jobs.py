@@ -1,47 +1,52 @@
-"""In-process job store for eager Quest planning.
+"""Postgres-backed job store for eager Quest planning.
 
 Every main search kicks off Quest planning as a background asyncio task;
 the page returns fast with Escape while the Quest panel polls
 GET /api/quest/status/{job_id} until the job resolves.
 
-Jobs hold plain Python state (quest_panel dict + place_books); the poll
-endpoint renders HTML at read time so a real Request is available for
-share-link helpers. Entries expire after a TTL so the dict never grows
-unbounded — a poll for an expired/unknown job returns None and the client
-degrades to the retry card.
+Jobs are stored in Postgres (NOT process memory) because production runs
+multiple gunicorn workers: the worker that runs the job is almost never
+the worker that answers the poll. Job state (quest_panel dict +
+place_books) is pickled so arbitrary plain-Python payloads survive the
+round-trip; the poll endpoint renders HTML at read time so a real Request
+is available for share-link helpers. Rows expire after a TTL — a poll for
+an expired/unknown job returns None and the client degrades to the retry
+card.
 """
 
 from __future__ import annotations
 
-import threading
+import pickle
 import time
 import uuid
 from typing import Any
 
+import psycopg2
+
+from .db import get_conn
+
 _TTL_SECONDS = 15 * 60.0
-_JOBS: dict[str, dict[str, Any]] = {}
-_LOCK = threading.Lock()
 
 
-def _prune_locked(now: float) -> None:
-    dead = [k for k, v in _JOBS.items() if now - v.get("created", 0.0) > _TTL_SECONDS]
-    for k in dead:
-        _JOBS.pop(k, None)
+def _prune(conn: Any, now: float) -> None:
+    conn.execute(
+        "DELETE FROM quest_jobs WHERE created_at < %s", (now - _TTL_SECONDS,)
+    )
 
 
 def create_job(*, home_iata: str, vibe: str) -> str:
     """Register a new pending quest job; returns its id."""
     job_id = uuid.uuid4().hex
-    now = time.monotonic()
-    with _LOCK:
-        _prune_locked(now)
-        _JOBS[job_id] = {
-            "status": "pending",
-            "created": now,
-            "home_iata": home_iata,
-            "vibe": vibe,
-            "stage": "reading_vibe",
-        }
+    now = time.time()
+    with get_conn() as conn:
+        _prune(conn, now)
+        conn.execute(
+            """
+            INSERT INTO quest_jobs (job_id, status, stage, home_iata, vibe, created_at)
+            VALUES (%s, 'pending', 'reading_vibe', %s, %s, %s)
+            """,
+            (job_id, home_iata, vibe, now),
+        )
     return job_id
 
 
@@ -51,44 +56,77 @@ def set_stage(job_id: str, stage: str) -> None:
     Valid stages (in order): reading_vibe → scouting_routes → pricing_flights.
     No-ops on completed/error/unknown jobs so callers never need to guard.
     """
-    with _LOCK:
-        job = _JOBS.get(job_id)
-        if job is None or job.get("status") != "pending":
-            return
-        job["stage"] = stage
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE quest_jobs SET stage = %s WHERE job_id = %s AND status = 'pending'",
+            (stage, job_id),
+        )
 
 
 def set_done(job_id: str, *, quest_panel: dict, place_books: dict | None = None, ok: bool = True) -> None:
-    with _LOCK:
-        job = _JOBS.get(job_id)
-        if job is None:
-            return
-        job.update(
-            status="done",
-            ok=ok,
-            quest_panel=quest_panel,
-            place_books=place_books or {},
+    payload = pickle.dumps(
+        {"quest_panel": quest_panel, "place_books": place_books or {}},
+        protocol=pickle.HIGHEST_PROTOCOL,
+    )
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE quest_jobs
+               SET status = 'done', ok = %s, payload = %s, error_text = NULL
+             WHERE job_id = %s
+            """,
+            (bool(ok), psycopg2.Binary(payload), job_id),
         )
 
 
 def set_error(job_id: str, error_text: str) -> None:
-    with _LOCK:
-        job = _JOBS.get(job_id)
-        if job is None:
-            return
-        job.update(status="error", ok=False, error_text=error_text)
+    with get_conn() as conn:
+        conn.execute(
+            """
+            UPDATE quest_jobs
+               SET status = 'error', ok = FALSE, error_text = %s, payload = NULL
+             WHERE job_id = %s
+            """,
+            (error_text, job_id),
+        )
 
 
 def get_job(job_id: str) -> dict[str, Any] | None:
     """Snapshot of the job state, or None when unknown/expired."""
-    now = time.monotonic()
-    with _LOCK:
-        _prune_locked(now)
-        job = _JOBS.get(job_id)
-        return dict(job) if job is not None else None
+    now = time.time()
+    with get_conn() as conn:
+        _prune(conn, now)
+        cur = conn.execute(
+            "SELECT * FROM quest_jobs WHERE job_id = %s", (job_id,)
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    job: dict[str, Any] = {
+        "status": row["status"],
+        "stage": row["stage"],
+        "home_iata": row["home_iata"],
+        "vibe": row["vibe"],
+        "ok": row["ok"],
+        "error_text": row["error_text"],
+        "created": row["created_at"],
+    }
+    raw = row.get("payload") if hasattr(row, "get") else row["payload"]
+    if raw is not None:
+        try:
+            payload = pickle.loads(bytes(raw))
+            job["quest_panel"] = payload.get("quest_panel") or {}
+            job["place_books"] = payload.get("place_books") or {}
+        except Exception:
+            # Corrupted/incompatible payload: surface as an error so the
+            # client shows the retry card instead of an empty "done" panel.
+            job["status"] = "error"
+            job["ok"] = False
+            job["error_text"] = "Quest result couldn't be loaded — try again."
+    return job
 
 
 def clear_all() -> None:
     """Test helper — drop all jobs."""
-    with _LOCK:
-        _JOBS.clear()
+    with get_conn() as conn:
+        conn.execute("DELETE FROM quest_jobs")

@@ -14,5 +14,5 @@
 - [Git push workaround](git-push-workaround.md) — Replit's GitHub credential is broken here; push with the GITHUB_PERSONAL_ACCESS_TOKEN secret (needs workflow scope), mask token in output.
 - [Quest AI latency budget](quest-ai-latency.md) — Quest's Grok call needs 50-70s; keep Skip < wait_for < httpx read timeout ordered; httpx errors often stringify to "".
 - [Tiled km² progression](tiled-km2-progression.md) — visited data is tiles not countries; partial coverage ≠ seen; go through yonder/tiles.py helpers.
-- [Eager Quest jobs](eager-quest-jobs.md) — every search spawns a polled Quest job; briefs stay cache-only there, HTML renders at poll time, Escape dest is a soft exclusion.
+- [Eager Quest jobs](eager-quest-jobs.md) — quest jobs live in Postgres (never process memory: prod has 4 workers, pollers hit random ones); HTML renders at poll time, Escape dest soft exclusion.
 - [Affiliate link fallback](affiliate-link-fallback.md) — engine generates fare-missing offer with Aviasales URL when providers fail; fare_note shows history or "no history"; detour/quest get inline template URLs.

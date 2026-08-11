@@ -371,6 +371,19 @@ CREATE INDEX IF NOT EXISTS idx_ad_candidates_push
 CREATE INDEX IF NOT EXISTS idx_ad_candidates_pushed_at
     ON ad_candidates(pushed_at);
 
+CREATE TABLE IF NOT EXISTS quest_jobs (
+    job_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    stage TEXT NOT NULL DEFAULT 'reading_vibe',
+    home_iata TEXT NOT NULL DEFAULT '',
+    vibe TEXT NOT NULL DEFAULT '',
+    ok BOOLEAN,
+    error_text TEXT,
+    payload BYTEA,
+    created_at DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quest_jobs_created ON quest_jobs(created_at);
+
 CREATE TABLE IF NOT EXISTS ad_pipeline_config (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
