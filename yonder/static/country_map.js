@@ -114,6 +114,13 @@
     this.mapLayer = null;
     this.svg = null;
     this._saveTimer = null;
+    // Monotonic counters guarding the autosave echo: _rev bumps on every
+    // local mutation, _saveSeq on every save request. A response is applied
+    // only when it is BOTH the latest request and no click happened after it
+    // was posted — otherwise the server echo would silently revert stamps
+    // made while the save was in flight (the >15-country lockout bug).
+    this._rev = 0;
+    this._saveSeq = 0;
     this._vibePreview = null;
     this._uid = "ymap-" + Math.random().toString(36).slice(2, 9);
     this._buildShell();
@@ -620,6 +627,7 @@
     var wasVisited = this.visited.has(code);
     var wasAvoided = this.avoid.has(code);
     if (!wasVisited && !wasAvoided) return; // nothing to do
+    this._rev++;
     this.visited.delete(code);
     this.avoid.delete(code);
 
@@ -652,6 +660,7 @@
     var total = this.visited.size + this.avoid.size;
     if (total < 1) return;
     // Confirmation handled by the two-click Reset Map button
+    this._rev++;
     this.visited.clear();
     this.avoid.clear();
     this.paintAll();
@@ -663,6 +672,7 @@
   YonderMap.prototype.cycle = function (code) {
     if (!code || !TILE_RE.test(code)) return;
     var st = this.stateOf(code);
+    this._rev++;
 
     // Subdivision tiles cycle none → visited → avoid → clear
     if (code.indexOf("-") > -1) {
@@ -761,6 +771,10 @@
   YonderMap.prototype.save = async function () {
     var self = this;
     this._savePending = false;
+    // Snapshot the mutation revision and request sequence: the echo below
+    // is only applied when this response is still the freshest.
+    var revAtSend = this._rev;
+    var seq = ++this._saveSeq;
     // Stamp order preserved — first visited is Home on the server
     var body = {
       visited: this.orderedVisited(),
@@ -779,6 +793,14 @@
       });
       if (!r.ok) throw new Error("HTTP " + r.status);
       var j = await r.json();
+      // Stale guard: if the user stamped anything while this request was in
+      // flight (rev moved) or a newer save was posted (seq superseded), do
+      // NOT apply the echo — it reflects an older map and would revert the
+      // stamps the user just made. The newer save carries the fresh state.
+      if (this._rev !== revAtSend || this._saveSeq !== seq) {
+        // Stale response — a newer save is pending/in flight; its echo wins.
+        return;
+      }
       // Server echoes normalized tiles (subdivisions + country tiles)
       if (j.tiles) this.visited = new Set(parseList(j.tiles));
       else if (j.visited) this.visited = new Set(parseList(j.visited));
