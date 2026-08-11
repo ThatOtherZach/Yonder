@@ -72,6 +72,7 @@ from yonder.types import CabinClass, SearchQuery
 from yonder.share import create_share, dump_obj, get_share, qr_png_data_uri, qr_svg_for_url
 from yonder.trains import train_options, airport_train_for, ground_transfer_for
 from yonder.vibe_theme import VIBE_EMOJI, resolve_vibe, vibe_theme
+from yonder import rate_limit as _rate_limit
 
 _VIBES_PATH = Path(__file__).parent / "vibes.json"
 _vibes_json: str | None = None
@@ -758,6 +759,8 @@ async def search_page(
     settings = get_settings()
     # Mock is internal-only: route skeletons when no fare providers configured.
     mock = not settings.configured_providers()
+    # Rate-limit mock: bypass only when NO AI key AND NO fare providers are live.
+    _rl_mock = not (settings.grok_ready() or bool(settings.configured_providers()))
     form = {
         "origin": origin.upper(),
         "destination": destination.upper(),
@@ -768,6 +771,42 @@ async def search_page(
         "nonstop": nonstop,
         "use_grok": use_grok,
     }
+    _rl_sess = _req_sess(request)
+    _rl = await _rate_limit.check_search(request, _rl_sess, mock=_rl_mock)
+    if not _rl.allowed:
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                "nav": "search",
+                **_base_ctx(settings),
+                "result": None,
+                "error": "You're searching a lot — give it a moment before trying again.",
+                "ask": "",
+                "parsed": None,
+                "analysis": None,
+                "form": form,
+                "dest_theme": None,
+            },
+            status_code=429,
+            headers={"Retry-After": str(_rl.retry_after)},
+        )
+    if not _rate_limit.check_daily_budget(mock=_rl_mock):
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {
+                "nav": "search",
+                **_base_ctx(settings),
+                "result": None,
+                "error": "Live searches are at capacity for today — try again tomorrow.",
+                "ask": "",
+                "parsed": None,
+                "analysis": None,
+                "form": form,
+                "dest_theme": None,
+            },
+        )
     try:
         query = SearchQuery(
             origin=origin.upper(),
@@ -846,6 +885,44 @@ async def ask_grok(request: Request) -> HTMLResponse:
     # configured.  Mock offers carry route skeletons; their prices are always
     # hidden (fare_missing) and replaced by real cached range pills in the UI.
     mock = not settings.configured_providers()
+    # Rate-limit mock: bypass only when NO AI key AND NO fare providers are live.
+    _rl_mock = not (settings.grok_ready() or bool(settings.configured_providers()))
+
+    _rl = await _rate_limit.check_search(request, sess, mock=_rl_mock)
+    if not _rl.allowed:
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            _compose_page_ctx(
+                settings,
+                session_id=sess,
+                mode="escape",
+                error="You're searching a lot — give it a moment before trying again.",
+                escape_override={"ask": ask, "form": {
+                    "origin": "YVR", "destination": "NRT", "depart": "", "return_date": "",
+                    "adults": 1, "currency": (settings.default_currency or "USD").upper(),
+                    "nonstop": False, "vibe": vibe,
+                }},
+            ),
+            status_code=429,
+            headers={"Retry-After": str(_rl.retry_after)},
+        )
+    if not _rate_limit.check_daily_budget(mock=_rl_mock):
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            _compose_page_ctx(
+                settings,
+                session_id=sess,
+                mode="escape",
+                error="Live searches are at capacity for today — here are your last results. Check back tomorrow.",
+                escape_override={"ask": ask, "form": {
+                    "origin": "YVR", "destination": "NRT", "depart": "", "return_date": "",
+                    "adults": 1, "currency": (settings.default_currency or "USD").upper(),
+                    "nonstop": False, "vibe": vibe,
+                }},
+            ),
+        )
 
     empty_form = {
         "origin": "YVR",
@@ -1087,6 +1164,44 @@ async def explore_run(request: Request) -> HTMLResponse:
     # configured.  Mock offers carry route skeletons; their prices are always
     # hidden (fare_missing) and replaced by real cached range pills in the UI.
     mock = not settings.configured_providers()
+    # Rate-limit mock: bypass only when NO AI key AND NO fare providers are live.
+    _rl_mock = not (settings.grok_ready() or bool(settings.configured_providers()))
+
+    # ── Rate limiting ─────────────────────────────────────────────────────────
+    _rl = await _rate_limit.check_search(request, sess, mock=_rl_mock)
+    if not _rl.allowed:
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            _compose_page_ctx(
+                settings,
+                session_id=sess,
+                mode="escape",
+                error="You're searching a lot — give it a moment before trying again.",
+                escape_override={"ask": prompt, "form": _empty_escape_form(settings)},
+                detour_override={"form": _adventure_form_defaults(settings)},
+                lock_vibe=True,
+            ),
+            status_code=429,
+            headers={"Retry-After": str(_rl.retry_after)},
+        )
+    if not _rate_limit.check_daily_budget(mock=_rl_mock):
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            _compose_page_ctx(
+                settings,
+                session_id=sess,
+                mode="escape",
+                error=(
+                    "Live searches are at capacity for today — "
+                    "here are your last results. Check back tomorrow."
+                ),
+                escape_override={"ask": prompt, "form": _empty_escape_form(settings)},
+                detour_override={"form": _adventure_form_defaults(settings)},
+                lock_vibe=True,
+            ),
+        )
 
     # Return-flight toggle: strip return_date when the user opts for one-way.
     # Omitting the field (legacy clients) defaults to one-way (False).
@@ -2668,6 +2783,8 @@ async def quest_plan_api(request: Request):
     avoid = settings.effective_avoid_country_list()
     visited = settings.visited_country_list()
     mock = not settings.configured_providers()
+    # Rate-limit mock: bypass only when NO AI key AND NO fare providers are live.
+    _rl_mock = not (settings.grok_ready() or bool(settings.configured_providers()))
 
     try:
         anchor_legs: list = []
@@ -2692,8 +2809,26 @@ async def quest_plan_api(request: Request):
             place_books=place_books or {},
         )
 
+    _rl_sess = _req_sess(request)
+    _rl = await _rate_limit.check_plan(request, _rl_sess, mock=_rl_mock)
+    if not _rl.allowed:
+        _rl_err = "You're planning a lot — give it a moment before trying again."
+        return JSONResponse(
+            {"ok": False, "error": _rl_err, "html": _render_quest({}, error_message=_rl_err)},
+            status_code=429,
+            headers={"Retry-After": str(_rl.retry_after)},
+        )
+
+    # Empty-prompt guard runs before budget deduction so no-op requests don't
+    # consume any daily quota.
     if not prompt:
         return JSONResponse({"ok": False, "error": "No prompt — type a vibe first.", "html": ""})
+
+    if not _rate_limit.check_daily_budget(mock=_rl_mock):
+        _budget_err = "Live planning is at capacity for today — try again tomorrow."
+        return JSONResponse(
+            {"ok": False, "error": _budget_err, "html": _render_quest({}, error_message=_budget_err)},
+        )
 
     if not settings.grok_ready():
         error_text = "Quest needs an AI key — add one in Settings."
@@ -2888,6 +3023,28 @@ async def _run_eager_quest(
                 return
             # Advance stage: AI ideation about to start
             _qjobs.set_stage(job_id, "scouting_routes")
+            # Guard AI spend: background Quest must not fire when the daily budget is
+            # already exhausted.  This is a second charge on top of the parent /explore
+            # charge so each search+quest cycle costs 2 budget units in total.
+            #
+            # Use the AI-aware mock signal: bypass rate limiting only when NEITHER
+            # a Grok/BYOM key NOR any fare provider is live.  Using just
+            # `not configured_providers()` would bypass the budget guard when an AI
+            # key is configured but no fare provider is, allowing unlimited Grok calls.
+            _eq_rl_mock = not (settings.grok_ready() or bool(settings.configured_providers()))
+            if not _rate_limit.check_daily_budget(mock=_eq_rl_mock, cost=1.0):
+                _qjobs.set_done(
+                    job_id,
+                    quest_panel={
+                        "ask": prompt,
+                        "result": [],
+                        "home_iata": home_iata,
+                        "vibe": vibe,
+                        "error": "Live Quest planning is at capacity for today — try again tomorrow.",
+                    },
+                    ok=False,
+                )
+                return
 
             def _stage_cb(stage: str) -> None:
                 """Forward plan_quest stage transitions to the job store."""
@@ -3078,6 +3235,8 @@ async def detour_plan_api(request: Request):
     visited = settings.visited_country_list()
     currency = (settings.default_currency or "USD").upper()
     mock = not settings.configured_providers()
+    # Rate-limit mock: bypass only when NO AI key AND NO fare providers are live.
+    _rl_mock = not (settings.grok_ready() or bool(settings.configured_providers()))
     sess = _req_sess(request)
     return_days = _compute_return_days()
 
@@ -3099,8 +3258,24 @@ async def detour_plan_api(request: Request):
             return_days=return_days,
         )
 
+    _rl = await _rate_limit.check_plan(request, sess, mock=_rl_mock)
+    if not _rl.allowed:
+        _rl_err = "You're planning a lot — give it a moment before trying again."
+        return JSONResponse(
+            {"ok": False, "error": _rl_err, "html": _render_detour({}, error_message=_rl_err)},
+            status_code=429,
+            headers={"Retry-After": str(_rl.retry_after)},
+        )
+    # Empty-prompt guard runs before budget deduction so no-op requests don't
+    # consume any daily quota.
     if not prompt:
         return JSONResponse({"ok": False, "error": "No prompt — type a search first.", "html": ""})
+
+    if not _rate_limit.check_daily_budget(mock=_rl_mock):
+        _budget_err = "Live planning is at capacity for today — try again tomorrow."
+        return JSONResponse(
+            {"ok": False, "error": _budget_err, "html": _render_detour({}, error_message=_budget_err)},
+        )
 
     # ── Step 1: Recycled saved-trip fast path ──────────────────────────────────
     _recycled_det = None
@@ -3479,6 +3654,52 @@ async def adventure_run(request: Request) -> HTMLResponse:
         vibe = "adventure"
     # Mock is internal-only: route skeletons when no fare providers configured.
     mock = not settings.configured_providers()
+    # Rate-limit mock: bypass only when NO AI key AND NO fare providers are live.
+    _rl_mock = not (settings.grok_ready() or bool(settings.configured_providers()))
+
+    _rl = await _rate_limit.check_plan(request, sess, mock=_rl_mock)
+    if not _rl.allowed:
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            _compose_page_ctx(
+                settings,
+                session_id=sess,
+                mode="detour",
+                error="You're planning a lot — give it a moment before trying again.",
+                detour_override={"form": _adventure_form_defaults(settings)},
+            ),
+            status_code=429,
+            headers={"Retry-After": str(_rl.retry_after)},
+        )
+    # Cheap guard: empty prompt costs no quota.  Check before debiting the budget so
+    # mis-submitted forms don't burn daily capacity.
+    if not prompt:
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            _compose_page_ctx(
+                settings,
+                session_id=sess,
+                mode="detour",
+                error="Describe your trip (cities + vibe).",
+                detour_override={"form": _adventure_form_defaults(settings)},
+            ),
+        )
+
+    if not _rate_limit.check_daily_budget(mock=_rl_mock):
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            _compose_page_ctx(
+                settings,
+                session_id=sess,
+                mode="detour",
+                error="Live planning is at capacity for today — try again tomorrow.",
+                detour_override={"form": _adventure_form_defaults(settings)},
+            ),
+        )
+
     use_grok = True  # always invent with Grok when key is present
     avoid = settings.effective_avoid_country_list()
     visited = settings.visited_country_list()
@@ -4299,6 +4520,18 @@ async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
     # Mock is internal-only: route skeletons when no fare providers configured.
     mock = not settings.configured_providers()
 
+    _rl = await _rate_limit.check_fare(request, owner, mock=mock)
+    if not _rl.allowed:
+        return RedirectResponse(
+            url="/saved?err=" + quote("You're refreshing too quickly — give it a moment."),
+            status_code=302,
+        )
+    if not _rate_limit.check_daily_budget(mock=mock, cost=0.5):
+        return RedirectResponse(
+            url="/saved?err=" + quote("Fare refresh capacity reached for today — try again tomorrow."),
+            status_code=302,
+        )
+
     try:
         it = AdventureItinerary.model_validate(item.itinerary)
         cabin_raw = (item.cabin or "economy").lower()
@@ -4443,6 +4676,19 @@ async def api_price_refresh(request: Request) -> JSONResponse:
     if len(currency) != 3 or not currency.isalpha():
         currency = (settings.default_currency or "USD").upper()
     include_mock = not settings.configured_providers()
+    _rl_sess = _req_sess(request)
+    _rl = await _rate_limit.check_fare(request, _rl_sess, mock=include_mock)
+    if not _rl.allowed:
+        return JSONResponse(
+            {"ok": False, "error": "You're refreshing fares too quickly — give it a moment."},
+            status_code=429,
+            headers={"Retry-After": str(_rl.retry_after)},
+        )
+    if not _rate_limit.check_daily_budget(mock=include_mock, cost=0.5):
+        return JSONResponse(
+            {"ok": False, "error": "Fare refresh capacity reached for today — try again tomorrow."},
+            status_code=429,
+        )
     try:
         refreshed, rmeta = await reprice_itinerary(
             it,
@@ -4516,13 +4762,27 @@ async def api_leg_fare(request: Request) -> JSONResponse:
         except ValueError:
             return_date = None
 
-    if not settings.configured_providers():
+    _rl_sess = _req_sess(request)
+    _rl_mock = not settings.configured_providers()
+    _rl = await _rate_limit.check_fare(request, _rl_sess, mock=_rl_mock)
+    if not _rl.allowed:
+        return JSONResponse(
+            {"ok": False, "error": "You're checking fares too quickly — give it a moment."},
+            status_code=429,
+            headers={"Retry-After": str(_rl.retry_after)},
+        )
+    if _rl_mock:
         return JSONResponse(
             {
                 "ok": False,
                 "error": "No fare providers configured — add a provider key in Settings.",
             },
             status_code=503,
+        )
+    if not _rate_limit.check_daily_budget(mock=_rl_mock, cost=0.5):
+        return JSONResponse(
+            {"ok": False, "error": "Fare check capacity reached for today — try again tomorrow."},
+            status_code=429,
         )
 
     query = SearchQuery(
@@ -4794,6 +5054,14 @@ async def api_result_feedback(request: Request) -> JSONResponse:
         )
 
         if is_new and qid and query:
+            # Guard AI spend before spawning the background generation task.
+            # Use grok_ready() as the mock signal since the only cost here is Grok.
+            _fb_settings = get_settings()
+            _fb_rl_mock = not _fb_settings.grok_ready()
+            if not _rate_limit.check_daily_budget(mock=_fb_rl_mock, cost=0.5):
+                is_new = False  # suppress task spawn; budget exhausted
+
+        if is_new and qid and query:
             # Fire-and-forget: generate a suggestion answer in the background
             async def _generate_answer(question_id: str, q_vibe: str, q_text: str) -> None:
                 try:
@@ -4937,6 +5205,7 @@ async def api_funnel(request: Request) -> JSONResponse:
 
 @app.get("/api/place-brief")
 async def api_place_brief(
+    request: Request,
     iata: str = Query(..., min_length=3, max_length=3),
     country: str = Query(""),
     city: str = Query(""),
@@ -4954,6 +5223,22 @@ async def api_place_brief(
     code = (iata or "").strip().upper()
     if len(code) != 3 or not code.isalpha():
         return JSONResponse({"ok": False, "error": "bad iata"}, status_code=400)
+    # Rate-limit only when a live Grok key is present; cache hits are still guarded
+    # against DoS volume, and the budget cost is charged per request (0.5 units).
+    _rl_sess = _req_sess(request)
+    _rl_mock = not settings.grok_ready()
+    _rl = await _rate_limit.check_fare(request, _rl_sess, mock=_rl_mock)
+    if not _rl.allowed:
+        return JSONResponse(
+            {"ok": False, "error": "You're loading too many place briefs — give it a moment."},
+            status_code=429,
+            headers={"Retry-After": str(_rl.retry_after)},
+        )
+    if not _rate_limit.check_daily_budget(mock=_rl_mock, cost=0.5):
+        return JSONResponse(
+            {"ok": False, "error": "Place brief capacity reached for today — try again tomorrow."},
+            status_code=429,
+        )
     try:
         brief = await get_place_brief(
             settings,
@@ -5616,6 +5901,7 @@ async def settings_save(request: Request) -> RedirectResponse:
 
 @app.get("/api/search")
 async def api_search(
+    request: Request,
     origin: str = Query(..., min_length=3, max_length=3),
     destination: str = Query(..., min_length=3, max_length=3),
     depart: str = Query(...),
@@ -5643,6 +5929,19 @@ async def api_search(
     # Mock is internal-only (route skeletons when no providers); user-supplied
     # mock params are ignored and invented prices never leave the API.
     include_mock = not settings.configured_providers()
+    _rl_sess = _req_sess(request)
+    _rl = await _rate_limit.check_search(request, _rl_sess, mock=include_mock)
+    if not _rl.allowed:
+        return JSONResponse(
+            {"ok": False, "error": "You're searching a lot — give it a moment before trying again."},
+            status_code=429,
+            headers={"Retry-After": str(_rl.retry_after)},
+        )
+    if not _rate_limit.check_daily_budget(mock=include_mock):
+        return JSONResponse(
+            {"ok": False, "error": "Live searches are at capacity for today — try again tomorrow."},
+            status_code=429,
+        )
     result = await search_flights(query, settings=settings, include_mock=include_mock)
     result = _mark_missing_fares_result(result)
     out = result.model_dump(mode="json")
@@ -5661,6 +5960,21 @@ async def api_ask(request: Request) -> dict:
         return {"ok": False, "error": "No AI model configured — add XAI_API_KEY or set a BYOM endpoint in Settings."}
     # Mock is internal-only: route skeletons when no fare providers configured.
     mock = not settings.configured_providers()
+    # Rate-limit mock: bypass only when NO AI key AND NO fare providers are live.
+    _rl_mock = not (settings.grok_ready() or bool(settings.configured_providers()))
+    _rl_sess = _req_sess(request)
+    _rl = await _rate_limit.check_search(request, _rl_sess, mock=_rl_mock)
+    if not _rl.allowed:
+        return JSONResponse(
+            {"ok": False, "error": "You're searching a lot — give it a moment before trying again."},
+            status_code=429,
+            headers={"Retry-After": str(_rl.retry_after)},
+        )
+    if not _rate_limit.check_daily_budget(mock=_rl_mock):
+        return JSONResponse(
+            {"ok": False, "error": "Live searches are at capacity for today — try again tomorrow."},
+            status_code=429,
+        )
 
     async with GrokClient(settings) as grok:
         trip = await grok.parse_natural_language(

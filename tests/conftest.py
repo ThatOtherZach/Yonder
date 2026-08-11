@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for PostgreSQL-backed module isolation.
+"""Shared pytest fixtures for PostgreSQL-backed module isolation and rate-limit isolation.
 
 All yonder modules that previously used SQLite now share the Replit PostgreSQL
 instance via ``yonder.db.get_conn()``.  Tests that need isolation use the
@@ -91,3 +91,20 @@ def pg_schema(monkeypatch):
     with admin.cursor() as cur:
         cur.execute(f'DROP SCHEMA "{schema}" CASCADE')
     admin.close()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limit_state():
+    """Clear in-memory rate-limit windows and budget between tests.
+
+    Prevents test calls from accumulating in the sliding-window counters and
+    triggering 429 responses in unrelated tests.
+    """
+    import yonder.rate_limit as _rl
+    _rl._windows.clear()
+    _rl._budget_count = 0.0
+    _rl._budget_date = ""
+    yield
+    _rl._windows.clear()
+    _rl._budget_count = 0.0
+    _rl._budget_date = ""
