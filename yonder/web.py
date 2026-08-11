@@ -78,6 +78,10 @@ _VIBES_PATH = Path(__file__).parent / "vibes.json"
 _vibes_json: str | None = None
 _vibes_v: str | None = None
 
+# Set Secure flag on session cookies when running behind HTTPS (production).
+# Replit deployments always expose REPLIT_DOMAINS; dev containers do not.
+_IS_HTTPS: bool = bool(os.environ.get("REPLIT_DOMAINS"))
+
 # ── Intent AI-override cache (prompt_hash → (timestamp, shape)) ───────────────
 # Keeps repeated identical prompts from re-firing the secondary AI call.
 _INTENT_OVERRIDE_CACHE: dict[str, tuple[float, str]] = {}
@@ -740,7 +744,7 @@ async def home(request: Request) -> HTMLResponse:
     ctx = _compose_page_ctx(settings, mode=mode, session_id="" if need_cookie else sess)
     response = templates.TemplateResponse(request, "index.html", ctx)
     if need_cookie:
-        response.set_cookie("yv_sess", sess, httponly=True, samesite="lax")
+        response.set_cookie("yv_sess", sess, httponly=True, samesite="lax", secure=_IS_HTTPS)
     return response
 
 
@@ -4356,7 +4360,7 @@ async def saved_list_page(
         },
     )
     if need_cookie:
-        response.set_cookie("yv_sess", sess, httponly=True, samesite="lax")
+        response.set_cookie("yv_sess", sess, httponly=True, samesite="lax", secure=_IS_HTTPS)
     return response
 
 
@@ -4494,7 +4498,7 @@ async def api_save_itinerary(request: Request):
         }
     )
     if need_sess_cookie:
-        resp.set_cookie("yv_sess", owner, httponly=True, samesite="lax")
+        resp.set_cookie("yv_sess", owner, httponly=True, samesite="lax", secure=_IS_HTTPS)
     return resp
 
 
@@ -4990,7 +4994,7 @@ async def api_result_feedback(request: Request) -> JSONResponse:
         if need_cookie and sess:
             # Pin the derived session id so this client's future votes dedup
             # against the same key (matches the /saved yv_sess cookie).
-            resp.set_cookie("yv_sess", sess, httponly=True, samesite="lax")
+            resp.set_cookie("yv_sess", sess, httponly=True, samesite="lax", secure=_IS_HTTPS)
         return resp
 
     if row_id == "":
@@ -5983,6 +5987,9 @@ async def api_ask(request: Request) -> dict:
     ask = str(body.get("ask") or "").strip()
     if not ask:
         return {"ok": False, "error": "ask is required"}
+    # Cap input length: prevents cost inflation, reduces prompt-injection surface.
+    if len(ask) > 500:
+        return {"ok": False, "error": "Search query is too long (max 500 characters)."}
     if not settings.grok_ready():
         return {"ok": False, "error": "No AI model configured — add XAI_API_KEY or set a BYOM endpoint in Settings."}
     # Mock is internal-only: route skeletons when no fare providers configured.
@@ -6060,6 +6067,11 @@ async def api_providers() -> dict:
         chosen_adv = await choose_providers(
             s, client, mode="adventure_leg", need=1, include_mock=False, probe=False
         )
+    sv = settings_view()
+    # env_path is the server-side filesystem path to the .env file.
+    # It is only needed by the server-rendered Settings page, not by this
+    # unauthenticated API endpoint, so strip it before sending to clients.
+    sv.pop("env_path", None)
     return {
         "configured": s.configured_providers(),
         "active": active,
@@ -6076,7 +6088,7 @@ async def api_providers() -> dict:
             "mock",
             "grok",
         ],
-        "settings": settings_view(),
+        "settings": sv,
     }
 
 
