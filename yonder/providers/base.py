@@ -92,10 +92,35 @@ class FlightProvider(ABC):
                 error=msg,
                 burned_quota=False,
             )
+            # Classify failure_kind from HTTP status and error text so the engine
+            # can distinguish quota/auth failures from transient network errors.
+            msg_lower = msg.lower()
+            if status in (401, 403) or any(
+                x in msg_lower
+                for x in (
+                    "unauthorized",
+                    "forbidden",
+                    "invalid api key",
+                    "invalid key",
+                    "authentication failed",
+                    "api key",
+                    "invalid_api_key",
+                )
+            ):
+                fk = "inactive"
+            elif (
+                "quota" in msg_lower
+                and any(x in msg_lower for x in ("exhausted", "exceeded", "limit", "depleted"))
+            ) or "monthly limit" in msg_lower:
+                fk = "quota_exhausted"
+            elif status == 429 or "rate limit" in msg_lower or "too many requests" in msg_lower:
+                fk = "cooldown"
+            else:
+                fk = "error"
             return ProviderResult(
                 provider=self.name,
                 ok=False,
                 error=msg,
                 latency_ms=ms,
-                failure_kind="error",
+                failure_kind=fk,
             )

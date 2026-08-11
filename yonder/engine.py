@@ -110,21 +110,46 @@ async def search_flights(
         # Booking links: Google Flights + Kayak/airline backup
         all_offers = [attach_links_to_offer(o, query) for o in all_offers]
 
-        # ── Pricing failed / no offers: build a fallback card with affiliate link ──
-        if not all_offers:
-            real_results = [r for r in results if r.provider != "mock"]
-            failed = [r for r in real_results if not r.ok]
-            # Log prominently when ALL real providers are down (quota/error)
-            if real_results and len(failed) == len(real_results):
+        # ── Owner alerting: quota/auth failures on any provider ──────────────────
+        # Run unconditionally so the owner sees the alert even when another provider
+        # supplied live offers.  Quota-exhausted and auth failures need prompt
+        # attention regardless of whether the search returned results overall.
+        _real_results = [r for r in results if r.provider != "mock"]
+        _failed = [r for r in _real_results if not r.ok]
+        if _failed:
+            _failure_summary = "; ".join(
+                f"{r.provider}[{r.failure_kind or 'error'}]: {(r.error or '')[:80]}"
+                for r in _failed
+            )
+            _quota_or_auth = [
+                r for r in _failed
+                if r.failure_kind in ("quota_exhausted", "inactive")
+            ]
+            if _quota_or_auth:
+                logger.error(
+                    "⚠ FLIGHT DATA UNAVAILABLE — quota/auth failure for %s→%s: %s",
+                    query.origin,
+                    query.destination,
+                    _failure_summary,
+                )
+            elif not all_offers:
+                # All real providers failed but none with quota/auth — transient
                 logger.warning(
                     "ALL PROVIDERS DOWN for %s→%s: %s",
                     query.origin,
                     query.destination,
-                    "; ".join(
-                        f"{r.provider}[{r.failure_kind or 'error'}]: {(r.error or '')[:80]}"
-                        for r in failed
-                    ),
+                    _failure_summary,
                 )
+            # Record for owner settings page (survives server restart, not per-session)
+            from yonder.quota import record_last_search_errors
+            record_last_search_errors(
+                _failed,
+                origin=query.origin,
+                destination=query.destination,
+            )
+
+        # ── Pricing failed / no offers: build a fallback card with affiliate link ──
+        if not all_offers:
             fallback = _build_fallback_offer(query, target, results=list(results))
             return UnifiedSearchResult(
                 query=query, results=list(results), offers=[fallback]

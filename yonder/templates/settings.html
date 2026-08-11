@@ -834,6 +834,30 @@
             <strong style="color:var(--err,#c0392b)">⚠ All fare providers are currently down.</strong>
             Travelers will see affiliate links with fare history notes instead of live prices.
             Check budgets below — quota exhausted, cooldown, or auth failure.
+            {% if last_provider_errors and last_provider_errors.providers %}
+            <div style="margin-top:0.45rem;padding-top:0.4rem;border-top:1px solid color-mix(in srgb,var(--err,#c0392b) 30%,transparent)">
+              <span style="color:var(--muted,#888);font-size:0.82rem">Last search ({{ last_provider_errors.origin or '?' }}→{{ last_provider_errors.destination or '?' }}):</span>
+              <ul style="margin:0.2rem 0 0 1.1rem;padding:0;font-size:0.82rem">
+                {% for p in last_provider_errors.providers %}
+                <li style="margin-bottom:0.1rem">
+                  <code style="font-size:0.82rem">{{ p.provider }}</code>
+                  — <span style="color:{% if p.failure_kind in ('quota_exhausted','inactive') %}var(--err,#c0392b){% else %}var(--muted,#888){% endif %}">{{ p.failure_kind }}</span>
+                  {% if p.error %}<span class="muted" style="font-size:0.78rem">({{ p.error[:120] }})</span>{% endif %}
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+          </div>
+          {% elif last_had_quota_or_auth %}
+          {# Registry has recovered (key swap / TTL cleared) but last search had quota/auth failures — show a softer note #}
+          <div style="background:color-mix(in srgb,var(--warn,#e67e22) 8%,var(--paper));border:1px solid color-mix(in srgb,var(--warn,#e67e22) 35%,transparent);border-radius:8px;padding:0.5rem 0.85rem;margin-bottom:0.75rem;font-size:0.85rem">
+            <strong style="color:var(--warn,#e67e22)">ℹ Last search hit quota/auth limits</strong> — registry has since recovered.
+            {% if last_provider_errors and last_provider_errors.providers %}
+            <span class="muted" style="font-size:0.82rem">
+              Providers: {{ last_provider_errors.providers | map(attribute='provider') | join(', ') }}
+            </span>
+            {% endif %}
           </div>
           {% endif %}
           <p class="muted" style="margin:0 0 0.75rem;font-size:0.88rem">

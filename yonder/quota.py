@@ -616,3 +616,66 @@ def budgets_snapshot(settings: Settings) -> list[dict[str, Any]]:
     if settings.xai_api_key:
         reg.ensure("grok", configured=True)
     return reg.all_public()
+
+
+# ── Last-search provider error snapshot (owner alerting) ─────────────────────
+#
+# A server-wide (not per-session) record of provider failures from the most
+# recent search that returned no live offers.  Stored separately from the quota
+# registry so the owner can see what actually happened even after a key swap
+# clears the stale "exhausted" TTL from the registry.
+
+_LAST_PROVIDER_ERR_PATH = ROOT / ".last_provider_errors.json"
+_last_provider_errors: dict[str, Any] = {}
+
+
+def record_last_search_errors(
+    results: "list[Any]",
+    *,
+    origin: str = "",
+    destination: str = "",
+) -> None:
+    """Persist provider failure details from the most recent failed search.
+
+    Call this whenever a search returns no live offers due to provider failures.
+    ``results`` is a list of ``ProviderResult``-like objects (need .ok, .provider,
+    .failure_kind, .error attributes).
+    """
+    global _last_provider_errors
+    snapshot: dict[str, Any] = {
+        "recorded_at": time.time(),
+        "origin": origin,
+        "destination": destination,
+        "providers": [
+            {
+                "provider": r.provider,
+                "failure_kind": r.failure_kind or "error",
+                "error": (r.error or "")[:200],
+            }
+            for r in results
+            if not r.ok
+        ],
+    }
+    _last_provider_errors = snapshot
+    try:
+        _LAST_PROVIDER_ERR_PATH.write_text(
+            json.dumps(snapshot, indent=2), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+
+def get_last_search_errors() -> dict[str, Any]:
+    """Return the last-search provider error snapshot, loading from disk if cold."""
+    global _last_provider_errors
+    if _last_provider_errors:
+        return dict(_last_provider_errors)
+    if _LAST_PROVIDER_ERR_PATH.exists():
+        try:
+            data = json.loads(_LAST_PROVIDER_ERR_PATH.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                _last_provider_errors = data
+                return dict(data)
+        except Exception:
+            pass
+    return {}

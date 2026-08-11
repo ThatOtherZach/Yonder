@@ -5752,6 +5752,7 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
         except BYOMUrlError as exc:
             byom_url_warning = str(exc)
     # ── Owner-only: surface when all configured providers are currently failing ──
+    from yonder.quota import get_last_search_errors as _get_last_errs
     from yonder.quota import get_registry as _get_registry
     _reg = _get_registry()
     _configured = settings.configured_providers()
@@ -5765,6 +5766,14 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
             "SETTINGS PAGE: all configured providers are currently down: %s",
             ", ".join(_configured),
         )
+    # Last-search provider error snapshot — lets the owner see exactly what
+    # failed during the most recent search, independent of registry TTL state.
+    _last_provider_errors = _get_last_errs()
+    _quota_auth_kinds = {"quota_exhausted", "inactive"}
+    _last_had_quota_or_auth = any(
+        p.get("failure_kind") in _quota_auth_kinds
+        for p in _last_provider_errors.get("providers", [])
+    )
 
     return templates.TemplateResponse(
         request,
@@ -5777,6 +5786,8 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
             "xp_profile": xp_profile,
             "byom_url_warning": byom_url_warning,
             "all_providers_down": _all_providers_down,
+            "last_provider_errors": _last_provider_errors,
+            "last_had_quota_or_auth": _last_had_quota_or_auth,
             **_base_ctx(settings),
         },
     )
