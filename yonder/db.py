@@ -431,6 +431,83 @@ def _is_conn_alive(raw: Any) -> bool:
         return False
 
 
+# Arbitrary but stable app-wide key for the schema-migration advisory lock.
+_DDL_LOCK_KEY = 715_001_042
+
+
+def _run_ddl(pool: ThreadedConnectionPool) -> None:
+    """Run the idempotent schema DDL exactly once across all processes.
+
+    Production runs multiple gunicorn workers that import this module
+    simultaneously.  Unsynchronised concurrent DDL (CREATE TABLE / ALTER
+    TABLE / CREATE INDEX) races in Postgres and can raise ("tuple
+    concurrently updated", duplicate pg_type errors), killing workers at
+    import time.  A session-level advisory lock serialises the migration:
+    the first worker does the work, the rest wait then no-op.
+
+    Failures are retried a few times (transient SSL drops at boot), and a
+    final failure is logged loudly but does NOT crash the worker — the
+    schema almost certainly already exists from a previous boot; dying at
+    import just turns a migration hiccup into a full outage.
+    """
+    last_exc: Exception | None = None
+    attempts = 3
+    for attempt in range(1, attempts + 1):
+        # Dedicated connection, never pooled: if anything goes wrong we CLOSE
+        # it, which makes Postgres release the session advisory lock — a
+        # poisoned/lock-holding connection can never leak into the pool.
+        raw = None
+        try:
+            raw = psycopg2.connect(_database_url(), **_CONNECT_KWARGS)
+            with raw.cursor() as cur:
+                # Bound the lock wait so a stuck/leaked external lock cannot
+                # hang worker boot forever.
+                cur.execute("SET lock_timeout = '60s'")
+                cur.execute("SELECT pg_advisory_lock(%s)", (_DDL_LOCK_KEY,))
+                cur.execute(_DDL)
+            raw.commit()
+            return
+        except Exception as exc:
+            last_exc = exc
+            if attempt < attempts:
+                time.sleep(0.5 * attempt)
+        finally:
+            if raw is not None:
+                try:
+                    raw.close()  # releases the session advisory lock too
+                except Exception:
+                    pass
+
+    # All attempts failed. Only continue if the schema already exists —
+    # otherwise serving traffic would just turn into request-time 500s.
+    if _schema_present(pool):
+        print(
+            f"[db] SCHEMA MIGRATION FAILED after {attempts} attempts: {last_exc!r} "
+            "— existing schema verified, continuing. Newest columns/tables may be missing!",
+            flush=True,
+        )
+        return
+    raise RuntimeError(
+        f"Database schema migration failed and no existing schema found: {last_exc!r}"
+    )
+
+
+def _schema_present(pool: ThreadedConnectionPool) -> bool:
+    """True if the core schema already exists (sentinel table check)."""
+    try:
+        raw = pool.getconn()
+        try:
+            with raw.cursor() as cur:
+                cur.execute("SELECT to_regclass('saved_itineraries')")
+                row = cur.fetchone()
+            raw.rollback()
+            return bool(row and row[0])
+        finally:
+            pool.putconn(raw)
+    except Exception:
+        return False
+
+
 def _ensure_pool() -> ThreadedConnectionPool:
     global _pool
     if _pool is None:
@@ -439,13 +516,7 @@ def _ensure_pool() -> ThreadedConnectionPool:
                 pool = ThreadedConnectionPool(
                     1, 10, _database_url(), **_CONNECT_KWARGS
                 )
-                raw = pool.getconn()
-                try:
-                    with raw.cursor() as cur:
-                        cur.execute(_DDL)
-                    raw.commit()
-                finally:
-                    pool.putconn(raw)
+                _run_ddl(pool)
                 _pool = pool
     return _pool
 
