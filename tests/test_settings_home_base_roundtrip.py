@@ -35,8 +35,31 @@ def client(tmp_path, monkeypatch):
     for key in saved_env:
         monkeypatch.delenv(key, raising=False)
     config_module.reload_settings()
+    # Personal prefs now live in the per-browser session store — back it with
+    # an in-memory dict so tests never touch the real session_prefs table.
+    import yonder.session_prefs as sp_module
+
+    mem: dict[str, dict[str, str]] = {}
+
+    def _fake_get(sid: str) -> dict[str, str]:
+        prefs = dict(sp_module.SESSION_PREF_DEFAULTS)
+        prefs.update(mem.get(sid, {}))
+        return prefs
+
+    def _fake_set(sid: str, updates: dict[str, str]) -> None:
+        mem.setdefault(sid, {}).update(
+            {k: str(v) for k, v in updates.items() if k in sp_module.SESSION_PREF_DEFAULTS}
+        )
+
+    monkeypatch.setattr(sp_module, "get_session_prefs", _fake_get)
+    monkeypatch.setattr(sp_module, "set_session_prefs", _fake_set)
     try:
-        yield TestClient(web_module.app, raise_server_exceptions=True)
+        # https base URL so the Secure session cookie survives the redirect
+        yield TestClient(
+            web_module.app,
+            raise_server_exceptions=True,
+            base_url="https://testserver",
+        )
     finally:
         for key, val in saved_env.items():
             if val is None:
@@ -65,10 +88,10 @@ def test_home_base_fields_round_trip(client):
     assert resp.status_code == 200
     assert resp.request.url.path == "/settings"
 
-    # Persisted (normalized to upper-case) in the env store
+    # Personal prefs are per-browser now — the server .env must stay untouched
     env = store_module.read_env()
-    assert env.get("HOME_IATA") == "YVR"
-    assert env.get("DEFAULT_CURRENCY") == "CAD"
+    assert not env.get("HOME_IATA")
+    assert not env.get("DEFAULT_CURRENCY")
 
     html = resp.text
 
@@ -108,9 +131,10 @@ def test_home_base_second_save_replaces_values(client):
         follow_redirects=True,
     )
     assert resp.status_code == 200
+    # Server .env stays untouched — values live in the browser session
     env = store_module.read_env()
-    assert env.get("HOME_IATA") == "LHR"
-    assert env.get("DEFAULT_CURRENCY") == "GBP"
+    assert not env.get("HOME_IATA")
+    assert not env.get("DEFAULT_CURRENCY")
     hint = re.search(
         r'<p class="home-base-hint" id="home-base-hint">.*?</p>', resp.text, re.S
     )

@@ -477,23 +477,31 @@ async def sitemap_xml() -> Response:
     return Response("\n".join(lines), media_type="application/xml")
 
 
-def _compute_return_days() -> int:
+def _compute_return_days(settings=None) -> int:
     """Effective days-ahead for the Find Return date picker.
 
-    Reads ``return_days`` from user_prefs.db.  When it is 0 / blank the
-    value auto-computes as detour_min_stop_days + detour_max_stop_days
-    (the user's own stopover range), giving a sensible per-user default
-    without any extra configuration.
+    Reads ``return_days`` from the given (session-scoped) Settings.  When
+    it is 0 / blank the value auto-computes as detour_min_stop_days +
+    detour_max_stop_days (the user's own stopover range), giving a
+    sensible per-user default without any extra configuration.
     """
     try:
-        from yonder.user_prefs import get_all_prefs as _gup
+        if settings is not None:
+            rd = int(settings.return_days or 0)
+            if rd > 0:
+                return max(1, min(365, rd))
+            lo = max(1, int(settings.detour_min_stop_days or 4))
+            hi = max(1, int(settings.detour_max_stop_days or 5))
+            return lo + hi
+        # Legacy cookie-less path: read the global prefs store directly.
+        from yonder.user_prefs import get_all_prefs as _gap
 
-        prefs = _gup()
-        rd = int(prefs.get("return_days") or "0")
+        prefs = _gap()
+        rd = int(str(prefs.get("return_days") or "0").strip() or 0)
         if rd > 0:
             return max(1, min(365, rd))
-        lo = max(1, int(prefs.get("detour_min_stop_days") or "4"))
-        hi = max(1, int(prefs.get("detour_max_stop_days") or "5"))
+        lo = max(1, int(str(prefs.get("detour_min_stop_days") or "4").strip() or 4))
+        hi = max(1, int(str(prefs.get("detour_max_stop_days") or "5").strip() or 5))
         return lo + hi
     except Exception:
         return 9  # absolute fallback (4+5)
@@ -549,7 +557,7 @@ def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
         "stop_min_days": settings.detour_stop_defaults()[0],
         "stop_max_days": settings.detour_stop_defaults()[1],
         "home_resolved": settings.resolve_home_iata(),
-        "return_days": _compute_return_days(),
+        "return_days": _compute_return_days(settings),
         # Always an https:// URL so crawlers (Twitter, Slack, iMessage) load it.
         "og_image": f"{PRODUCTION_URL}/static/share_bg.jpg",
     }
@@ -584,7 +592,21 @@ def _req_sess(request: Request) -> str:
     """Server-trusted session id for last-search scoping (yv_sess cookie)."""
     return (request.cookies.get("yv_sess") or "").strip()[:64]
 
+def _session_settings(request: Request):
+    """Settings as seen by the requesting browser session.
 
+    Server/provider config comes from .env (fresh read); every personal
+    preference (home airport, currency, visited/avoid map, budget, stop
+    days, return window, BYOM) is overlaid from THIS session's private
+    store.  Cookie-less requests fall back to legacy global settings.
+    """
+    from yonder.config import apply_session_prefs
+
+    base = reload_settings()
+    sess = _req_sess(request)
+    if not sess:
+        return base
+    return apply_session_prefs(base, sess)
 def _escape_panel(settings, session_id: str, override: dict | None = None) -> dict:
     """Last Escape search (or live override) for the unified toggle UI."""
     base = {
@@ -733,7 +755,7 @@ def _compose_page_ctx(
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
-    settings = reload_settings()
+    settings = _session_settings(request)
     mode = _home_mode(request.query_params.get("mode"))
     sess = _req_sess(request)
     need_cookie = not sess
@@ -760,7 +782,7 @@ async def search_page(
     nonstop: bool = False,
     use_grok: bool = True,
 ) -> HTMLResponse:
-    settings = get_settings()
+    settings = _session_settings(request)
     # Mock is internal-only: route skeletons when no fare providers configured.
     mock = not settings.configured_providers()
     # Rate-limit mock: bypass only when NO AI key AND NO fare providers are live.
@@ -867,7 +889,7 @@ async def ask_grok(request: Request) -> HTMLResponse:
     GET ?ask=... supported so links/bookmarks work; POST is the form path.
     """
     # Always re-read .env so a key saved mid-session is picked up
-    settings = reload_settings()
+    settings = _session_settings(request)
     sess = _req_sess(request)
 
     if request.method == "GET":
@@ -1146,7 +1168,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     from yonder.grok import _guess_home_iata
     from datetime import timedelta
 
-    settings = reload_settings()
+    settings = _session_settings(request)
     sess = _req_sess(request)
     form_data = await request.form()
 
@@ -2754,7 +2776,7 @@ async def quest_plan_api(request: Request):
     """
     from datetime import timedelta
 
-    settings = reload_settings()
+    settings = _session_settings(request)
     form_data = await request.form()
 
     def _s(key: str, fallback: str = "") -> str:
@@ -3209,7 +3231,7 @@ async def detour_plan_api(request: Request):
     from yonder.adventure import StopoverIdea as _StopoverIdea
     from yonder.recycle import find_recycled_result as _find_recycled
 
-    settings = reload_settings()
+    settings = _session_settings(request)
     form_data = await request.form()
 
     def _s(key: str, fallback: str = "") -> str:
@@ -3259,7 +3281,7 @@ async def detour_plan_api(request: Request):
     # Rate-limit mock: bypass only when NO AI key AND NO fare providers are live.
     _rl_mock = not (settings.grok_ready() or bool(settings.configured_providers()))
     sess = _req_sess(request)
-    return_days = _compute_return_days()
+    return_days = _compute_return_days(settings)
 
     def _render_detour(
         detour_panel_dict: dict,
@@ -3654,7 +3676,7 @@ async def adventure_home(request: Request) -> RedirectResponse:
 
 @app.post("/adventure", response_class=HTMLResponse)
 async def adventure_run(request: Request) -> HTMLResponse:
-    settings = reload_settings()
+    settings = _session_settings(request)
     sess = _req_sess(request)
     form_data = await request.form()
     defaults = _adventure_form_defaults(settings)
@@ -4034,7 +4056,7 @@ def _saved_cards(items: list) -> list[dict]:
 
 async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
     """Standalone shareable itinerary page (QR target)."""
-    settings = reload_settings()
+    settings = _session_settings(request)
     share = get_share(share_id)
     if not share:
         return templates.TemplateResponse(
@@ -4248,7 +4270,7 @@ async def saved_list_page(
     flash: str | None = None,
     err: str | None = None,
 ) -> HTMLResponse:
-    settings = reload_settings()
+    settings = _session_settings(request)
 
     # Resolve (or mint) the browser session id before loading saved trips so
     # list_saved can filter to this browser's rows.
@@ -4423,7 +4445,7 @@ async def api_save_itinerary(request: Request):
             {"ok": False, "error": "Missing itinerary payload"}, status_code=400
         )
     # Stamp passport context into trip_meta when provided
-    settings = reload_settings()
+    settings = _session_settings(request)
     trip_meta.setdefault("visited", settings.visited_country_list())
     trip_meta.setdefault("avoid", settings.effective_avoid_country_list())
     # Scope the save to this browser so /saved stays private per session.
@@ -4507,7 +4529,7 @@ async def api_save_itinerary(request: Request):
 
 @app.post("/saved/{saved_id}/refresh", response_class=HTMLResponse)
 async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
-    settings = reload_settings()
+    settings = _session_settings(request)
     owner = _req_sess(request)
     item = get_saved(saved_id)
     if not item:
@@ -4662,7 +4684,7 @@ async def api_price_refresh(request: Request) -> JSONResponse:
     """
     from yonder.recycle import strip_revealing_notes
 
-    settings = reload_settings()
+    settings = _session_settings(request)
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -4731,7 +4753,7 @@ async def api_leg_fare(request: Request) -> JSONResponse:
     Returns the cheapest real (non-mock) offer for origin→destination on the
     given date, or a clear error when no live fare can be found.
     """
-    settings = reload_settings()
+    settings = _session_settings(request)
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -5226,7 +5248,7 @@ async def api_place_brief(
     """
     from yonder.encyclopedia import get_place_brief
 
-    settings = reload_settings()
+    settings = _session_settings(request)
     code = (iata or "").strip().upper()
     if len(code) != 3 or not code.isalpha():
         return JSONResponse({"ok": False, "error": "bad iata"}, status_code=400)
@@ -5306,7 +5328,7 @@ async def api_suggest(
     """
     from yonder.saved import ranking_from_saves
 
-    settings = reload_settings()
+    settings = _session_settings(request)
     home = (origin or "").strip().upper() or settings.resolve_home_iata()
     rank = ranking_from_saves(
         vibe=(vibe or "").strip().lower() or None,
@@ -5395,7 +5417,8 @@ async def api_travel_map(request: Request) -> JSONResponse:
         visited_countries_from_tiles,
     )
 
-    s = get_settings()
+    sess = _req_sess(request)
+    s = _session_settings(request)
     if "avoid" in body:
         # The avoid payload may mix plain ISO2 country codes and subdivision
         # tile codes (region-level avoid on the subdivided countries).
@@ -5428,18 +5451,25 @@ async def api_travel_map(request: Request) -> JSONResponse:
     # first stamped country still resolves the traveller's home airport).
     visited = visited_countries_from_tiles(tiles)
 
+    map_updates = {
+        "avoid_countries": ",".join(avoid),
+        "avoid_tiles": ",".join(avoid_tiles),
+        "visited_countries": ",".join(visited),
+        "visited_tiles": ",".join(tiles),
+    }
     try:
-        from yonder.user_prefs import set_prefs as _set_prefs
+        if sess:
+            # Per-browser map: only this visitor's session is touched.
+            from yonder.session_prefs import set_session_prefs as _set_sess_prefs
 
-        _set_prefs(
-            {
-                "avoid_countries": ",".join(avoid),
-                "avoid_tiles": ",".join(avoid_tiles),
-                "visited_countries": ",".join(visited),
-                "visited_tiles": ",".join(tiles),
-            }
-        )
-        reload_settings()
+            _set_sess_prefs(sess, map_updates)
+            s = _session_settings(request)
+        else:
+            # Legacy cookie-less path (CLI/tests): global user prefs.
+            from yonder.user_prefs import set_prefs as _set_prefs
+
+            _set_prefs(map_updates)
+            s = reload_settings()
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 
@@ -5451,7 +5481,7 @@ async def api_travel_map(request: Request) -> JSONResponse:
             "ok": True,
             "avoid": avoid,
             "avoid_tiles": avoid_tiles,
-            "effective_avoid": get_settings().effective_avoid_country_list(),
+            "effective_avoid": s.effective_avoid_country_list(),
             "visited": visited,
             "tiles": tiles,
             "avoid_names": [country_label(c) for c in avoid],
@@ -5471,26 +5501,39 @@ _BACKUP_ENV_KEYS = ("HOME_IATA", "DEFAULT_CURRENCY")
 
 
 @app.get("/api/backup/export")
-async def api_backup_export() -> JSONResponse:
-    """Download all user settings + passport map as a single JSON backup.
+async def api_backup_export(request: Request) -> JSONResponse:
+    """Download THIS browser's settings + passport map as a JSON backup.
 
-    Never includes secrets — only user_prefs.db values and the two
-    non-secret env prefs (home airport, currency). XP is derived from the
-    map and recomputed on import, so it is not stored.
+    Never includes secrets — only the session's own preferences (home
+    airport, currency, budget, map). XP is derived from the map and
+    recomputed on import, so it is not stored.
     """
     from yonder.history import export_all as _export_history
     from yonder.saved import export_all as _export_saved
-    from yonder.settings_store import read_env as _read_env
     from yonder.user_prefs import PREF_DEFAULTS, get_all_prefs
 
-    s = get_settings()
-    prefs = {k: v for k, v in get_all_prefs().items() if k in PREF_DEFAULTS}
+    sess = _req_sess(request)
+    s = _session_settings(request)
+    if sess:
+        from yonder.session_prefs import get_session_prefs as _get_sess_prefs
+
+        prefs = {
+            k: v for k, v in _get_sess_prefs(sess).items() if k in PREF_DEFAULTS
+        }
+        home_iata_out = (s.home_iata or "").strip().upper()
+        currency_out = (s.default_currency or "USD").strip().upper()
+    else:
+        from yonder.settings_store import read_env as _read_env
+
+        prefs = {k: v for k, v in get_all_prefs().items() if k in PREF_DEFAULTS}
+        env = _read_env()
+        home_iata_out = (env.get("HOME_IATA") or "").strip()
+        currency_out = (env.get("DEFAULT_CURRENCY") or "").strip()
     # visited/avoid exported as explicit lists under travel_map
     prefs.pop("visited_countries", None)
     prefs.pop("avoid_countries", None)
     prefs.pop("visited_tiles", None)
     prefs.pop("avoid_tiles", None)
-    env = _read_env()
     payload = {
         "format": _BACKUP_FORMAT,
         "version": _BACKUP_VERSION,
@@ -5502,8 +5545,8 @@ async def api_backup_export() -> JSONResponse:
             "avoid_tiles": list(s.avoid_tile_list()),
         },
         "prefs": prefs,
-        "settings": {k: (env.get(k) or "").strip() for k in _BACKUP_ENV_KEYS},
-        "saved_trips": _export_saved(),
+        "settings": {"HOME_IATA": home_iata_out, "DEFAULT_CURRENCY": currency_out},
+        "saved_trips": _export_saved(owner_sess=sess or None),
         "price_history": _export_history(),
     }
     fname = f"yonder-backup-{date.today().isoformat()}.json"
@@ -5640,15 +5683,27 @@ async def api_backup_import(request: Request) -> JSONResponse:
             {"ok": False, "error": "Malformed price_history section."}, status_code=400
         )
 
+    sess = _req_sess(request)
     try:
-        _set_prefs(pref_updates)
-        if env_updates or clear_keys:
-            write_env(env_updates, clear_keys=clear_keys)
-        reload_settings()
+        if sess:
+            # Per-browser restore: prefs + home/currency go to this
+            # session's private store only; server .env is never touched.
+            from yonder.session_prefs import set_session_prefs as _set_sess_prefs
+
+            if "HOME_IATA" in env_updates or "HOME_IATA" in clear_keys:
+                pref_updates["home_iata"] = env_updates.get("HOME_IATA", "")
+            if "DEFAULT_CURRENCY" in env_updates:
+                pref_updates["default_currency"] = env_updates["DEFAULT_CURRENCY"]
+            _set_sess_prefs(sess, pref_updates)
+        else:
+            _set_prefs(pref_updates)
+            if env_updates or clear_keys:
+                write_env(env_updates, clear_keys=clear_keys)
+            reload_settings()
         from yonder.history import import_samples as _import_history
         from yonder.saved import import_rows as _import_saved
 
-        trips_imported, trips_skipped = _import_saved(raw_trips)
+        trips_imported, trips_skipped = _import_saved(raw_trips, owner_sess=sess or None)
         history_imported, history_skipped = _import_history(raw_history)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
@@ -5743,8 +5798,48 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
         flash = {"kind": "err", "message": err}
     import os as _os
     from yonder.xp import compute_xp
-    settings = reload_settings()
+    sess = _req_sess(request)
+    need_cookie = not sess
+    if need_cookie:
+        import uuid as _uuid
+
+        sess = _uuid.uuid4().hex[:32]
+    from yonder.config import apply_session_prefs as _apply_sess
+
+    settings = _apply_sess(reload_settings(), sess)
     view = settings_view()
+    if True:
+        # Public per-browser view: personal fields come from THIS session's
+        # prefs, never the server .env values.
+        from yonder.session_prefs import get_session_prefs as _get_sess_prefs
+        from yonder.settings_store import mask_secret as _mask_secret
+
+        _sp = _get_sess_prefs(sess)
+        view.update(
+            {
+                "home_iata": (settings.home_iata or "").strip().upper(),
+                "default_currency": (settings.default_currency or "USD").upper(),
+                "byom_base_url": settings.byom_base_url or "",
+                "byom_model": settings.byom_model or "",
+                "byom_ready": bool(settings.byom_base_url and settings.byom_api_key),
+                "grok_ready": settings.grok_ready(),
+                "visited_countries": _sp.get("visited_countries") or "",
+                "avoid_countries": _sp.get("avoid_countries") or "",
+                "visited_list": list(settings.visited_country_list()),
+                "avoid_list": list(settings.avoid_country_list()),
+                "col_expected_daily": _sp.get("col_expected_daily") or "0",
+                "col_tolerance_pct": _sp.get("col_tolerance_pct") or "25",
+                "detour_min_stop_days": _sp.get("detour_min_stop_days") or "4",
+                "detour_max_stop_days": _sp.get("detour_max_stop_days") or "5",
+                "return_days": _sp.get("return_days") or "0",
+            }
+        )
+        # BYOM API key mask reflects the session's own key
+        _byom_key = (settings.byom_api_key or "").strip()
+        for f in view.get("fields", []):
+            if f.get("key") == "BYOM_API_KEY":
+                f["set"] = bool(_byom_key)
+                f["display"] = _mask_secret(_byom_key)
     view["home_resolved"] = settings.resolve_home_iata()
     xp_profile = compute_xp(
         settings.visited_tile_list(),
@@ -5782,7 +5877,7 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
         for p in _last_provider_errors.get("providers", [])
     )
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "settings.html",
         {
@@ -5798,6 +5893,21 @@ async def settings_page(request: Request, saved: str | None = None, err: str | N
             **_base_ctx(settings),
         },
     )
+    if need_cookie:
+        response.set_cookie(
+            "yv_sess", sess, httponly=True, samesite="lax", secure=_IS_HTTPS
+        )
+    return response
+
+
+# Personal per-browser keys the public Settings form may write (session store).
+_SESSION_FORM_KEYS = {
+    "HOME_IATA": "home_iata",
+    "DEFAULT_CURRENCY": "default_currency",
+    "BYOM_BASE_URL": "byom_base_url",
+    "BYOM_API_KEY": "byom_api_key",
+    "BYOM_MODEL": "byom_model",
+}
 
 
 @app.post("/settings")
@@ -5848,11 +5958,16 @@ async def settings_save(request: Request) -> RedirectResponse:
         except ValueError:
             updates[key] = default
 
-    # --- User preferences (stored in user_prefs.db, not .env) ---
+    # --- User preferences (per-browser session store, not .env) ---
     from yonder.user_prefs import set_prefs as _set_prefs
 
     user_pref_updates: dict[str, str] = {}
 
+    # COL fields are NOT env-managed keys — read straight from the form.
+    for ck in ("COL_EXPECTED_DAILY", "COL_TOLERANCE_PCT"):
+        raw_ck = form.get(ck)
+        if raw_ck is not None:
+            updates[ck] = str(raw_ck).strip()
     _col_num("COL_EXPECTED_DAILY")
     _col_num("COL_TOLERANCE_PCT", default="25", hi=100.0)
     for pref_key in ("COL_EXPECTED_DAILY", "COL_TOLERANCE_PCT"):
@@ -5884,8 +5999,28 @@ async def settings_save(request: Request) -> RedirectResponse:
     updates.pop("AVOID_COUNTRIES", None)
     updates.pop("VISITED_COUNTRIES", None)
 
-    if user_pref_updates:
-        _set_prefs(user_pref_updates)
+    # --- Personal per-browser fields → session store (never .env) ---
+    sess = _req_sess(request)
+    need_cookie = not sess
+    if need_cookie:
+        import uuid as _uuid
+
+        sess = _uuid.uuid4().hex[:32]
+    for form_key, pref_key in _SESSION_FORM_KEYS.items():
+        if form_key in clear_keys:
+            user_pref_updates[pref_key] = ""
+            updates.pop(form_key, None)
+            continue
+        if form_key not in updates:
+            continue
+        val = updates.pop(form_key)
+        if form_key == "BYOM_API_KEY" and (
+            val == "" or val.startswith("••••")
+        ):
+            continue  # blank/masked = keep existing key
+        if form_key == "BYOM_BASE_URL":
+            val = val.rstrip("/")
+        user_pref_updates[pref_key] = val
 
     if updates.get("AMADEUS_ENV"):
         env_val = updates["AMADEUS_ENV"].lower()
@@ -5909,18 +6044,38 @@ async def settings_save(request: Request) -> RedirectResponse:
 
     # AFFILIATE_TAG_LIVE is a checkbox — unchecked = absent from form = "false"
     atl_raw = form.get("AFFILIATE_TAG_LIVE")
-    updates["AFFILIATE_TAG_LIVE"] = (
-        "true" if str(atl_raw or "").strip().lower() in ("1", "true", "yes", "on") else "false"
-    )
+    if atl_raw is not None or "AFFILIATE_TAG" in updates:
+        updates["AFFILIATE_TAG_LIVE"] = (
+            "true" if str(atl_raw or "").strip().lower() in ("1", "true", "yes", "on") else "false"
+        )
 
     try:
-        path = write_env(updates, clear_keys=clear_keys)
+        # Personal prefs → this browser's private session store.
+        from yonder.session_prefs import set_session_prefs as _set_sess_prefs
+
+        if user_pref_updates:
+            _set_sess_prefs(sess, user_pref_updates)
+            if not _req_sess(request):
+                # Legacy cookie-less path (tests/CLI): keep global prefs in sync
+                # only when no browser session exists to own them.
+                _set_prefs(user_pref_updates)
+
+        # Server / provider configuration is only editable in testing
+        # (dev) mode — the public Settings page cannot change .env.
+        env_clear = {k for k in clear_keys if k not in _SESSION_FORM_KEYS}
+        if get_settings().testing and (updates or env_clear):
+            write_env(updates, clear_keys=env_clear)
         reload_settings()
         msg = "Settings saved."
-        return RedirectResponse(
+        resp = RedirectResponse(
             url=f"/settings?saved={quote(msg)}",
             status_code=303,
         )
+        if need_cookie:
+            resp.set_cookie(
+                "yv_sess", sess, httponly=True, samesite="lax", secure=_IS_HTTPS
+            )
+        return resp
     except Exception as exc:  # noqa: BLE001
         return RedirectResponse(
             url=f"/settings?err={quote(str(exc))}",
@@ -5943,7 +6098,7 @@ async def api_search(
     max_results: int = Query(25, ge=1, le=100),
     analyze: bool = False,
 ) -> dict:
-    settings = get_settings()
+    settings = _session_settings(request)
     query = SearchQuery(
         origin=origin.upper(),
         destination=destination.upper(),
@@ -5980,7 +6135,7 @@ async def api_search(
 
 @app.post("/api/ask")
 async def api_ask(request: Request) -> dict:
-    settings = get_settings()
+    settings = _session_settings(request)
     body = await request.json()
     ask = str(body.get("ask") or "").strip()
     if not ask:
@@ -6137,15 +6292,15 @@ async def admin_intent_misses(
 
 
 @app.post("/api/byom/test")
-async def api_byom_test() -> JSONResponse:
+async def api_byom_test(request: Request) -> JSONResponse:
     """Send a minimal chat-completion ping to the saved BYOM endpoint.
 
     Returns {"ok": true} on success, {"ok": false, "error": "..."} on failure.
-    The endpoint must be saved first (reads from current settings).
+    The endpoint must be saved first (reads this browser session's settings).
     """
     import httpx
 
-    s = reload_settings()
+    s = _session_settings(request)
     byom_base = (getattr(s, "byom_base_url", "") or "").strip().rstrip("/")
     byom_key = (getattr(s, "byom_api_key", "") or "").strip()
     byom_model = (getattr(s, "byom_model", "") or "").strip()

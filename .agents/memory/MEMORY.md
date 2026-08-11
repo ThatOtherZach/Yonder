@@ -16,4 +16,5 @@
 - [Tiled km² progression](tiled-km2-progression.md) — visited data is tiles not countries; partial coverage ≠ seen; go through yonder/tiles.py helpers.
 - [Eager Quest jobs](eager-quest-jobs.md) — quest jobs live in Postgres (never process memory: prod has 4 workers, pollers hit random ones); HTML renders at poll time, Escape dest soft exclusion.
 - [Stale prod builds](prod-build-staleness.md) — live site serves the publish-time snapshot; compare gunicorn boot time vs fix commit time before debugging "still broken in prod".
+- [Per-browser session prefs](session-scoped-prefs.md) — personal prefs overlay from session_prefs by yv_sess via _session_settings(); cookie-less = legacy globals; Secure cookie needs https TestClient.
 - [Affiliate link fallback](affiliate-link-fallback.md) — engine generates fare-missing offer with Aviasales URL when providers fail; fare_note shows history or "no history"; detour/quest get inline template URLs.

@@ -384,6 +384,14 @@ CREATE TABLE IF NOT EXISTS quest_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_quest_jobs_created ON quest_jobs(created_at);
 
+CREATE TABLE IF NOT EXISTS session_prefs (
+    session_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL DEFAULT '',
+    updated_at DOUBLE PRECISION,
+    PRIMARY KEY (session_id, key)
+);
+
 CREATE TABLE IF NOT EXISTS ad_pipeline_config (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''

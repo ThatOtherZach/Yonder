@@ -671,12 +671,22 @@ _EXPORT_COLUMNS = (
 )
 
 
-def export_all() -> list[dict[str, Any]]:
-    """All saved trips as raw row dicts — for backup export."""
+def export_all(owner_sess: str | None = None) -> list[dict[str, Any]]:
+    """Saved trips as raw row dicts — for backup export.
+
+    When *owner_sess* is given, only that browser session's trips are
+    exported (per-browser backup); None keeps the legacy full export.
+    """
     with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT * FROM saved_itineraries ORDER BY saved_at"
-        ).fetchall()
+        if owner_sess:
+            rows = conn.execute(
+                "SELECT * FROM saved_itineraries WHERE owner_sess = %s ORDER BY saved_at",
+                (owner_sess,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM saved_itineraries ORDER BY saved_at"
+            ).fetchall()
     return [{k: r[k] for k in _EXPORT_COLUMNS} for r in rows]
 
 
@@ -701,11 +711,15 @@ def _route_key(row: dict[str, Any]) -> tuple | None:
     )
 
 
-def import_rows(items: list[dict[str, Any]]) -> tuple[int, int]:
+def import_rows(
+    items: list[dict[str, Any]], owner_sess: str | None = None
+) -> tuple[int, int]:
     """Restore exported saved trips. Returns (imported, skipped).
 
     Dedupes by id first, then by kind+route+depart-date+title so re-imports
-    and cross-device merges never duplicate a trip.
+    and cross-device merges never duplicate a trip.  When *owner_sess* is
+    given, imported trips are stamped as that browser session's private
+    trips (regardless of the owner recorded in the backup file).
     """
     imported = skipped = 0
     with get_conn() as conn:
@@ -745,6 +759,8 @@ def import_rows(items: list[dict[str, Any]]) -> tuple[int, int]:
             row["title"] = str(raw.get("title") or "Saved trip")
             row["kind"] = str(raw.get("kind") or "stopover")
             row["currency"] = str(raw.get("currency") or "USD").upper()
+            if owner_sess:
+                row["owner_sess"] = owner_sess
             conn.execute(
                 f"INSERT INTO saved_itineraries ({', '.join(_EXPORT_COLUMNS)}) "
                 f"VALUES ({placeholders})",

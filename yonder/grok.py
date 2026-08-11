@@ -94,7 +94,7 @@ _ANCHOR_DIRECTIVE = (
 )
 
 
-def _fully_visited_set(visited: list[str]) -> set[str]:
+def _fully_visited_set(visited: list[str], settings=None) -> set[str]:
     """Countries counted as completely seen for hard destination drops.
 
     Tile-aware: reads the stored tile list when it matches the given
@@ -108,9 +108,11 @@ def _fully_visited_set(visited: list[str]) -> set[str]:
 
         codes = [str(v).upper() for v in (visited or []) if v]
         try:
-            from yonder.config import get_settings
+            if settings is None:
+                from yonder.config import get_settings
 
-            tiles = get_settings().visited_tile_list()
+                settings = get_settings()
+            tiles = settings.visited_tile_list()
         except Exception:  # noqa: BLE001
             tiles = []
         if tiles and set(visited_countries_from_tiles(tiles)) == set(codes):
@@ -120,7 +122,7 @@ def _fully_visited_set(visited: list[str]) -> set[str]:
         return {str(v).upper() for v in (visited or []) if v}
 
 
-def _domestic_region_hint(home_iata: str | None) -> str:
+def _domestic_region_hint(home_iata: str | None, settings=None) -> str:
     """Prompt line steering domestic picks toward unvisited home regions.
 
     Only fires when the traveller's home country is one of the subdivided
@@ -135,7 +137,9 @@ def _domestic_region_hint(home_iata: str | None) -> str:
         cc = (country_for_iata((home_iata or "").strip().upper()) or "").upper()
         if not is_subdivided(cc):
             return ""
-        tiles = get_settings().visited_tile_list()
+        if settings is None:
+            settings = get_settings()
+        tiles = settings.visited_tile_list()
         if not any(t == cc or t.startswith(cc + "-") for t in tiles):
             return ""
         remaining = unvisited_home_regions(cc, tiles)
@@ -390,7 +394,7 @@ class GrokClient:
         # Hard destination blocks only apply to FULLY visited countries —
         # partial tile coverage of a subdivided country keeps it eligible
         # (see yonder.tiles.fully_visited_countries).
-        visited_set = _fully_visited_set(visited)
+        visited_set = _fully_visited_set(visited, self.settings)
         home = (default_origin or "").strip().upper()
         if len(home) != 3 or not home.isalpha():
             home = "YVR"
@@ -833,7 +837,7 @@ class GrokClient:
                 "short-haul destinations only; avoid suggesting any flight longer "
                 "than 4 hours from the origin."
             )
-        system += _domestic_region_hint(str(form.get("origin") or ""))
+        system += _domestic_region_hint(str(form.get("origin") or ""), self.settings)
         # Knowledge-assisted seeding: learned candidates the AI may confirm,
         # reorder, or override — the AI stays the decision-maker.
         learned = (
@@ -997,7 +1001,7 @@ class GrokClient:
         ideas: list[StopoverIdea] = []
         avoid_set = {a.upper() for a in avoid}
         # Only FULLY visited countries hard-drop getaway candidates
-        visited_set = _fully_visited_set(visited)
+        visited_set = _fully_visited_set(visited, self.settings)
         home = {req.origin.upper(), req.destination.upper()}
         for row in raw:
             try:
@@ -1136,7 +1140,7 @@ class GrokClient:
         visited_codes = [str(v).upper() for v in (visited or []) if v]
         avoid_set = set(avoid_codes)
         # Hard drops only apply to FULLY visited countries (tile-aware)
-        visited_set = _fully_visited_set(visited_codes)
+        visited_set = _fully_visited_set(visited_codes, self.settings)
         home = (origin or "").strip().upper()
         if len(home) != 3 or not home.isalpha():
             home = "YVR"
@@ -1236,7 +1240,7 @@ class GrokClient:
                 "\n- User explicitly asked for nearby travel — prefer domestic or "
                 "short-haul destinations; avoid flights longer than 4 hours from origin."
             )
-        system += _domestic_region_hint(home)
+        system += _domestic_region_hint(home, self.settings)
         # Knowledge-assisted seeding — optional learned suggestions; AI decides.
         # Refresh-for-novelty (use_cache=False) skips injection: re-suggesting
         # the same learned destinations defeats the point of a refresh.

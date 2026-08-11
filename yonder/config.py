@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     # Detour defaults (editable in Settings) — blank .env uses these
     detour_min_stop_days: int = 4
     detour_max_stop_days: int = 5
+    # Days ahead to pre-fill Find Return (0 = auto: min+max stop days)
+    return_days: int = 0
     # How many detour ideas to invent/price (results always capped at 5 cheapest)
     detour_max_candidates: int = 5
     # Soft aim for Escape + Detour pacing (seconds) — try to finish by this
@@ -389,6 +391,7 @@ def _merge_user_prefs(base: Settings) -> Settings:
                 "col_culture": _f(prefs.get("col_culture", "0")),
                 "detour_min_stop_days": _i(prefs.get("detour_min_stop_days", "4"), 4),
                 "detour_max_stop_days": _i(prefs.get("detour_max_stop_days", "5"), 5),
+                "return_days": _i(prefs.get("return_days", "0"), 0),
             }
         )
     except Exception:
@@ -404,6 +407,69 @@ def get_settings() -> Settings:
     if _merged_settings is None:
         _merged_settings = _merge_user_prefs(_load_base_settings())
     return _merged_settings
+
+
+def apply_session_prefs(base: Settings, session_id: str) -> Settings:
+    """Return a copy of *base* with THIS browser session's prefs applied.
+
+    Personal fields (home airport, currency, visited/avoid map, budget,
+    stop-length prefs, return window, BYOM endpoint) always come from the
+    session store — a brand-new session gets defaults, never another
+    visitor's data.  Server/provider config stays from *base*.
+    """
+    try:
+        from yonder.session_prefs import get_session_prefs
+
+        prefs = get_session_prefs(session_id)
+
+        def _f(v: Any, default: float = 0.0) -> float:
+            try:
+                return max(0.0, float(v or default))
+            except (TypeError, ValueError):
+                return default
+
+        def _i(v: Any, default: int = 0) -> int:
+            try:
+                return max(0, int(float(v or default)))
+            except (TypeError, ValueError):
+                return default
+
+        return base.model_copy(
+            update={
+                "home_iata": (prefs.get("home_iata") or "").strip().upper(),
+                "default_currency": (prefs.get("default_currency") or "USD").strip().upper() or "USD",
+                "avoid_countries": prefs.get("avoid_countries", ""),
+                "avoid_tiles": prefs.get("avoid_tiles", ""),
+                "visited_countries": prefs.get("visited_countries", ""),
+                "visited_tiles": prefs.get("visited_tiles", ""),
+                "col_expected_daily": _f(prefs.get("col_expected_daily", "0")),
+                "col_tolerance_pct": _f(prefs.get("col_tolerance_pct", "25"), 25.0),
+                "col_hotel": _f(prefs.get("col_hotel", "0")),
+                "col_food": _f(prefs.get("col_food", "0")),
+                "col_transit": _f(prefs.get("col_transit", "0")),
+                "col_culture": _f(prefs.get("col_culture", "0")),
+                "detour_min_stop_days": _i(prefs.get("detour_min_stop_days", "4"), 4),
+                "detour_max_stop_days": _i(prefs.get("detour_max_stop_days", "5"), 5),
+                "return_days": _i(prefs.get("return_days", "0"), 0),
+                # BYOM is a personal per-browser setting
+                "byom_base_url": (prefs.get("byom_base_url") or "").strip(),
+                "byom_api_key": (prefs.get("byom_api_key") or "").strip(),
+                "byom_model": (prefs.get("byom_model") or "").strip(),
+            }
+        )
+    except Exception:
+        return base
+
+
+def get_settings_for_session(session_id: str) -> Settings:
+    """Settings as seen by one browser session.
+
+    Blank session id → legacy global settings (CLI, tests, cookie-less
+    requests keep their old behavior).
+    """
+    if not (session_id or "").strip():
+        return get_settings()
+    return apply_session_prefs(_load_base_settings(), session_id)
 
 
 def reload_settings() -> Settings:
