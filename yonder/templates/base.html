@@ -1429,10 +1429,6 @@
       .topnav-inner { padding-top: 0.6rem; padding-bottom: 0.6rem; gap: 0.6rem; }
       .nav-links { padding: 0.15rem; }
     }
-    /* Very narrow phones: drop the saved count so the nav stays on one row */
-    @media (max-width: 400px) {
-      .saved-count { display: none; }
-    }
 
     /* ── Check Fares (per-leg on-demand fare lookup) ── */
     .cf-slot { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 0.25rem; }
@@ -1695,7 +1691,7 @@
         <a href="/" class="{% if nav in ('home', 'search', 'adventure') %}active{% endif %}">Explore</a>
         <a href="/quests" class="{% if nav == 'quests' %}active{% endif %}">Quests</a>
         <a href="/saved" class="{% if nav == 'saved' %}active{% endif %}">
-          Saved<span class="saved-count">{% if saved_count %} ({{ saved_count }}){% endif %}</span>
+          Saved
         </a>
         <a href="/settings" class="{% if nav == 'settings' %}active{% endif %}">Settings</a>
       </div>

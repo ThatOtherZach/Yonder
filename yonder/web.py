@@ -4184,22 +4184,8 @@ async def quests_browse_page(
     """Public browse page for all saved Quest itineraries."""
     page = max(1, page)
 
-    # Distinguish "param absent" (None) from "param present but empty" ("").
-    # - absent  → pre-populate from user's home airport
-    # - ""      → explicit "show all", no filter
-    # - "JFK"   → filter by that origin
-    origin_param_given = origin is not None
+    # origin param: absent or "" → show all; "JFK" → filter by that origin
     origin_n = (origin or "").strip().upper()[:4] or None
-
-    if not origin_param_given:
-        # No ?origin in URL — fall back to user's saved home airport.
-        try:
-            settings = reload_settings()
-            home = settings.resolve_home_iata()
-            if home:
-                origin_n = home.upper()
-        except Exception:
-            pass
 
     offset = (page - 1) * _QUESTS_PER_PAGE
 
@@ -5930,12 +5916,7 @@ async def settings_save(request: Request) -> RedirectResponse:
     try:
         path = write_env(updates, clear_keys=clear_keys)
         reload_settings()
-        ready = get_settings().configured_providers()
-        grok = " + Grok" if get_settings().grok_ready() else ""
-        msg = (
-            f"Saved to {path.name}. Ready providers: "
-            f"{', '.join(ready) if ready else 'none (mock only)'}{grok}."
-        )
+        msg = "Settings saved."
         return RedirectResponse(
             url=f"/settings?saved={quote(msg)}",
             status_code=303,
