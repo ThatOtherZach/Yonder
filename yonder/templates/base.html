@@ -944,6 +944,8 @@
       font-size: 0.84rem;
     }
     .bp-leg .meta { grid-area: meta; color: var(--muted); font-size: 0.82rem; }
+    .bp-leg .meta-line { display: inline; }
+    .bp-leg .meta-sep  { display: inline; }
     .bp-leg .fare {
       grid-area: fare;
       font-weight: 700;
@@ -961,6 +963,8 @@
         margin-top: 0.2rem;
         border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
       }
+      .bp-leg .meta-line { display: block; }
+      .bp-leg .meta-sep  { display: none; }
     }
     /* ── Boarding-pass tear-off stub ─────────────────────────────── */
     .bp-stub {

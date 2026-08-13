@@ -71,16 +71,7 @@
           {% else %}{{ fare }}{% endif %}
         </div>
         <div class="meta">
-          {{ query.depart_date | fmt_date }}
-          {% if query.return_date %} · return {{ query.return_date | fmt_date }}{% endif %}
-          · {{ o.airlines|join(', ') if o.airlines else '—' }}
-          · {{ 'Direct' if o.stops_out == 0 else (o.stops_out|string + (' stop' if o.stops_out == 1 else ' stops')) }}
-          {% if o.duration_out_minutes is defined and o.duration_out_minutes is not none %}
-            · {{ (o.duration_out_minutes // 60) }}h{{ '%02d'|format(o.duration_out_minutes % 60) }}m
-          {% endif %}
-          {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
-            · <a href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
-          {% endif %}
+          <span class="meta-line">{{ query.depart_date | fmt_date }}{% if query.return_date %} · return {{ query.return_date | fmt_date }}{% endif %}</span><span class="meta-sep"> · </span><span class="meta-line">{{ o.airlines|join(', ') if o.airlines else '—' }} · {{ 'Direct' if o.stops_out == 0 else (o.stops_out|string + (' stop' if o.stops_out == 1 else ' stops')) }}{% if o.duration_out_minutes is defined and o.duration_out_minutes is not none %} · {{ (o.duration_out_minutes // 60) }}h{{ '%02d'|format(o.duration_out_minutes % 60) }}m{% endif %}{% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %} · <a href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>{% endif %}</span>
         </div>
       </div>
     </div>
@@ -392,14 +383,7 @@
           {% else %}—{% endif %}
         </div>
         <div class="meta">
-          {{ leg.depart_date | fmt_date }}
-          {% if leg.offer and not leg_missing %}
-            · {{ leg.offer.airlines|join(', ') or '—' }}
-            · {{ 'Direct' if leg.offer.stops_out == 0 else (leg.offer.stops_out|string + (' stop' if leg.offer.stops_out == 1 else ' stops')) }}
-          {% endif %}
-          {% if mode == 'explore' and leg.offer and leg.offer.deep_link and 'kayak.com' not in leg.offer.deep_link %}
-            · <a href="{{ leg.offer.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(leg.offer.airlines) }} ↗</a>
-          {% endif %}
+          <span class="meta-line">{{ leg.depart_date | fmt_date }}</span>{% if leg.offer and not leg_missing %}<span class="meta-sep"> · </span><span class="meta-line">{{ leg.offer.airlines|join(', ') or '—' }} · {{ 'Direct' if leg.offer.stops_out == 0 else (leg.offer.stops_out|string + (' stop' if leg.offer.stops_out == 1 else ' stops')) }}{% if mode == 'explore' and leg.offer.deep_link and 'kayak.com' not in leg.offer.deep_link %} · <a href="{{ leg.offer.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(leg.offer.airlines) }} ↗</a>{% endif %}</span>{% endif %}
         </div>
       </div>
       {% endfor %}
