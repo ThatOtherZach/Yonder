@@ -78,9 +78,6 @@
           {% if o.duration_out_minutes is defined and o.duration_out_minutes is not none %}
             · {{ (o.duration_out_minutes // 60) }}h{{ '%02d'|format(o.duration_out_minutes % 60) }}m
           {% endif %}
-          {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
-            · <a href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
-          {% endif %}
         </div>
       </div>
     </div>
@@ -197,9 +194,6 @@
       {% endif %}
       {% if o.google_flights_url %}
       <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener">{{ query.origin }} ➜ {{ query.destination }} ↗</a>
-      {% endif %}
-      {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
-      <a class="btn secondary" href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
       {% endif %}
       {% for tl in train_links %}
       <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
@@ -396,9 +390,6 @@
           {% if leg.offer and not leg_missing %}
             · {{ leg.offer.airlines|join(', ') or '—' }}
             · {{ 'Direct' if leg.offer.stops_out == 0 else (leg.offer.stops_out|string + (' stop' if leg.offer.stops_out == 1 else ' stops')) }}
-          {% endif %}
-          {% if mode == 'explore' and leg.offer and leg.offer.deep_link and 'kayak.com' not in leg.offer.deep_link %}
-            · <a href="{{ leg.offer.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(leg.offer.airlines) }} ↗</a>
           {% endif %}
         </div>
       </div>
