@@ -21,9 +21,11 @@
   {% for i in range(1, segments | length) %}
   {% set prev = segments[i - 1] %}
   {% set seg  = segments[i] %}
+  {% set prev_arr = prev.arrival | as_dt %}
+  {% set seg_dep = seg.departure | as_dt %}
   {% set layover_str = '' %}
-  {% if prev.arrival and seg.departure %}
-    {% set td = seg.departure - prev.arrival %}
+  {% if prev_arr and seg_dep %}
+    {% set td = seg_dep - prev_arr %}
     {% set total_mins = td.days * 1440 + td.seconds // 60 %}
     {% if total_mins > 0 %}
       {% set lh = total_mins // 60 %}
@@ -38,8 +40,8 @@
   <div class="bp-leg-stop">
     <span class="bp-stop-dot" aria-hidden="true">↳</span>
     <span class="bp-stop-iata">{{ seg.origin }}</span>
-    {%- if prev.arrival %}<span class="bp-stop-time">arrive {{ prev.arrival.strftime('%H:%M') }}</span>{% endif %}
-    {%- if seg.departure %}<span class="bp-stop-time">→ depart {{ seg.departure.strftime('%H:%M') }}</span>{% endif %}
+    {%- if prev_arr %}<span class="bp-stop-time">arrive {{ prev_arr.strftime('%H:%M') }}</span>{% endif %}
+    {%- if seg_dep %}<span class="bp-stop-time">→ depart {{ seg_dep.strftime('%H:%M') }}</span>{% endif %}
     {%- if layover_str %}<span class="bp-stop-layover">({{ layover_str }})</span>{% endif %}
   </div>
   {% endfor %}

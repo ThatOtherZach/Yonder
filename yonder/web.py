@@ -378,6 +378,30 @@ def _fmt_date_short(value: object) -> str:
 
 
 templates.env.filters["fmt_date_short"] = _fmt_date_short
+
+
+def _as_dt(value: object) -> "datetime | None":
+    """Coerce a segment departure/arrival value into a datetime, or None.
+
+    Share pages load legs from the share DB as JSON, so times arrive as ISO
+    strings; live pages carry real datetimes. Returns None when the value is
+    missing or unparseable so templates can degrade gracefully.
+    """
+    from datetime import datetime as _dt
+    if value is None:
+        return None
+    if isinstance(value, _dt):
+        return value
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        return _dt.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+templates.env.filters["as_dt"] = _as_dt
 templates.env.filters["vibe_emoji"] = lambda vibe_id: VIBE_EMOJI.get((vibe_id or "").strip().lower(), "")
 templates.env.filters["flag_emoji"] = lambda code: "".join(chr(ord(c) + 127397) for c in (code or "").upper()[:2]) if len(code or "") >= 2 else (code or "")
 templates.env.globals["place"] = format_place
