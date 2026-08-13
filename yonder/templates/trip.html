@@ -42,6 +42,21 @@
         line-height: 1.4;
       }
     }
+    .trip-save-strip {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.85rem 0 0.5rem;
+      flex-wrap: wrap;
+    }
+    .trip-save-strip .btn {
+      font-size: 0.85rem;
+      padding: 0.45rem 1.1rem;
+    }
+    .trip-save-msg {
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
     .trip-share {
       max-width: 52rem;
       margin: 0 auto;
@@ -298,6 +313,15 @@
       </div>
     </div>
 
+    {# ── Save strip (hidden once saved, or if localStorage shows already saved) ── #}
+    {% if share.kind in ('escape', 'detour', 'quest') %}
+    <div class="trip-save-strip" id="trip-save-strip">
+      <button type="button" class="btn btn-gold" id="btn-trip-save">★ Save this trip</button>
+      <span class="trip-save-msg" id="trip-save-msg">Save to your library.</span>
+    </div>
+    <script type="application/json" id="trip-share-payload">{{ p | tojson }}</script>
+    {% endif %}
+
     {% if share.kind == 'escape' %}
       {% set q = p.query or {} %}
       {% set o = p.offer or {} %}
@@ -496,6 +520,78 @@
         });
       });
     })();
+  </script>
+  {% endif %}
+
+  {% if share.kind in ('escape', 'detour', 'quest') %}
+  <script>
+  (function () {
+    var slug = {{ share.slug | tojson }};
+    var kind = {{ share.kind | tojson }};
+    var title = {{ share.title | tojson }};
+    var lsKey = "ysaved_" + slug;
+    var strip = document.getElementById("trip-save-strip");
+    var btn   = document.getElementById("btn-trip-save");
+    var msg   = document.getElementById("trip-save-msg");
+    if (!strip || !btn) return;
+
+    // Already saved this browser session — hide immediately.
+    if (localStorage.getItem(lsKey)) { strip.style.display = "none"; return; }
+
+    btn.addEventListener("click", function () {
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+
+      var payloadEl = document.getElementById("trip-share-payload");
+      if (!payloadEl) return;
+      var p;
+      try { p = JSON.parse(payloadEl.textContent); } catch (e) {
+        btn.disabled = false; btn.textContent = "★ Save this trip"; return;
+      }
+
+      var body;
+      if (kind === "quest") {
+        var idea = p.idea || p.itinerary || {};
+        idea.kind = "quest";
+        if (!idea.title) {
+          idea.title = (idea.entry_city || idea.entry_iata || "?")
+            + " → overland → "
+            + (idea.exit_city || idea.exit_iata || "?");
+        }
+        body = { itinerary: idea, trip_meta: Object.assign({}, p.trip_meta || {}, { origin: p.home_iata || "" }) };
+      } else if (kind === "detour") {
+        var it = p.itinerary || {};
+        it.kind = "detour";
+        if (!it.title) it.title = title;
+        body = { itinerary: it, trip_meta: p.trip_meta || {} };
+      } else if (kind === "escape") {
+        body = { kind: "escape", query: p.query || {}, offer: p.offer || {}, trip_meta: p.trip_meta || {} };
+      } else { return; }
+
+      fetch("/api/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok) {
+          localStorage.setItem(lsKey, "1");
+          btn.textContent = "✓ Saved";
+          if (msg) msg.textContent = "Added to your library.";
+          setTimeout(function () { strip.style.display = "none"; }, 900);
+        } else {
+          btn.textContent = "★ Save this trip";
+          btn.disabled = false;
+          if (msg) msg.textContent = d && d.error ? d.error : "Couldn't save — try again.";
+        }
+      })
+      .catch(function () {
+        btn.textContent = "★ Save this trip";
+        btn.disabled = false;
+      });
+    });
+  })();
   </script>
   {% endif %}
 {% endblock %}

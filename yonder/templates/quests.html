@@ -407,12 +407,50 @@
       display: none;
     }
   }
+  /* Footer: QR left + stats/CTA right */
+  .qc-footer {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.9rem;
+    align-items: end;
+    margin-top: auto;
+  }
+  .qc-qr {
+    flex-shrink: 0;
+    width: 72px;
+    height: 72px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+    padding: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .qc-qr img, .qc-qr svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .qc-footer-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+  }
+  @media (max-width: 400px) {
+    .qc-footer {
+      grid-template-columns: 1fr;
+    }
+    .qc-qr { display: none; }
+  }
   /* CTA */
   .qc-cta {
-    margin-top: auto;
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
+    margin-top: 0.75rem;
   }
   .qc-cta a {
     font-size: 0.83rem;
@@ -628,49 +666,75 @@
               </div>
             {% endif %}
 
-            {# — Stats strip — #}
-            <div class="qc-stats">
-              {% if s.origin %}
-                <span class="qc-stat">
-                  <span class="qc-stat-label">From</span>
-                  <strong>{{ s.origin | upper }}</strong>
-                </span>
-                <span class="qc-stat-sep">·</span>
-              {% endif %}
-              {% if depart_date %}
-                <span class="qc-stat-group">
-                  <span class="qc-stat">
-                    <span class="qc-stat-label">Departs</span>
-                    {{ depart_date | fmt_date_short }}
-                  </span>
-                  {% if outbound_date %}
-                    <span class="qc-stat-sep qc-stat-sep--arrow">→</span>
-                    <span class="qc-stat">{{ outbound_date | fmt_date_short }}</span>
-                  {% endif %}
-                </span>
-                <span class="qc-stat-sep">·</span>
-              {% endif %}
-              {% if s.display_price %}
-                <span class="qc-stat">
-                  <span class="qc-stat-label">Est.</span>
-                  <strong>{{ s.display_price }}</strong>
-                </span>
-              {% endif %}
-            </div>
-
-            {# — CTA — #}
-            <div class="qc-cta">
-              {% if share and share.path %}
-                <a class="btn btn-gold" href="{{ share.path }}">
-                  Open Quest ↗
+            {# — Footer: QR left + stats/CTA right — #}
+            <div class="qc-footer">
+              {% if share and share.qr_src %}
+                <a class="qc-qr" href="{{ share.path }}" title="Open quest">
+                  <img src="{{ share.qr_src }}" alt="QR code" width="72" height="72" loading="lazy" decoding="async" />
+                </a>
+              {% elif share and share.qr_svg %}
+                <a class="qc-qr" href="{{ share.path }}" title="Open quest">
+                  {{ share.qr_svg | safe }}
                 </a>
               {% else %}
-                <a class="btn secondary" href="/?mode=quest&amp;origin={{ s.origin | urlencode if s.origin else '' }}">
-                  Plan this Quest
-                </a>
+                <div class="qc-qr" style="background:var(--paper-2);"></div>
               {% endif %}
+
+              <div class="qc-footer-content">
+                {# — Stats strip — #}
+                <div class="qc-stats">
+                  {% if s.origin %}
+                    <span class="qc-stat">
+                      <span class="qc-stat-label">From</span>
+                      <strong>{{ s.origin | upper }}</strong>
+                    </span>
+                    <span class="qc-stat-sep">·</span>
+                  {% endif %}
+                  {% if depart_date %}
+                    <span class="qc-stat-group">
+                      <span class="qc-stat">
+                        <span class="qc-stat-label">Departs</span>
+                        {{ depart_date | fmt_date_short }}
+                      </span>
+                      {% if outbound_date %}
+                        <span class="qc-stat-sep qc-stat-sep--arrow">→</span>
+                        <span class="qc-stat">{{ outbound_date | fmt_date_short }}</span>
+                      {% endif %}
+                    </span>
+                    <span class="qc-stat-sep">·</span>
+                  {% endif %}
+                  {% if s.display_price %}
+                    <span class="qc-stat">
+                      <span class="qc-stat-label">Est.</span>
+                      <strong>{{ s.display_price }}</strong>
+                    </span>
+                  {% endif %}
+                </div>
+
+                {# — CTA — #}
+                <div class="qc-cta">
+                  {% if share and share.path %}
+                    <a class="btn btn-gold" href="{{ share.path }}">
+                      Open Quest ↗
+                    </a>
+                  {% else %}
+                    <a class="btn secondary" href="/?mode=quest&amp;origin={{ s.origin | urlencode if s.origin else '' }}">
+                      Plan this Quest
+                    </a>
+                  {% endif %}
+                  <button type="button" class="btn secondary btn-ql-save"
+                          data-ql-idx="{{ loop.index0 }}"
+                          data-home-iata="{{ s.origin or '' }}"
+                          data-share-url="{{ share.url if share else '' }}">
+                    ★ Save
+                  </button>
+                </div>
+              </div>
             </div>
           </div>{# /.qc-body #}
+          {# JSON blobs for the save handler #}
+          <script type="application/json" id="ql-quest-json-{{ loop.index0 }}">{{ it | tojson }}</script>
+          <script type="application/json" id="ql-meta-json-{{ loop.index0 }}">{{ (s.trip_meta or {}) | tojson }}</script>
         </article>
       {% endfor %}
     </div>
@@ -887,4 +951,67 @@
 })();
 </script>
 {% endif %}
+
+<script>
+(function () {
+  function postQlSave(body, btn, shareUrl) {
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    var navigated = false;
+    function go() {
+      if (navigated) return;
+      navigated = true;
+      window.location.href = shareUrl || "/saved";
+    }
+    var failsafe = setTimeout(go, 6000);
+    var opts = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    };
+    if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) {
+      try { opts.signal = AbortSignal.timeout(5000); } catch (e) {}
+    }
+    fetch("/api/saved", opts)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        clearTimeout(failsafe);
+        if (d && d.ok) {
+          btn.textContent = "✓ Saved";
+          setTimeout(go, 500);
+        } else {
+          btn.textContent = "★ Save";
+          btn.disabled = false;
+        }
+      })
+      .catch(function () { clearTimeout(failsafe); btn.textContent = "★ Save"; btn.disabled = false; });
+  }
+
+  document.querySelectorAll(".btn-ql-save").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var idx      = btn.getAttribute("data-ql-idx");
+      var homeIata = btn.getAttribute("data-home-iata") || "";
+      var shareUrl = btn.getAttribute("data-share-url") || "";
+      var jsonEl   = document.getElementById("ql-quest-json-" + idx);
+      if (!jsonEl) return;
+      var questData;
+      try { questData = JSON.parse(jsonEl.textContent); } catch (e) { return; }
+      questData.kind = "quest";
+      if (!questData.title) {
+        questData.title = (questData.entry_city || questData.entry_iata || "?")
+          + " → overland → "
+          + (questData.exit_city || questData.exit_iata || "?");
+      }
+      var tripMeta = {};
+      var metaEl = document.getElementById("ql-meta-json-" + idx);
+      if (metaEl) { try { tripMeta = JSON.parse(metaEl.textContent); } catch (e) {} }
+      var qMeta = Object.assign({}, tripMeta, {
+        origin:      homeIata,
+        destination: questData.entry_iata || ""
+      });
+      postQlSave({ itinerary: questData, trip_meta: qMeta }, btn, shareUrl);
+    });
+  });
+})();
+</script>
 {% endblock %}
