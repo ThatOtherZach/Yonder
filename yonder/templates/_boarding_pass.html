@@ -9,6 +9,44 @@
    call page-only globals.
 #}
 
+{# ── Helper: render connection stops under a bp-leg ──────────────────────────
+   segments: list[Segment] from offer.segments_out / offer.segments_return
+   Shows one row per connection airport (segments[1].origin onward) with
+   estimated layover time computed from prev.arrival → seg.departure.
+   Gracefully degrades when departure/arrival datetimes are absent.
+#}
+{% macro leg_stops(segments) %}
+{% if segments and segments | length >= 2 %}
+<div class="bp-leg-stops">
+  {% for i in range(1, segments | length) %}
+  {% set prev = segments[i - 1] %}
+  {% set seg  = segments[i] %}
+  {% set layover_str = '' %}
+  {% if prev.arrival and seg.departure %}
+    {% set td = seg.departure - prev.arrival %}
+    {% set total_mins = td.days * 1440 + td.seconds // 60 %}
+    {% if total_mins > 0 %}
+      {% set lh = total_mins // 60 %}
+      {% set lm = total_mins % 60 %}
+      {% if lh > 0 %}
+        {% set layover_str = lh | string ~ 'h ' ~ '%02d' | format(lm) ~ 'm layover' %}
+      {% else %}
+        {% set layover_str = lm | string ~ 'm layover' %}
+      {% endif %}
+    {% endif %}
+  {% endif %}
+  <div class="bp-leg-stop">
+    <span class="bp-stop-dot" aria-hidden="true">↳</span>
+    <span class="bp-stop-iata">{{ seg.origin }}</span>
+    {%- if prev.arrival %}<span class="bp-stop-time">arrive {{ prev.arrival.strftime('%H:%M') }}</span>{% endif %}
+    {%- if seg.departure %}<span class="bp-stop-time">→ depart {{ seg.departure.strftime('%H:%M') }}</span>{% endif %}
+    {%- if layover_str %}<span class="bp-stop-layover">({{ layover_str }})</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
+
 {% macro escape_card(mode, o, query, idx,
                      esc_theme=none, esc_vibe=none, escape_parsed=none,
                      escape_place_book=none, share=none,
@@ -73,6 +111,7 @@
         <div class="meta">
           <span class="meta-line">{{ query.depart_date | fmt_date }}{% if query.return_date %} · return {{ query.return_date | fmt_date }}{% endif %}</span><span class="meta-sep"> · </span><span class="meta-line">{{ o.airlines|join(', ') if o.airlines else '—' }} · {{ 'Direct' if o.stops_out == 0 else (o.stops_out|string + (' stop' if o.stops_out == 1 else ' stops')) }}{% if o.duration_out_minutes is defined and o.duration_out_minutes is not none %} · {{ (o.duration_out_minutes // 60) }}h{{ '%02d'|format(o.duration_out_minutes % 60) }}m{% endif %}{% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %} · <a href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>{% endif %}</span>
         </div>
+        {{ leg_stops(o.segments_out) }}
       </div>
     </div>
 
@@ -385,6 +424,7 @@
         <div class="meta">
           <span class="meta-line">{{ leg.depart_date | fmt_date }}</span>{% if leg.offer and not leg_missing %}<span class="meta-sep"> · </span><span class="meta-line">{{ leg.offer.airlines|join(', ') or '—' }} · {{ 'Direct' if leg.offer.stops_out == 0 else (leg.offer.stops_out|string + (' stop' if leg.offer.stops_out == 1 else ' stops')) }}{% if mode == 'explore' and leg.offer.deep_link and 'kayak.com' not in leg.offer.deep_link %} · <a href="{{ leg.offer.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(leg.offer.airlines) }} ↗</a>{% endif %}</span>{% endif %}
         </div>
+        {{ leg_stops(leg.offer.segments_out if (leg.offer and not leg_missing) else []) }}
       </div>
       {% endfor %}
     </div>
@@ -857,6 +897,7 @@
             · {{ 'Direct' if ib_leg.offer.stops_out == 0 else (ib_leg.offer.stops_out|string ~ ' stop' ~ ('s' if ib_leg.offer.stops_out != 1 else '')) }}
           {% elif ib_leg and ib_leg.error %}· {{ ib_leg.error[:48] }}{% endif %}
         </div>
+        {{ leg_stops(ib_leg.offer.segments_out if (ib_leg and ib_leg.offer and not ib_missing) else []) }}
       </div>
 
       {# Outbound: exit city → home #}
@@ -889,6 +930,7 @@
             · {{ 'Direct' if ob_leg.offer.stops_out == 0 else (ob_leg.offer.stops_out|string ~ ' stop' ~ ('s' if ob_leg.offer.stops_out != 1 else '')) }}
           {% elif ob_leg and ob_leg.error %}· {{ ob_leg.error[:48] }}{% endif %}
         </div>
+        {{ leg_stops(ob_leg.offer.segments_out if (ob_leg and ob_leg.offer and not ob_missing) else []) }}
       </div>
     </div>
 

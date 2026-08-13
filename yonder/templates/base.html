@@ -966,6 +966,45 @@
       .bp-leg .meta-line { display: block; }
       .bp-leg .meta-sep  { display: none; }
     }
+    /* ── Connection stop rows inside a bp-leg ──────────────────────── */
+    .bp-leg-stops {
+      grid-column: 1 / -1;
+      margin-top: 0.4rem;
+      padding-top: 0.4rem;
+      border-top: 1px dashed color-mix(in srgb, var(--line) 55%, transparent);
+      display: flex;
+      flex-direction: column;
+      gap: 0.18rem;
+    }
+    .bp-leg-stop {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 0.28rem;
+      font-size: 0.77rem;
+      color: var(--muted);
+      padding-left: 0.1rem;
+    }
+    .bp-stop-dot {
+      opacity: 0.45;
+      flex-shrink: 0;
+      font-size: 0.72rem;
+    }
+    .bp-stop-iata {
+      font-family: ui-monospace, Consolas, monospace;
+      font-weight: 650;
+      color: var(--ink);
+      opacity: 0.7;
+      letter-spacing: 0.02em;
+    }
+    .bp-stop-time {
+      white-space: nowrap;
+    }
+    .bp-stop-layover {
+      opacity: 0.75;
+      font-style: italic;
+      white-space: nowrap;
+    }
     /* ── Boarding-pass tear-off stub ─────────────────────────────── */
     .bp-stub {
       --stub-accent: var(--bp-accent, var(--accent, #1d6b4f));
