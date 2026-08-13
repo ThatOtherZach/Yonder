@@ -890,6 +890,15 @@ def top_quest_routes(*, limit: int = 12, origin: str | None = None) -> list[dict
     """
     with get_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
+    def _vibe_emoji(vibe: str | None) -> str:
+        """Vibe emoji for the board's ✦ column — '' when unresolvable."""
+        try:
+            from yonder.vibe_theme import resolve_vibe
+
+            return resolve_vibe(vibe).get("emoji") or ""
+        except Exception:
+            return ""
+
     result = []
     for r in rows:
         result.append(
@@ -898,6 +907,7 @@ def top_quest_routes(*, limit: int = 12, origin: str | None = None) -> list[dict
                 "exit": str(r["exit_city"] or ""),
                 "origin": str(r["origin"] or ""),
                 "vibe": str(r["vibe_label"] or r["vibe"] or ""),
+                "vibe_emoji": _vibe_emoji(r["vibe"]),
                 "accent": str(r["accent"] or "#f5a800"),
             }
         )

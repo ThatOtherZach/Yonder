@@ -10,14 +10,6 @@
   .flipboard-section {
     margin-bottom: 2rem;
   }
-  .flipboard-section h2 {
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin: 0 0 0.55rem;
-  }
   .fb-wrap {
     background: #16171a;
     border-radius: 6px;
@@ -26,11 +18,91 @@
     font-family: 'Courier New', Courier, monospace;
     color: #f5a800;
   }
-  .fb-header {
+  /* Top bar: board title + integrated origin filter */
+  .fb-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.9rem;
+    padding: 0.5rem 0.75rem;
+    background: #0e0f11;
+    border-bottom: 1px solid #2a2b2e;
+  }
+  .fb-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+    flex: 1 1 auto;
+  }
+  .fb-filter input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 6.5ch;
+  }
+  .fb-filter label {
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #7a6020;
+    white-space: nowrap;
+  }
+  .fb-filter input[type="text"] {
+    width: 6.5ch;
+    background: #16171a;
+    border: 1px solid #2a2b2e;
+    border-radius: 3px;
+    color: #fff;
+    caret-color: #fff;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.22rem 0.4rem;
+  }
+  .fb-filter input[type="text"]::placeholder {
+    color: rgba(255,255,255,0.35);
+  }
+  .fb-filter input[type="text"]:focus {
+    outline: none;
+    border-color: #fff;
+  }
+  .fb-filter button,
+  .fb-filter a {
+    background: transparent;
+    border: 1px solid #7a6020;
+    border-radius: 3px;
+    color: #e8c86a;
+    font-family: inherit;
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 0 0.55rem;
+    cursor: pointer;
+    text-decoration: none;
+    line-height: 1;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+  }
+  .fb-filter button:hover,
+  .fb-filter a:hover {
+    border-color: #f5a800;
+    color: #f5a800;
+  }
+  /* Shared column template: rem-based tracks so header (smaller font)
+     and rows (larger font) always align; gutters via column-gap. */
+  .fb-header,
+  .fb-row {
     display: grid;
-    grid-template-columns: 6ch 1fr 1fr 10ch;
-    gap: 0;
+    grid-template-columns: 3.4rem minmax(0, 1fr) minmax(0, 1fr) 5.6rem;
+    column-gap: 0.9rem;
     padding: 0.42rem 0.75rem;
+  }
+  .fb-header {
     background: #0e0f11;
     font-size: 0.6rem;
     font-weight: 700;
@@ -39,23 +111,39 @@
     color: #7a6020;
     border-bottom: 1px solid #2a2b2e;
   }
+  .fb-header > span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .fb-header .text-center {
+    text-align: center;
+  }
   .fb-body {
     min-height: 2.5rem;
   }
   .fb-row {
-    display: grid;
-    grid-template-columns: 6ch 1fr 1fr 10ch;
-    gap: 0;
-    padding: 0.52rem 0.75rem;
+    padding-top: 0.52rem;
+    padding-bottom: 0.52rem;
     border-bottom: 1px solid #222327;
     align-items: center;
     transition: background 0.15s;
+  }
+  .fb-row > div {
+    min-width: 0;
+    overflow: hidden;
   }
   .fb-row:last-child {
     border-bottom: none;
   }
   .fb-row:hover {
     background: #1e1f23;
+  }
+  /* Static emoji cell (vibe column, not part of the flip animation) */
+  .fc-static {
+    display: inline-block;
+    font-size: 0.9rem;
+    font-family: 'Apple Color Emoji', 'Noto Color Emoji', 'Segoe UI Emoji', sans-serif;
   }
   /* Character cell (flip unit) */
   .fc {
@@ -69,6 +157,7 @@
     letter-spacing: 0.05em;
     color: #f5a800;
     white-space: nowrap;
+    text-align: center;
   }
   .fb-col-entry,
   .fb-col-exit {
@@ -76,8 +165,7 @@
     color: #e8c86a;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
-    padding-right: 0.5rem;
+    text-overflow: clip;
   }
   .fb-col-vibe {
     font-size: 0.68rem;
@@ -87,26 +175,29 @@
     color: #9e7b1a;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
+    text-overflow: clip;
+    text-align: center;
   }
-  /* Mobile: 2-col layout, hide VIBE */
-  @media (max-width: 500px) {
-    .fb-header {
-      grid-template-columns: 6ch 1fr;
-    }
-    .fb-header .fb-col-vibe,
-    .fb-header .fb-col-exit {
-      display: none;
-    }
+  /* Tablet: tighter VIBE track */
+  @media (max-width: 680px) {
+    .fb-header,
     .fb-row {
-      grid-template-columns: 6ch 1fr;
+      grid-template-columns: 3.4rem minmax(0, 1fr) minmax(0, 1fr) 4.8rem;
     }
-    .fb-col-exit,
-    .fb-col-vibe {
-      display: none;
+  }
+  /* Mobile: tighter tracks, all four columns stay visible */
+  @media (max-width: 500px) {
+    .fb-header,
+    .fb-row {
+      grid-template-columns: 3rem minmax(0, 1fr) minmax(0, 1fr) 4.2rem;
+      column-gap: 0.6rem;
     }
-    .fb-col-entry {
+    .fb-col-entry,
+    .fb-col-exit {
       font-size: 0.82rem;
+    }
+    .fb-col-from {
+      font-size: 0.88rem;
     }
   }
   /* ── end flip board ── */
@@ -383,21 +474,42 @@
   {# ── Flip board ── #}
   {% if board_quests %}
   <section class="flipboard-section" aria-label="Most saved quests departure board">
-    <h2>Most saved quests</h2>
-    <div class="fb-wrap" role="table" aria-label="Top quest routes">
-      <div class="fb-header" role="row">
-        <span class="fb-col-from" role="columnheader">FROM</span>
-        <span class="fb-col-entry" role="columnheader">ENTRY CITY</span>
-        <span class="fb-col-exit" role="columnheader">EXIT CITY</span>
-        <span class="fb-col-vibe" role="columnheader">VIBE</span>
+    <div class="fb-wrap">
+      <div class="fb-topbar">
+        <form method="get" action="/quests" class="fb-filter">
+          <label for="fb-origin">Departing</label>
+          <input
+            id="fb-origin"
+            type="text"
+            name="origin"
+            value="{{ origin_filter | upper }}"
+            placeholder="JFK"
+            maxlength="4"
+            pattern="[A-Za-z]{3,4}"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Filter by departure airport IATA code"
+          />
+          <button type="submit">Filter</button>
+          {% if origin_filter %}
+            <a href="/quests">Clear</a>
+          {% endif %}
+        </form>
       </div>
-      <div class="fb-body" id="fb-body" role="rowgroup"></div>
+      <div role="table" aria-label="Top quest routes">
+        <div class="fb-header" role="row">
+          <span class="fb-col-from text-center" role="columnheader" aria-label="From">✈</span>
+          <span class="fb-col-entry" role="columnheader">ENTRY</span>
+          <span class="fb-col-exit" role="columnheader">EXIT</span>
+          <span class="fb-col-vibe" role="columnheader" aria-label="Vibe">✦</span>
+        </div>
+        <div class="fb-body" id="fb-body" role="rowgroup"></div>
+      </div>
     </div>
   </section>
   <script id="fb-data" type="application/json">{{ board_quests | tojson }}</script>
-  {% endif %}
-
-  {# ── Filter bar ── #}
+  {% else %}
+  {# ── Filter bar (fallback when the board has no data) ── #}
   <form method="get" action="/quests" class="quests-filter-bar">
     <label>
       Departure airport
@@ -418,6 +530,7 @@
       <a href="/quests" class="btn secondary">Clear</a>
     {% endif %}
   </form>
+  {% endif %}
 
   {% if quest_cards %}
     <p class="quests-count-label">
@@ -658,7 +771,8 @@
     });
   }
 
-  /* Build a cell with one .fc span per character */
+  /* Build a cell with one .fc span per character.
+     Optional flag: static country-flag prefix, excluded from the flip. */
   function makeCell(cls, text, maxLen) {
     var d = document.createElement('div');
     d.className = cls;
@@ -673,6 +787,19 @@
     return d;
   }
 
+  /* Static vibe cell: emoji only, excluded from the flip animation */
+  function makeVibeCell(route) {
+    var d = document.createElement('div');
+    d.className = 'fb-col-vibe';
+    d.setAttribute('role', 'cell');
+    var s = document.createElement('span');
+    s.className = 'fc-static';
+    s.textContent = route.vibe_emoji || '';
+    if (route.vibe) s.title = route.vibe;
+    d.appendChild(s);
+    return d;
+  }
+
   /* Build a row DOM element for a route object */
   function buildRow(route) {
     var row = document.createElement('div');
@@ -681,7 +808,7 @@
     row.appendChild(makeCell('fb-col-from',  route.origin || '---', 4));
     row.appendChild(makeCell('fb-col-entry', route.entry  || '???', 18));
     row.appendChild(makeCell('fb-col-exit',  route.exit   || '???', 18));
-    row.appendChild(makeCell('fb-col-vibe',  route.vibe   || '',    10));
+    row.appendChild(makeVibeCell(route));
     return row;
   }
 
@@ -700,8 +827,7 @@
       animateRow(r, [
         pad(route.origin || '---', 4),
         pad(route.entry  || '???', 18),
-        pad(route.exit   || '???', 18),
-        pad(route.vibe   || '',   10)
+        pad(route.exit   || '???', 18)
       ], delay);
     })(row, i * ROW_DELAY_MS);
   }
@@ -734,8 +860,7 @@
     var newTexts = [
       pad(route.origin || '---', 4),
       pad(route.entry  || '???', 18),
-      pad(route.exit   || '???', 18),
-      pad(route.vibe   || '',   10)
+      pad(route.exit   || '???', 18)
     ];
 
     /* Rebuild cells to ensure correct character count */
@@ -743,7 +868,7 @@
     rowEl.appendChild(makeCell('fb-col-from',  route.origin || '---', 4));
     rowEl.appendChild(makeCell('fb-col-entry', route.entry  || '???', 18));
     rowEl.appendChild(makeCell('fb-col-exit',  route.exit   || '???', 18));
-    rowEl.appendChild(makeCell('fb-col-vibe',  route.vibe   || '',    10));
+    rowEl.appendChild(makeVibeCell(route));
 
     animateRow(rowEl, newTexts, 0);
 
