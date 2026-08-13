@@ -137,6 +137,78 @@ def test_client_key_xff_honoured_from_trusted_proxy(monkeypatch):
     assert key == expected, f"XFF not used from trusted proxy: key={key!r}"
 
 
+def _xff_req(direct_ip: str, xff: str):
+    class _FakeHeaders:
+        def get(self, k, default=None):
+            if k.lower() == "x-forwarded-for":
+                return xff
+            return default
+
+    class _FakeReq:
+        headers = _FakeHeaders()
+
+        class client:
+            host = direct_ip
+
+    return _FakeReq()
+
+
+def test_client_key_replit_deployment_separates_visitors(monkeypatch):
+    """On Replit deployments, two visitors behind the same proxy get distinct buckets."""
+    import yonder.rate_limit as _rl
+    monkeypatch.setattr(_rl, "_TRUSTED_PROXY", "")
+    monkeypatch.setattr(_rl, "_ON_REPLIT_DEPLOYMENT", True)
+
+    key_a = _rl._client_key(_xff_req("172.16.0.9", "203.0.113.5"), "")
+    key_b = _rl._client_key(_xff_req("172.16.0.9", "198.51.100.7"), "")
+    assert key_a != key_b, "visitors behind the Replit proxy shared one bucket"
+
+
+def test_client_key_replit_deployment_uses_rightmost_xff(monkeypatch):
+    """Spoofed client-prepended XFF entries must not change the key."""
+    import yonder.rate_limit as _rl
+    import hashlib
+    monkeypatch.setattr(_rl, "_TRUSTED_PROXY", "")
+    monkeypatch.setattr(_rl, "_ON_REPLIT_DEPLOYMENT", True)
+
+    # Real client 203.0.113.5; attacker prepends fake IPs before sending.
+    honest = _rl._client_key(_xff_req("172.16.0.9", "203.0.113.5"), "")
+    spoofed = _rl._client_key(_xff_req("172.16.0.9", "1.2.3.4, 9.9.9.9, 203.0.113.5"), "")
+    assert honest == spoofed, "prepending fake XFF entries minted a fresh quota bucket"
+    expected = "ip:" + hashlib.sha256("203.0.113.5".encode()).hexdigest()[:24]
+    assert honest == expected
+
+
+def test_client_key_replit_deployment_empty_xff_falls_back(monkeypatch):
+    import yonder.rate_limit as _rl
+    import hashlib
+    monkeypatch.setattr(_rl, "_TRUSTED_PROXY", "")
+    monkeypatch.setattr(_rl, "_ON_REPLIT_DEPLOYMENT", True)
+    key = _rl._client_key(_xff_req("172.16.0.9", ""), "")
+    assert key == "ip:" + hashlib.sha256("172.16.0.9".encode()).hexdigest()[:24]
+
+
+@pytest.mark.asyncio
+async def test_per_visitor_buckets_behind_proxy(monkeypatch):
+    """Regression: exhausting one visitor's plan quota must not block another visitor."""
+    import yonder.rate_limit as _rl
+    monkeypatch.setattr(_rl, "_TRUSTED_PROXY", "")
+    monkeypatch.setattr(_rl, "_ON_REPLIT_DEPLOYMENT", True)
+    monkeypatch.setattr(_rl, "RATE_LIMIT_ENABLED", True)
+    _rl._windows.clear()
+
+    visitor_a = _xff_req("172.16.0.9", "203.0.113.5")
+    visitor_b = _xff_req("172.16.0.9", "198.51.100.7")
+
+    for _ in range(_rl.PLAN_LIMIT):
+        assert (await _rl.check_plan(visitor_a, "")).allowed
+    assert not (await _rl.check_plan(visitor_a, "")).allowed  # A is exhausted
+    assert (await _rl.check_plan(visitor_b, "")).allowed, (
+        "visitor B was locked out by visitor A's quota — shared bucket regression"
+    )
+    _rl._windows.clear()
+
+
 # ── Sliding window ────────────────────────────────────────────────────────────
 
 def test_sliding_window_allows_within_limit():

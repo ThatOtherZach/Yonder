@@ -28,6 +28,9 @@ Configuration (all optional, set in .env or environment):
                           0=block all; negative=disabled)
   TRUSTED_PROXY        — IP of a trusted upstream proxy whose XFF header is accepted
                           (e.g. "10.0.0.1").  Leave blank to ignore XFF entirely.
+                          On Replit deployments (REPLIT_DEPLOYMENT set) XFF is
+                          trusted automatically — every request arrives via the
+                          platform proxy; the rightmost XFF entry is used.
   RATE_SEARCH_LIMIT    — /explore calls per window per IP (default: 8)
   RATE_SEARCH_WINDOW   — window length in seconds for searches (default: 60)
   RATE_PLAN_LIMIT      — /api/quest|detour/plan calls per window (default: 5)
@@ -110,6 +113,11 @@ class RateLimitResult(NamedTuple):
 # Only trust X-Forwarded-For from a known, configured upstream proxy.
 _TRUSTED_PROXY: str = os.environ.get("TRUSTED_PROXY", "").strip()
 
+# On Replit deployments (autoscale) every request reaches the app through the
+# platform's reverse proxy — the direct peer is never the real visitor.  Replit
+# sets REPLIT_DEPLOYMENT in that environment, so XFF is safe to trust there.
+_ON_REPLIT_DEPLOYMENT: bool = bool(os.environ.get("REPLIT_DEPLOYMENT", "").strip())
+
 
 def _client_key(request: Request, _sess: str) -> str:
     """IP-only rate-limit key.
@@ -117,15 +125,22 @@ def _client_key(request: Request, _sess: str) -> str:
     User-Agent and session cookie are intentionally excluded — both are freely
     rotatable by any HTTP client and must not form part of the quota key.
 
-    X-Forwarded-For is accepted only when the direct TCP connection comes from
-    the IP configured in the ``TRUSTED_PROXY`` env var.  Without that setting
-    every request is keyed on the direct connection IP, preventing clients from
-    spoofing XFF to obtain a fresh quota window per request.
+    X-Forwarded-For is accepted only when the request provably arrived via a
+    trusted proxy: either the direct TCP peer matches the ``TRUSTED_PROXY``
+    env var, or the app is running on a Replit deployment (``REPLIT_DEPLOYMENT``
+    set), where *every* request comes through the platform proxy.  When
+    trusted, the **rightmost** XFF entry is used — that entry is appended by
+    the trusted proxy itself, so a client prepending fake addresses cannot
+    mint fresh quota.  Otherwise XFF is ignored entirely and the direct
+    connection IP is used, preventing header-spoofing bypass.
     """
     direct_ip: str = getattr(request.client, "host", None) or "unknown"
-    if _TRUSTED_PROXY and direct_ip == _TRUSTED_PROXY:
-        xff = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-        ip = xff or direct_ip
+    proxied = _ON_REPLIT_DEPLOYMENT or (_TRUSTED_PROXY and direct_ip == _TRUSTED_PROXY)
+    if proxied:
+        # Rightmost entry = the peer the trusted proxy actually talked to.
+        parts = [p.strip() for p in (request.headers.get("x-forwarded-for") or "").split(",")]
+        parts = [p for p in parts if p]
+        ip = parts[-1] if parts else direct_ip
     else:
         ip = direct_ip
     return "ip:" + hashlib.sha256(ip.encode()).hexdigest()[:24]
