@@ -360,11 +360,30 @@ def _fmt_date(value: object) -> str:
 
 
 templates.env.filters["fmt_date"] = _fmt_date
+
+
+def _fmt_date_short(value: object) -> str:
+    """Format a date or ISO string as 'DD MON' (e.g. '12 SEP')."""
+    from datetime import date as _date
+    if value is None:
+        return "—"
+    s = str(value).strip()
+    if not s:
+        return "—"
+    try:
+        d = _date.fromisoformat(s[:10])
+        return d.strftime("%-d %b").upper()
+    except Exception:
+        return s
+
+
+templates.env.filters["fmt_date_short"] = _fmt_date_short
 templates.env.filters["vibe_emoji"] = lambda vibe_id: VIBE_EMOJI.get((vibe_id or "").strip().lower(), "")
 templates.env.filters["flag_emoji"] = lambda code: "".join(chr(ord(c) + 127397) for c in (code or "").upper()[:2]) if len(code or "") >= 2 else (code or "")
 templates.env.globals["place"] = format_place
 templates.env.globals["route"] = format_route
 templates.env.globals["route_short"] = lambda o, d, **kw: format_route(o, d, with_country=False, **kw)
+templates.env.globals["resolve_vibe"] = resolve_vibe
 templates.env.globals["airline_site_label"] = airline_site_label
 templates.env.globals["airline_name"] = airline_display_name
 templates.env.globals["train_options"] = train_options
