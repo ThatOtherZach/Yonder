@@ -86,6 +86,18 @@ CREATE INDEX IF NOT EXISTS idx_saved_at ON saved_itineraries(saved_at DESC);
 ALTER TABLE saved_itineraries ADD COLUMN IF NOT EXISTS owner_sess TEXT;
 CREATE INDEX IF NOT EXISTS idx_saved_owner ON saved_itineraries(owner_sess);
 
+-- Personal quest bookmarks: quests (kind='quest') are global library rows;
+-- "★ Save" associates the existing row with a browser session instead of
+-- duplicating it.  Unique index makes repeat clicks idempotent.
+CREATE TABLE IF NOT EXISTS quest_bookmarks (
+    owner_sess TEXT NOT NULL,
+    saved_id TEXT NOT NULL,
+    created_at DOUBLE PRECISION NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_quest_bookmark
+    ON quest_bookmarks(owner_sess, saved_id);
+CREATE INDEX IF NOT EXISTS idx_qb_saved ON quest_bookmarks(saved_id);
+
 CREATE TABLE IF NOT EXISTS shared_trips (
     id TEXT PRIMARY KEY,
     created_at DOUBLE PRECISION NOT NULL,

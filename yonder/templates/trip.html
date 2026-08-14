@@ -315,10 +315,17 @@
 
     {# ── Save strip (hidden once saved, or if localStorage shows already saved) ── #}
     {% if share.kind in ('escape', 'detour', 'quest') %}
+    {% if already_bookmarked %}
+    <div class="trip-save-strip">
+      <button type="button" class="btn btn-gold" disabled>✓ Saved</button>
+      <span class="trip-save-msg">Already in your saved trips.</span>
+    </div>
+    {% else %}
     <div class="trip-save-strip" id="trip-save-strip">
       <button type="button" class="btn btn-gold" id="btn-trip-save">★ Save this trip</button>
       <span class="trip-save-msg" id="trip-save-msg">Save to your library.</span>
     </div>
+    {% endif %}
     <script type="application/json" id="trip-share-payload">{{ p | tojson }}</script>
     {% endif %}
 

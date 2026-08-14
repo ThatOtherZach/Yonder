@@ -841,6 +841,130 @@ def count_quests(*, origin: str | None = None) -> int:
     return int(row["n"]) if row else 0
 
 
+def bookmark_quest(saved_id: str, *, owner_sess: str | None) -> bool:
+    """Bookmark an existing global quest row for a browser session.
+
+    Idempotent — repeat clicks are absorbed by the unique index.  Returns
+    True when the id refers to an existing quest row (already-bookmarked
+    counts as success), False otherwise.  Bookmarks are exempt from
+    SAVE_LIMIT: they reference shared library rows, they do not create
+    per-user itinerary rows.
+    """
+    owner = (owner_sess or "").strip()[:64] or None
+    if not owner or not saved_id:
+        return False
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM saved_itineraries WHERE id = %s AND kind = 'quest'",
+            (saved_id,),
+        ).fetchone()
+        if not row:
+            return False
+        conn.execute(
+            "INSERT INTO quest_bookmarks (owner_sess, saved_id, created_at)"
+            " VALUES (%s, %s, %s)"
+            " ON CONFLICT (owner_sess, saved_id) DO NOTHING",
+            (owner, saved_id, time.time()),
+        )
+        conn.commit()
+    return True
+
+
+def unbookmark_quest(saved_id: str, *, owner_sess: str | None) -> bool:
+    """Remove a session's bookmark on a quest. Never deletes the quest row."""
+    owner = (owner_sess or "").strip()[:64] or None
+    if not owner or not saved_id:
+        return False
+    with get_conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM quest_bookmarks WHERE owner_sess = %s AND saved_id = %s",
+            (owner, saved_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def bookmarked_quest_ids(*, owner_sess: str | None) -> set[str]:
+    """Ids of quest rows bookmarked by this browser session."""
+    owner = (owner_sess or "").strip()[:64] or None
+    if not owner:
+        return set()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT saved_id FROM quest_bookmarks WHERE owner_sess = %s",
+            (owner,),
+        ).fetchall()
+    return {str(r["saved_id"]) for r in rows}
+
+
+def list_bookmarked_quests(
+    *, owner_sess: str | None, limit: int = 50
+) -> list[SavedItinerary]:
+    """Quest rows bookmarked by this session, newest bookmark first.
+
+    ``saved_at`` on the returned objects is the bookmark's created_at so the
+    /saved page can interleave bookmarks with private saves by save time.
+    """
+    owner = (owner_sess or "").strip()[:64] or None
+    if not owner:
+        return []
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT s.*, qb.created_at AS bookmark_at
+            FROM quest_bookmarks qb
+            JOIN saved_itineraries s ON s.id = qb.saved_id
+            WHERE qb.owner_sess = %s AND s.kind = 'quest'
+            ORDER BY qb.created_at DESC
+            LIMIT %s
+            """,
+            (owner, max(1, min(200, limit))),
+        ).fetchall()
+    out: list[SavedItinerary] = []
+    for r in rows:
+        s = _row_to_saved(r)
+        try:
+            s.saved_at = float(r["bookmark_at"])
+        except (TypeError, ValueError, KeyError):
+            pass
+        out.append(s)
+    return out
+
+
+def find_global_quest_id(
+    itinerary: dict[str, Any], *, origin: str | None, dest: str | None
+) -> str | None:
+    """Existing quest row matching this idea's route signature, any owner.
+
+    Quests are global library rows, so unlike _find_duplicate_id this match
+    is intentionally NOT owner-scoped.  Key: origin + entry + exit + title.
+    """
+    o = str(origin or "").strip().upper()
+    d = str(dest or itinerary.get("entry_iata") or "").strip().upper()
+    exit_ = str(itinerary.get("exit_iata") or "").strip().upper()
+    title = str(itinerary.get("title") or "").strip()
+    if not d and not title:
+        return None
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, origin, destination, title, itinerary_json"
+            " FROM saved_itineraries WHERE kind = 'quest'"
+        ).fetchall()
+    for r in rows:
+        try:
+            it = json.loads(r["itinerary_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            it = {}
+        if (
+            str(r["origin"] or "").upper() == o
+            and str(r["destination"] or "").upper() == d
+            and str((it or {}).get("exit_iata") or "").upper() == exit_
+            and str(r["title"] or "").strip() == title
+        ):
+            return str(r["id"])
+    return None
+
+
 def top_quest_routes(*, limit: int = 12, origin: str | None = None) -> list[dict]:
     """Return top saved quest routes grouped by (origin, entry city, exit city).
 
@@ -855,37 +979,39 @@ def top_quest_routes(*, limit: int = 12, origin: str | None = None) -> list[dict
     params: list = [limit]
     origin_clause = ""
     if origin_n:
-        origin_clause = "AND UPPER(COALESCE(origin, '')) = %s"
+        origin_clause = "AND UPPER(COALESCE(s.origin, '')) = %s"
         params = [origin_n, limit]
 
+    # Rank = quest rows + personal bookmarks, so ★ Save feeds popularity.
     sql = f"""
         SELECT
-            UPPER(COALESCE(NULLIF(TRIM(origin), ''), '')) AS origin,
+            UPPER(COALESCE(NULLIF(TRIM(s.origin), ''), '')) AS origin,
             COALESCE(
-                NULLIF(TRIM(itinerary_json::json->>'entry_city'), ''),
-                NULLIF(TRIM(itinerary_json::json->>'entry_iata'), '')
+                NULLIF(TRIM(s.itinerary_json::json->>'entry_city'), ''),
+                NULLIF(TRIM(s.itinerary_json::json->>'entry_iata'), '')
             ) AS entry,
             COALESCE(
-                NULLIF(TRIM(itinerary_json::json->>'exit_city'), ''),
-                NULLIF(TRIM(itinerary_json::json->>'exit_iata'), '')
+                NULLIF(TRIM(s.itinerary_json::json->>'exit_city'), ''),
+                NULLIF(TRIM(s.itinerary_json::json->>'exit_iata'), '')
             ) AS exit_city,
-            MAX(vibe) AS vibe,
-            MAX(theme_accent) AS accent,
-            MAX(theme_label) AS vibe_label,
-            COUNT(*) AS save_count
-        FROM saved_itineraries
-        WHERE kind = 'quest'
+            MAX(s.vibe) AS vibe,
+            MAX(s.theme_accent) AS accent,
+            MAX(s.theme_label) AS vibe_label,
+            COUNT(DISTINCT s.id) + COUNT(qb.saved_id) AS save_count
+        FROM saved_itineraries s
+        LEFT JOIN quest_bookmarks qb ON qb.saved_id = s.id
+        WHERE s.kind = 'quest'
           {origin_clause}
           AND COALESCE(
-                NULLIF(TRIM(itinerary_json::json->>'entry_city'), ''),
-                NULLIF(TRIM(itinerary_json::json->>'entry_iata'), '')
+                NULLIF(TRIM(s.itinerary_json::json->>'entry_city'), ''),
+                NULLIF(TRIM(s.itinerary_json::json->>'entry_iata'), '')
               ) IS NOT NULL
           AND COALESCE(
-                NULLIF(TRIM(itinerary_json::json->>'exit_city'), ''),
-                NULLIF(TRIM(itinerary_json::json->>'exit_iata'), '')
+                NULLIF(TRIM(s.itinerary_json::json->>'exit_city'), ''),
+                NULLIF(TRIM(s.itinerary_json::json->>'exit_iata'), '')
               ) IS NOT NULL
         GROUP BY 1, 2, 3
-        ORDER BY COUNT(*) DESC, MAX(saved_at) DESC
+        ORDER BY COUNT(DISTINCT s.id) + COUNT(qb.saved_id) DESC, MAX(s.saved_at) DESC
         LIMIT %s
     """
     with get_conn() as conn:

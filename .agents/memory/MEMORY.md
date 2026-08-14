@@ -18,4 +18,5 @@
 - [Stale prod builds](prod-build-staleness.md) — live site serves the publish-time snapshot; compare gunicorn boot time vs fix commit time before debugging "still broken in prod".
 - [Per-browser session prefs](session-scoped-prefs.md) — personal prefs overlay from session_prefs by yv_sess via _session_settings(); cookie-less = legacy globals; Secure cookie needs https TestClient.
 - [Map autosave echo race](map-save-echo-race.md) — never apply a save echo over newer client mutations; guard repaint with rev/seq counters or in-flight clicks silently revert.
+- [Quest bookmarks](quest-bookmarks.md) — quest ★ Save bookmarks the shared library row (quest_bookmarks table), never inserts a new saved_itineraries row; delete removes only the bookmark.
 - [Affiliate link fallback](affiliate-link-fallback.md) — engine generates fare-missing offer with Aviasales URL when providers fail; fare_note shows history or "no history"; detour/quest get inline template URLs.

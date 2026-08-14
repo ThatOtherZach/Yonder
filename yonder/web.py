@@ -4201,6 +4201,32 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
                     brief["poi_picks"] = _share_poi_picks(code)
                     place_books[code] = brief
 
+    # Quest shares: render the Save strip server-side as already-saved when
+    # this browser session has bookmarked the quest (localStorage is only a
+    # secondary hint).
+    _already_bookmarked = False
+    if share.kind == "quest":
+        try:
+            from yonder.saved import bookmarked_quest_ids, find_global_quest_id
+
+            _q_saved_id = str((p.get("trip_meta") or {}).get("saved_id") or "").strip()
+            if not _q_saved_id:
+                _q_saved_id = (
+                    find_global_quest_id(
+                        p.get("idea") or {},
+                        origin=str(p.get("home_iata") or "").upper() or None,
+                        dest=str((p.get("idea") or {}).get("entry_iata") or "").upper()
+                        or None,
+                    )
+                    or ""
+                )
+            if _q_saved_id:
+                _already_bookmarked = _q_saved_id in bookmarked_quest_ids(
+                    owner_sess=_req_sess(request)
+                )
+        except Exception:
+            _already_bookmarked = False
+
     return templates.TemplateResponse(
         request,
         "trip.html",
@@ -4215,6 +4241,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
             "kind_label": kind_label,
             "place_books": place_books,
             "share_vibe": share_vibe,
+            "already_bookmarked": _already_bookmarked,
             "og_image": f"{base}/static/share_bg.jpg",
         },
     )
@@ -4279,8 +4306,13 @@ async def quests_browse_page(
         quest_cards.append({"saved": s, "share": share})
 
     saved_count = 0
+    bookmarked_ids: set[str] = set()
     try:
-        saved_count = count_saved(owner_sess=_req_sess(request))
+        _q_sess = _req_sess(request)
+        saved_count = count_saved(owner_sess=_q_sess)
+        from yonder.saved import bookmarked_quest_ids
+
+        bookmarked_ids = bookmarked_quest_ids(owner_sess=_q_sess)
     except Exception:
         pass
 
@@ -4303,6 +4335,7 @@ async def quests_browse_page(
             "total": total,
             "total_pages": total_pages,
             "board_quests": board_quests,
+            "bookmarked_ids": bookmarked_ids,
         },
     )
 
@@ -4325,6 +4358,15 @@ async def saved_list_page(
         sess = _uuid.uuid4().hex[:32]
 
     items = list_saved(limit=100, owner_sess=sess)
+    # Personal quest bookmarks appear alongside private saves; their saved_at
+    # is the bookmark time so they interleave naturally.
+    try:
+        from yonder.saved import list_bookmarked_quests
+
+        items = items + list_bookmarked_quests(owner_sess=sess)
+        items.sort(key=lambda s: -float(s.saved_at or 0))
+    except Exception:
+        pass
     cards = _saved_cards(items)
     for card in cards:
         s = card.get("saved")
@@ -4500,6 +4542,65 @@ async def api_save_itinerary(request: Request):
     need_sess_cookie = not owner
     if need_sess_cookie:
         owner = _uuid_save.uuid4().hex[:32]
+    # Quests are global, server-shared library rows: "★ Save" bookmarks the
+    # EXISTING quest row for this browser session instead of inserting a
+    # duplicate.  Bookmarks are exempt from SAVE_LIMIT (they reference shared
+    # rows, they are not per-user itinerary rows).
+    if str(itinerary.get("kind") or "").lower() == "quest":
+        from yonder.saved import bookmark_quest, find_global_quest_id
+
+        target_id = str(trip_meta.get("saved_id") or "").strip() or None
+        if target_id:
+            existing_q = get_saved(target_id)
+            if not existing_q or (existing_q.kind or "").lower() != "quest":
+                target_id = None
+        if not target_id:
+            target_id = find_global_quest_id(
+                itinerary,
+                origin=str(trip_meta.get("origin") or "").upper() or None,
+                dest=str(itinerary.get("entry_iata") or "").upper() or None,
+            )
+        if target_id:
+            try:
+                bookmark_quest(target_id, owner_sess=owner)
+            except Exception as exc:  # noqa: BLE001
+                return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+            resp = JSONResponse(
+                {
+                    "ok": True,
+                    "id": target_id,
+                    "bookmarked": True,
+                    "saved_count": count_saved(owner_sess=owner or None),
+                    "save_limit": SAVE_LIMIT,
+                }
+            )
+            if need_sess_cookie:
+                resp.set_cookie(
+                    "yv_sess", owner, httponly=True, samesite="lax", secure=_IS_HTTPS
+                )
+            return resp
+        # Brand-new quest (not in the library yet): insert ONE global row
+        # (owner NULL, like recycled quests) then bookmark it for this session.
+        trip_meta.pop("saved_id", None)
+        try:
+            saved_q = save_itinerary(itinerary, trip_meta=trip_meta, owner_sess=None)
+            bookmark_quest(saved_q.id, owner_sess=owner)
+        except Exception as exc:  # noqa: BLE001
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        resp = JSONResponse(
+            {
+                "ok": True,
+                "id": saved_q.id,
+                "bookmarked": True,
+                "saved_count": count_saved(owner_sess=owner or None),
+                "save_limit": SAVE_LIMIT,
+            }
+        )
+        if need_sess_cookie:
+            resp.set_cookie(
+                "yv_sess", owner, httponly=True, samesite="lax", secure=_IS_HTTPS
+            )
+        return resp
     try:
         saved = save_itinerary(itinerary, trip_meta=trip_meta, owner_sess=owner or None)
     except Exception as exc:  # noqa: BLE001
@@ -4578,6 +4679,14 @@ async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
     if not item:
         return RedirectResponse(
             url="/saved?err=" + quote("Itinerary not found"), status_code=302
+        )
+    # Shared quest library rows are never refreshed through this endpoint:
+    # a refresh UPSERT would mutate (and could reassign ownership of) the
+    # global row that every session's bookmark points at.
+    if (item.kind or "").lower() == "quest":
+        return RedirectResponse(
+            url="/saved?err=" + quote("Quests can't be refreshed here"),
+            status_code=302,
         )
     # Ownership check: only the browser that saved the trip can refresh it.
     # For legacy rows (owner_sess is NULL) we skip the check so pre-migration
@@ -4663,6 +4772,20 @@ async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
 @app.post("/saved/{saved_id}/delete", response_class=HTMLResponse)
 async def saved_delete(request: Request, saved_id: str) -> HTMLResponse:
     owner = _req_sess(request)
+    # Quest rows are shared library records: deleting from /saved only ever
+    # removes THIS session's bookmark.  The global row must never be deletable
+    # through this endpoint (quest ids are public in the Quest Library markup).
+    target = get_saved(saved_id)
+    if target and (target.kind or "").lower() == "quest":
+        from yonder.saved import unbookmark_quest
+
+        if owner and unbookmark_quest(saved_id, owner_sess=owner):
+            return RedirectResponse(
+                url="/saved?flash=" + quote("Removed from list"), status_code=302
+            )
+        return RedirectResponse(
+            url="/saved?err=" + quote("Not found"), status_code=302
+        )
     ok = delete_saved(saved_id, owner_sess=owner or None)
     if ok:
         return RedirectResponse(

@@ -722,12 +722,19 @@
                       Plan this Quest
                     </a>
                   {% endif %}
+                  {% if s.id in bookmarked_ids %}
+                  <button type="button" class="btn secondary btn-ql-save" disabled>
+                    ✓ Saved
+                  </button>
+                  {% else %}
                   <button type="button" class="btn secondary btn-ql-save"
                           data-ql-idx="{{ loop.index0 }}"
+                          data-saved-id="{{ s.id }}"
                           data-home-iata="{{ s.origin or '' }}"
                           data-share-url="{{ share.url if share else '' }}">
                     ★ Save
                   </button>
+                  {% endif %}
                 </div>
               </div>
             </div>
@@ -1006,6 +1013,7 @@
       var metaEl = document.getElementById("ql-meta-json-" + idx);
       if (metaEl) { try { tripMeta = JSON.parse(metaEl.textContent); } catch (e) {} }
       var qMeta = Object.assign({}, tripMeta, {
+        saved_id:    btn.getAttribute("data-saved-id") || tripMeta.saved_id || "",
         origin:      homeIata,
         destination: questData.entry_iata || ""
       });
