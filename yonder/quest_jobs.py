@@ -63,9 +63,25 @@ def set_stage(job_id: str, stage: str) -> None:
         )
 
 
-def set_done(job_id: str, *, quest_panel: dict, place_books: dict | None = None, ok: bool = True) -> None:
+def set_done(
+    job_id: str,
+    *,
+    quest_panel: dict,
+    place_books: dict | None = None,
+    ok: bool = True,
+    detour_candidates: list | None = None,
+    detour_match: dict | None = None,
+) -> None:
     payload = pickle.dumps(
-        {"quest_panel": quest_panel, "place_books": place_books or {}},
+        {
+            "quest_panel": quest_panel,
+            "place_books": place_books or {},
+            "detour_candidates": detour_candidates or [],
+            # Match context for the stored candidate pool: the current
+            # query's depart date + relevant destination IATAs, so the
+            # status endpoint can filter by route + date proximity.
+            "detour_match": detour_match or {},
+        },
         protocol=pickle.HIGHEST_PROTOCOL,
     )
     with get_conn() as conn:
@@ -117,6 +133,8 @@ def get_job(job_id: str) -> dict[str, Any] | None:
             payload = pickle.loads(bytes(raw))
             job["quest_panel"] = payload.get("quest_panel") or {}
             job["place_books"] = payload.get("place_books") or {}
+            job["detour_candidates"] = payload.get("detour_candidates") or []
+            job["detour_match"] = payload.get("detour_match") or {}
         except Exception:
             # Corrupted/incompatible payload: surface as an error so the
             # client shows the retry card instead of an empty "done" panel.

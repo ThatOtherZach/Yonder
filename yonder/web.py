@@ -335,6 +335,18 @@ try:
     _backfill_city_slugs()
 except Exception:
     pass
+
+# Startup backfill: populate detour_candidates from saved quest itineraries
+# already in the database.  UPSERT-safe — repeated restarts just refresh
+# existing entries, never duplicate.  Runs synchronously at import time so
+# it completes before the first request arrives; duration is negligible
+# since it reads at most 500 rows and is skipped cleanly on any error.
+try:
+    from yonder.detour_candidates import backfill_from_saved_quests as _backfill_dc
+
+    _backfill_dc()
+except Exception:
+    pass
 templates = Jinja2Templates(directory=str(_PKG / "templates"))
 from yonder.products import DEPARTMENTS as _PACKING_DEPTS, PACKING_PRODUCTS as _PACKING_PRODUCTS
 templates.env.globals["packing_products"] = _PACKING_PRODUCTS
@@ -3007,7 +3019,18 @@ async def quest_plan_api(request: Request):
     except Exception as _render_exc:
         return JSONResponse({"ok": False, "error": f"Render error: {_render_exc}", "html": ""})
 
-    return JSONResponse({"ok": bool(quest_ideas), "html": html})
+    # Feed the Detour section from this quest's finished legs too — the
+    # manual Plan Quest / Try again path must behave like the eager job path.
+    _det_candidates, _det_match = _harvest_quest_detour(
+        quest_ideas, home_iata, vibe, depart_dt
+    )
+    _detour_html = _detour_feed_html(request, _det_candidates, _det_match, home_iata)
+
+    return JSONResponse({
+        "ok": bool(quest_ideas),
+        "html": html,
+        "detour_html": _detour_html,
+    })
 
 
 def _render_quest_partial_html(
@@ -3029,6 +3052,111 @@ def _render_quest_partial_html(
         error_message=error_message,
         place_books=place_books or {},
     )
+
+
+def _render_detour_candidates_html(request: Request, candidates: list) -> str:
+    """Render quest-seeded detour candidates to an HTML string.
+
+    Adds an ``age_label`` field to each candidate before passing to the
+    template so the Jinja layer does not need to call time functions.
+    """
+    import time as _time
+
+    def _age_label(ts: float) -> str:
+        age_s = _time.time() - ts
+        if age_s < 3600:
+            return "just now"
+        if age_s < 86400:
+            return f"{int(age_s / 3600)}h ago"
+        if age_s < 7 * 86400:
+            return f"{int(age_s / 86400)}d ago"
+        return f"{int(age_s / 604800)}w ago"
+
+    annotated = []
+    for c in candidates:
+        d = dict(c) if isinstance(c, dict) else {"route_key": str(c)}
+        if "age_label" not in d:
+            d["age_label"] = _age_label(float(d.get("harvested_at") or 0.0))
+        annotated.append(d)
+    tpl = templates.env.get_template("_detour_candidates_partial.html")
+    return tpl.render(request=request, candidates=annotated)
+
+
+def _harvest_quest_detour(
+    quest_ideas: list | None,
+    home_iata: str,
+    vibe: str,
+    depart_dt: date | None,
+) -> tuple[list, dict]:
+    """Harvest detour candidates from finished quest legs and store them.
+
+    Returns ``(candidates, match_ctx)`` where ``match_ctx`` carries this
+    query's depart date and the destination IATAs relevant to it (quest
+    entry/exit cities), so stored-pool lookups only surface snapshots on
+    the same route within a date window — never unrelated trips.
+    Best-effort: any failure returns empty results.
+    """
+    if not quest_ideas:
+        return [], {}
+    try:
+        from yonder.detour_candidates import harvest_from_quest as _harvest_dc
+        from yonder.detour_candidates import store_candidates as _store_dc
+
+        candidates = _harvest_dc(quest_ideas, home_iata, vibe)
+        if candidates:
+            _store_dc(candidates)
+        match_dests: set[str] = set()
+        for _qi in quest_ideas:
+            for _d in (getattr(_qi, "entry_iata", None), getattr(_qi, "exit_iata", None)):
+                _du = (_d or "").upper()
+                if len(_du) == 3 and _du.isalpha():
+                    match_dests.add(_du)
+        match = {
+            "depart_date": depart_dt.isoformat() if depart_dt else None,
+            "destinations": sorted(match_dests),
+        }
+        return candidates, match
+    except Exception:  # noqa: BLE001 — candidate harvest is best-effort
+        return [], {}
+
+
+def _detour_feed_html(
+    request: Request,
+    fresh_candidates: list,
+    match: dict,
+    home_iata: str,
+) -> str:
+    """Build Detour section HTML from quest-seeded candidates.
+
+    Fresh legs from the just-finished quest come first, then the stored pool
+    filtered by route (origin + this query's destinations) and date
+    proximity fills up to 5 — never unrelated trips.  Returns "" when
+    nothing matches so the Detour section stays button-triggered only.
+    """
+    try:
+        merged = list(fresh_candidates or [])
+        match_dests = (match or {}).get("destinations") or []
+        if len(merged) < 5 and match_dests:
+            from yonder.detour_candidates import find_candidates as _find_dc
+
+            stored = _find_dc(
+                home_iata,
+                destinations=match_dests,
+                depart_date_iso=(match or {}).get("depart_date"),
+                limit=5,
+            )
+            seen = {c.get("route_key") for c in merged if c.get("route_key")}
+            for s in stored:
+                if s.get("route_key") not in seen:
+                    merged.append(s)
+                    seen.add(s.get("route_key"))
+                    if len(merged) >= 5:
+                        break
+        if merged:
+            return _render_detour_candidates_html(request, merged)
+    except Exception:  # noqa: BLE001 — detour candidates are optional
+        pass
+    return ""
 
 
 async def _run_eager_quest(
@@ -3205,11 +3333,21 @@ async def _run_eager_quest(
         except Exception:  # noqa: BLE001 — briefs are optional garnish
             place_books = {}
 
+    # Harvest detour candidates from quest legs that have connection stops.
+    # Store to the shared pool so future queries can use them even after this
+    # job expires; pass the fresh list into the job payload so the status
+    # endpoint can render them immediately without a second DB query.
+    _det_candidates, _det_match = _harvest_quest_detour(
+        quest_ideas, home_iata, vibe, depart_dt
+    )
+
     _qjobs.set_done(
         job_id,
         quest_panel=quest_panel,
         place_books=place_books,
         ok=bool(quest_ideas),
+        detour_candidates=_det_candidates,
+        detour_match=_det_match,
     )
 
 
@@ -3254,7 +3392,20 @@ async def quest_status_api(job_id: str, request: Request):
         vibe=_vibe,
         place_books=job.get("place_books") or {},
     )
-    return JSONResponse({"status": "done", "ok": bool(job.get("ok")), "html": html})
+
+    _detour_html = _detour_feed_html(
+        request,
+        job.get("detour_candidates") or [],
+        job.get("detour_match") or {},
+        _home,
+    )
+
+    return JSONResponse({
+        "status": "done",
+        "ok": bool(job.get("ok")),
+        "html": html,
+        "detour_html": _detour_html,
+    })
 
 
 @app.post("/api/detour/plan")

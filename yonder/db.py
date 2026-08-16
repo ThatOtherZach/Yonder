@@ -396,6 +396,28 @@ CREATE TABLE IF NOT EXISTS quest_jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_quest_jobs_created ON quest_jobs(created_at);
 
+-- Detour candidate pool: quest-seeded legs with connection stops.
+-- Deduplicated by route (origin|stop|destination); re-runs refresh.
+CREATE TABLE IF NOT EXISTS detour_candidates (
+    route_key TEXT PRIMARY KEY,
+    origin TEXT NOT NULL,
+    stop_iata TEXT NOT NULL,
+    stop_city TEXT,
+    destination TEXT NOT NULL,
+    depart_date TEXT,
+    price REAL,
+    currency TEXT NOT NULL DEFAULT 'USD',
+    display_price TEXT,
+    booking_url TEXT,
+    google_flights_url TEXT,
+    fare_note TEXT,
+    vibe TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'quest',
+    leg_direction TEXT,
+    harvested_at DOUBLE PRECISION NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dc_origin ON detour_candidates(origin, harvested_at DESC);
+
 CREATE TABLE IF NOT EXISTS session_prefs (
     session_id TEXT NOT NULL,
     key TEXT NOT NULL,

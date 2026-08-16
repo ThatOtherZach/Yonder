@@ -1,0 +1,65 @@
+{#
+  Quest-seeded detour candidates partial.
+  Variables:
+    candidates — list of detour candidate dicts (each has origin, stop_iata,
+                 destination, depart_date, price, currency, display_price,
+                 booking_url, google_flights_url, age_label)
+#}
+{% if candidates %}
+<div class="card" id="adv-results">
+  <h2>Detour</h2>
+  <p class="sub">
+    {{ candidates|length }} quest snapshot{{ 's' if candidates|length != 1 else '' }}
+    &middot; priced while planning your Quest
+  </p>
+  <div class="pass-stack">
+    {% for c in candidates %}
+    <div class="pass-card" style="padding:1rem 1.25rem 0.9rem;">
+      {# Route line: origin → stop (highlighted) → destination #}
+      <div style="display:flex;align-items:center;gap:0.45rem;font-weight:700;font-size:1.05rem;letter-spacing:0.02em;margin-bottom:0.4rem;">
+        <span>{{ c.origin }}</span>
+        <span style="opacity:0.45;font-weight:400;">&#8594;</span>
+        <span style="color:var(--accent,#e6b450)">{{ c.stop_iata }}</span>
+        <span style="opacity:0.45;font-weight:400;">&#8594;</span>
+        <span>{{ c.destination }}</span>
+      </div>
+
+      {# Pills row: price, date, source label #}
+      <div class="pills" style="margin:0 0 0.5rem;">
+        {% if c.price %}
+          <span class="pill" style="background:var(--good,#3cb371);color:#fff;font-weight:600;">
+            {{ c.currency }} {{ '%.0f'|format(c.price) }}
+          </span>
+        {% elif c.display_price %}
+          <span class="pill" style="background:var(--good,#3cb371);color:#fff;font-weight:600;">
+            {{ c.display_price }}
+          </span>
+        {% else %}
+          <span class="pill" style="opacity:0.7;">{{ c.fare_note or "Fare not held — check live fares" }}</span>
+        {% endif %}
+        {% if c.depart_date %}
+          <span class="pill">{{ c.depart_date }}</span>
+        {% endif %}
+        <span class="pill" style="opacity:0.6;font-size:0.82em;">
+          Quest snapshot &middot; {{ c.age_label }}
+        </span>
+      </div>
+
+      {# Book / Check Fares button — unpriced candidates push the affiliate
+         link for the selected flights so travelers can check live fares #}
+      {% set _book_url = c.booking_url or c.google_flights_url %}
+      {% if _book_url %}
+      <a href="{{ _book_url }}"
+         target="_blank" rel="noopener noreferrer"
+         style="display:inline-block;padding:0.3rem 0.9rem;background:var(--accent,#e6b450);color:#000;border-radius:6px;font-weight:700;text-decoration:none;font-size:0.88rem;">
+        {{ "Book" if (c.price or c.display_price) else "Check Fares" }} &#8594;
+      </a>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <p class="muted" style="margin-top:0.6rem;font-size:0.8em;opacity:0.7;">
+    Pricing snapshots from your Quest. For a fresh live search, use the Plan a Detour button.
+  </p>
+</div>
+{% endif %}

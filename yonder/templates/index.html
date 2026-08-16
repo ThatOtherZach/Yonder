@@ -3125,6 +3125,19 @@
         bootPlanQuestButton();
       }
 
+      // Prepend quest-seeded detour candidates into the Detour section when
+      // it has no live results yet.  Insert before the existing button card
+      // so the Plan a Detour button (live-search fallback) stays visible below.
+      function _injectDetourCandidates(detourHtml) {
+        if (!detourHtml) return;
+        var detourEl = document.getElementById("detour-results");
+        if (!detourEl || detourEl.querySelector("#adv-results")) return;
+        var tmp = document.createElement("div");
+        tmp.innerHTML = detourHtml;
+        var card = tmp.firstElementChild;
+        if (card) detourEl.insertBefore(card, detourEl.firstChild);
+      }
+
       // On page load: restore a previously-planned Quest from sessionStorage
       // without making a new /api/quest/plan call.
       function hydrateQuestFromStorage() {
@@ -3361,6 +3374,9 @@
                 // Persist the HTML so a page refresh restores the card without a new AI call
                 _saveQuestToStorage(prompt, origin, json.html);
                 _afterQuestInject(questResults);
+                // Manual Plan Quest also feeds the Detour section from
+                // this quest's finished legs, same as the eager job path.
+                _injectDetourCandidates(json.detour_html);
               } else {
                 questResults.innerHTML = '<div class="card" id="quest-results-card"><h2>Quest</h2><p class="muted quest-error" role="alert">' + (json.error || "Something went wrong — try again.") + '</p><div id="quest-card-body"><button type="button" class="btn-plan-quest" id="btn-plan-quest">Try again</button></div></div>';
                 // Re-bind the Plan a Quest / retry button for any newly injected button
@@ -3450,6 +3466,7 @@
                   var origin = originEl ? (originEl.value || "").trim().toUpperCase() : "";
                   if (prompt) _saveQuestToStorage(prompt, origin, json.html);
                   _afterQuestInject(qr);
+                  _injectDetourCandidates(json.detour_html);
                 } else {
                   // Empty/error partials carry their own retry button when relevant
                   bootPlanQuestButton();
