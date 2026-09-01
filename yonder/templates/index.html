@@ -113,19 +113,6 @@
     .quest-vibe-shuffle.did-shuffle { transform: scaleX(-1); }
     label.quest-origin-label,
     label.quest-date-label { height: 2.75rem; }
-    /* ── Quest eager-loader staged progress ── */
-    .quest-eager-loader { padding: 0.4rem 0 0.2rem; }
-    .quest-stage-msg {
-      font-size: 0.95rem;
-      color: var(--muted);
-      margin: 0 0 0.3rem;
-      animation: pb-pulse 1.4s ease-in-out infinite;
-    }
-    .quest-expect-msg {
-      font-size: 0.82rem;
-      color: var(--muted);
-      margin: 0 0 0.45rem;
-    }
     /* Arrival fade-slide when results replace the loader */
     @keyframes quest-arrive {
       from { opacity: 0; transform: translateY(6px); }
@@ -1686,11 +1673,8 @@
         </div>
         <div id="quest-card-body">
           {% if quest_job_id is defined and quest_job_id %}
-          <div class="quest-eager-loader" id="quest-progress" role="status" aria-live="polite"
+          <div id="quest-progress" role="status" aria-live="polite"
             data-quest-job="{{ quest_job_id }}">
-            <p class="quest-stage-msg" id="quest-stage-msg">🗺️ Reading your vibe&hellip;</p>
-            <p class="quest-expect-msg">Crafting a roundtrip adventure — up to a minute</p>
-            <p class="fs-progress-promo pb-fn-promo" style="margin:0"></p>
           </div>
           {% else %}
           <button type="button" class="btn-plan-quest" id="btn-plan-quest">
@@ -3410,37 +3394,69 @@
         if (!jobId) return;
         var started = Date.now();
         var MAX_MS = 175000; // hard client budget — covers the server's 2×80s (retry-on-timeout) guard
+        var questProgress = null;
 
-        function _retryCard(msg) {
-          var questResults = document.getElementById("quest-results");
-          if (!questResults) return;
-          questResults.innerHTML = '<div class="card" id="quest-results-card"><h2>Quest</h2><p class="muted quest-error" role="alert">' + msg + '</p><div id="quest-card-body"><button type="button" class="btn-plan-quest" id="btn-plan-quest">Try again</button></div></div>';
-          bootPlanQuestButton();
-        }
-
-        // Stage → human-readable label for the loader copy
+        // Keep the server's stages as the source of truth for this eager job.
+        // The controller's normal percentage-based stages are useful for a
+        // generic search, but Quest can report more precise milestones.
         var _STAGE_LABELS = {
           "reading_vibe":    "\uD83D\uDDFA\uFE0F Reading your vibe\u2026",
           "scouting_routes": "\uD83E\uDDED Scouting overland routes\u2026",
           "pricing_flights": "\u2708\uFE0F Pricing the best flights\u2026"
         };
 
+        if (typeof window !== "undefined" &&
+            window.YonderProgress &&
+            window.YonderProgress.ProgressController) {
+          questProgress = new window.YonderProgress.ProgressController({
+            mode: "adventure",
+            title: "Planning your Quest\u2026",
+            expectedMs: 65000, // grok-4.5 typically needs 50-70s to draft quest ideas
+            skipAfterMs: 0, // The eager job has no cancel endpoint.
+            stages: [{ at: 0, label: _STAGE_LABELS.reading_vibe }],
+            container: progressEl
+          });
+          questProgress.start();
+        }
+
+        function _removeLoading() {
+          if (questProgress) {
+            questProgress.remove();
+            questProgress = null;
+          }
+        }
+
+        function _retryCard(msg) {
+          _removeLoading();
+          var questResults = document.getElementById("quest-results");
+          if (!questResults) return;
+          questResults.innerHTML = '<div class="card" id="quest-results-card"><h2>Quest</h2><p class="muted quest-error" role="alert">' + msg + '</p><div id="quest-card-body"><button type="button" class="btn-plan-quest" id="btn-plan-quest">Try again</button></div></div>';
+          bootPlanQuestButton();
+        }
+
         function _updateStageLabel(stage) {
-          var el = document.getElementById("quest-stage-msg");
-          if (!el || !stage) return;
           var label = _STAGE_LABELS[stage];
-          if (label) el.textContent = label;
+          if (!label) return;
+          if (questProgress && typeof questProgress.setStage === "function") {
+            questProgress.setStage(label);
+          }
         }
 
         function tick() {
           var questResults = document.getElementById("quest-results");
           // Panel gone (results cleared) or placeholder replaced — stop polling
-          if (!questResults || !questResults.querySelector("[data-quest-job]")) return;
+          if (!questResults || !questResults.querySelector("[data-quest-job]")) {
+            _removeLoading();
+            return;
+          }
           fetch("/api/quest/status/" + encodeURIComponent(jobId))
             .then(function (r) { return r.json(); })
             .then(function (json) {
               var qr = document.getElementById("quest-results");
-              if (!qr || !qr.querySelector("[data-quest-job]")) return;
+              if (!qr || !qr.querySelector("[data-quest-job]")) {
+                _removeLoading();
+                return;
+              }
               if (json.status === "pending") {
                 if (Date.now() - started > MAX_MS) {
                   _retryCard("The AI took too long \u2014 try again.");
@@ -3451,6 +3467,7 @@
                 return;
               }
               if (json.html) {
+                _removeLoading();
                 // Animate the swap so a user who waited sees the payoff
                 if (qr.classList) qr.classList.add("quest-arriving");
                 setTimeout(function() { if (qr.classList) qr.classList.remove("quest-arriving"); }, 500);

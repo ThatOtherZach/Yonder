@@ -288,6 +288,7 @@
     this._skipped = false;
     this._skipShown = false;
     this._storyHint = false;
+    this._stageOverride = null;
   }
 
   ProgressController.prototype.start = function () {
@@ -309,12 +310,13 @@
     if (hint) {
       var aimS = Math.round(this.expectedMs / 1000);
       var skipS = Math.round(this.skipAfterMs / 1000);
-      hint.textContent =
-        "Aiming for ~" +
-        aimS +
-        "s. After " +
-        skipS +
-        "s you can Skip for fares only — wait longer for field notes.";
+      hint.textContent = this.skipAfterMs > 0
+        ? "Aiming for ~" +
+          aimS +
+          "s. After " +
+          skipS +
+          "s you can Skip for fares only — wait longer for field notes."
+        : "Aiming for ~" + aimS + "s. Hang tight while we craft field notes.";
     }
     var skipBtn = document.getElementById("fs-progress-skip");
     if (skipBtn) {
@@ -352,7 +354,8 @@
         document.getElementById("fs-progress-pct").textContent = pct + "%";
         document.getElementById("fs-progress-elapsed").textContent =
           Math.floor(elapsed / 1000) + "s";
-        document.getElementById("fs-progress-stage").textContent = stageFor(p, self.stages);
+        document.getElementById("fs-progress-stage").textContent =
+          self._stageOverride || stageFor(p, self.stages);
         if (
           !self._skipShown &&
           self.skipAfterMs > 0 &&
@@ -400,6 +403,14 @@
           EMOJIS[self._msgIdx % EMOJIS.length];
       }, 2800)
     );
+  };
+
+  /** Override the displayed stage when a backend reports a more precise milestone. */
+  ProgressController.prototype.setStage = function (stage) {
+    if (!stage) return;
+    this._stageOverride = String(stage);
+    var stageEl = document.getElementById("fs-progress-stage");
+    if (stageEl) stageEl.textContent = this._stageOverride;
   };
 
   ProgressController.prototype._showSkip = function () {
