@@ -769,6 +769,75 @@
       <span class="bp-iata">{{ home_iata or '—' }}</span>
     </div>
 
+    {# Two priced legs #}
+    <div class="bp-legs">
+      {# Inbound: home → entry city #}
+      <div class="bp-leg">
+        <div class="codes">{{ home_iata }} → {{ idea.entry_iata }}</div>
+        <div class="fare">
+          {% if ib_missing %}
+            {% if mode == 'share' %}—{% else %}
+            <span class="cf-slot"
+                  data-cf-origin="{{ home_iata }}"
+                  data-cf-dest="{{ idea.entry_iata }}"
+                  data-cf-depart="{{ idea.depart_date or '' }}"
+                  data-cf-return=""
+                  data-cf-adults="1"
+                  data-cf-currency="{{ idea.currency or '' }}">
+              <button type="button" class="btn-check-fares">Check Fares</button>
+              <span class="cf-error" hidden></span>
+            </span>
+            {% if ib_leg and ib_leg.offer and ib_leg.offer.fare_note %}<span class="fare-note">{{ ib_leg.offer.fare_note }}</span>{% endif %}
+            {% endif %}
+          {% elif ib_leg and ib_leg.offer %}
+            {{ ib_leg.offer.display_price_base or ib_leg.offer.display_price or ('~' ~ idea.currency ~ ' ' ~ '%.0f'|format(ib_leg.offer.price)) }}
+          {% else %}—{% endif %}
+        </div>
+        <div class="meta">
+          {% if idea.depart_date %}{{ idea.depart_date | fmt_date }}{% endif %}
+          · one-way in
+          {% if ib_leg and ib_leg.offer and not ib_missing %}
+            · {{ ib_leg.offer.airlines|join(', ') or '—' }}
+            · {{ 'Direct' if ib_leg.offer.stops_out == 0 else (ib_leg.offer.stops_out|string ~ ' stop' ~ ('s' if ib_leg.offer.stops_out != 1 else '')) }}
+          {% elif ib_leg and ib_leg.error %}· {{ ib_leg.error[:48] }}{% endif %}
+        </div>
+        {{ leg_stops(ib_leg.offer.segments_out if (ib_leg and ib_leg.offer and not ib_missing) else []) }}
+      </div>
+
+      {# Outbound: exit city → home #}
+      <div class="bp-leg">
+        <div class="codes">{{ idea.exit_iata }} → {{ home_iata }}</div>
+        <div class="fare">
+          {% if ob_missing %}
+            {% if mode == 'share' %}—{% else %}
+            <span class="cf-slot"
+                  data-cf-origin="{{ idea.exit_iata }}"
+                  data-cf-dest="{{ home_iata }}"
+                  data-cf-depart="{{ idea.outbound_date or '' }}"
+                  data-cf-return=""
+                  data-cf-adults="1"
+                  data-cf-currency="{{ idea.currency or '' }}">
+              <button type="button" class="btn-check-fares">Check Fares</button>
+              <span class="cf-error" hidden></span>
+            </span>
+            {% if ob_leg and ob_leg.offer and ob_leg.offer.fare_note %}<span class="fare-note">{{ ob_leg.offer.fare_note }}</span>{% endif %}
+            {% endif %}
+          {% elif ob_leg and ob_leg.offer %}
+            {{ ob_leg.offer.display_price_base or ob_leg.offer.display_price or ('~' ~ idea.currency ~ ' ' ~ '%.0f'|format(ob_leg.offer.price)) }}
+          {% else %}—{% endif %}
+        </div>
+        <div class="meta">
+          {% if idea.outbound_date %}{{ idea.outbound_date | fmt_date }}{% endif %}
+          · one-way out
+          {% if ob_leg and ob_leg.offer and not ob_missing %}
+            · {{ ob_leg.offer.airlines|join(', ') or '—' }}
+            · {{ 'Direct' if ob_leg.offer.stops_out == 0 else (ob_leg.offer.stops_out|string ~ ' stop' ~ ('s' if ob_leg.offer.stops_out != 1 else '')) }}
+          {% elif ob_leg and ob_leg.error %}· {{ ob_leg.error[:48] }}{% endif %}
+        </div>
+        {{ leg_stops(ob_leg.offer.segments_out if (ob_leg and ob_leg.offer and not ob_missing) else []) }}
+      </div>
+    </div>
+
     <p class="bp-cities">{{ idea.entry_city }} → overland → {{ idea.exit_city }}</p>
 
     {% if idea.overland_narrative %}
@@ -866,75 +935,6 @@
     <p class="bp-note" style="font-size:0.78rem;margin:0.15rem 0 0.5rem;color:var(--muted)">via {{ s.model_source }}</p>
     {% endif %}
     {% endif %}
-
-    {# Two priced legs #}
-    <div class="bp-legs">
-      {# Inbound: home → entry city #}
-      <div class="bp-leg">
-        <div class="codes">{{ home_iata }} → {{ idea.entry_iata }}</div>
-        <div class="fare">
-          {% if ib_missing %}
-            {% if mode == 'share' %}—{% else %}
-            <span class="cf-slot"
-                  data-cf-origin="{{ home_iata }}"
-                  data-cf-dest="{{ idea.entry_iata }}"
-                  data-cf-depart="{{ idea.depart_date or '' }}"
-                  data-cf-return=""
-                  data-cf-adults="1"
-                  data-cf-currency="{{ idea.currency or '' }}">
-              <button type="button" class="btn-check-fares">Check Fares</button>
-              <span class="cf-error" hidden></span>
-            </span>
-            {% if ib_leg and ib_leg.offer and ib_leg.offer.fare_note %}<span class="fare-note">{{ ib_leg.offer.fare_note }}</span>{% endif %}
-            {% endif %}
-          {% elif ib_leg and ib_leg.offer %}
-            {{ ib_leg.offer.display_price_base or ib_leg.offer.display_price or ('~' ~ idea.currency ~ ' ' ~ '%.0f'|format(ib_leg.offer.price)) }}
-          {% else %}—{% endif %}
-        </div>
-        <div class="meta">
-          {% if idea.depart_date %}{{ idea.depart_date | fmt_date }}{% endif %}
-          · one-way in
-          {% if ib_leg and ib_leg.offer and not ib_missing %}
-            · {{ ib_leg.offer.airlines|join(', ') or '—' }}
-            · {{ 'Direct' if ib_leg.offer.stops_out == 0 else (ib_leg.offer.stops_out|string ~ ' stop' ~ ('s' if ib_leg.offer.stops_out != 1 else '')) }}
-          {% elif ib_leg and ib_leg.error %}· {{ ib_leg.error[:48] }}{% endif %}
-        </div>
-        {{ leg_stops(ib_leg.offer.segments_out if (ib_leg and ib_leg.offer and not ib_missing) else []) }}
-      </div>
-
-      {# Outbound: exit city → home #}
-      <div class="bp-leg">
-        <div class="codes">{{ idea.exit_iata }} → {{ home_iata }}</div>
-        <div class="fare">
-          {% if ob_missing %}
-            {% if mode == 'share' %}—{% else %}
-            <span class="cf-slot"
-                  data-cf-origin="{{ idea.exit_iata }}"
-                  data-cf-dest="{{ home_iata }}"
-                  data-cf-depart="{{ idea.outbound_date or '' }}"
-                  data-cf-return=""
-                  data-cf-adults="1"
-                  data-cf-currency="{{ idea.currency or '' }}">
-              <button type="button" class="btn-check-fares">Check Fares</button>
-              <span class="cf-error" hidden></span>
-            </span>
-            {% if ob_leg and ob_leg.offer and ob_leg.offer.fare_note %}<span class="fare-note">{{ ob_leg.offer.fare_note }}</span>{% endif %}
-            {% endif %}
-          {% elif ob_leg and ob_leg.offer %}
-            {{ ob_leg.offer.display_price_base or ob_leg.offer.display_price or ('~' ~ idea.currency ~ ' ' ~ '%.0f'|format(ob_leg.offer.price)) }}
-          {% else %}—{% endif %}
-        </div>
-        <div class="meta">
-          {% if idea.outbound_date %}{{ idea.outbound_date | fmt_date }}{% endif %}
-          · one-way out
-          {% if ob_leg and ob_leg.offer and not ob_missing %}
-            · {{ ob_leg.offer.airlines|join(', ') or '—' }}
-            · {{ 'Direct' if ob_leg.offer.stops_out == 0 else (ob_leg.offer.stops_out|string ~ ' stop' ~ ('s' if ob_leg.offer.stops_out != 1 else '')) }}
-          {% elif ob_leg and ob_leg.error %}· {{ ob_leg.error[:48] }}{% endif %}
-        </div>
-        {{ leg_stops(ob_leg.offer.segments_out if (ob_leg and ob_leg.offer and not ob_missing) else []) }}
-      </div>
-    </div>
 
     {# Booking links + saved actions #}
     <div class="bp-actions">
