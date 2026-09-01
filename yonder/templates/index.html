@@ -2721,6 +2721,7 @@
           var vibe      = container.dataset.vibe  || "";
           var dest      = container.dataset.dest  || "";
           var query     = container.dataset.query || "";
+          var questFeedback = container.dataset.questFeedback === "1";
 
           // Visual feedback immediately
           var upBtn   = container.querySelector(".thumb-up");
@@ -2741,7 +2742,18 @@
               dest_iata:    dest,
               query:        query,
             }),
-          }).catch(function () {});
+          }).then(function (response) {
+            if (!response.ok) throw new Error("feedback request failed");
+          }).catch(function () {
+            // Quest cards are streamed/generated results, so let a traveler
+            // retry if the feedback request did not make it to the server.
+            // Keep Escape and Detour's established behavior unchanged.
+            if (!questFeedback) return;
+            upBtn.classList.remove("voted-up");
+            downBtn.classList.remove("voted-down");
+            upBtn.disabled = false;
+            downBtn.disabled = false;
+          });
         }, true);
       }
 

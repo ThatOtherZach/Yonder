@@ -156,8 +156,14 @@ class TestQuestCardsRender:
         assert "Hanoi" in html
         assert "Bangkok" in html
 
-        # Stub text
-        assert "two one-way tickets" in html
+        # Explore Quest cards use the shared vibe-feedback controls instead of
+        # the old static fare sublabel.
+        assert 'class="bp-thumbs"' in html
+        assert 'data-quest-feedback="1"' in html
+        assert 'data-vibe="adventure"' in html
+        assert 'data-dest="HAN"' in html
+        assert f'data-query="{_PROMPT}"' in html
+        assert "two one-way tickets" not in html
 
         # Mock fares are never shown — Check Fares buttons appear instead
         assert "btn-check-fares" in html, (
@@ -180,7 +186,8 @@ class TestQuestCardsRender:
         assert 'class="boarding-pass is-adventure is-quest"' in html
         card = html.split("</article>")[0]
         assert "~US$500" in card
-        assert "two one-way tickets" in card
+        assert 'class="bp-thumbs"' in card
+        assert 'data-quest-feedback="1"' in card
         assert "btn-check-fares" not in card
         # Combined total = 500 + 500
         assert "1,000" in card or "1000" in card

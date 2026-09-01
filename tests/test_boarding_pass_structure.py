@@ -144,6 +144,20 @@ def _minimal_detour_it() -> Any:
     )
 
 
+def _minimal_quest_idea() -> Any:
+    from yonder.adventure import QuestIdea
+
+    return QuestIdea(
+        entry_iata="HAN",
+        exit_iata="BKK",
+        entry_city="Hanoi",
+        exit_city="Bangkok",
+        overland_narrative="Ride south through Vietnam.",
+        theme_primary="#e6b450",
+        theme_label="Adventure",
+    )
+
+
 def _render_macro(template_src: str, **ctx) -> str:
     """Render an inline Jinja2 snippet using the app's configured env."""
     env = web_module.templates.env
@@ -368,6 +382,47 @@ class TestExploreHooks:
         assert 'class="bp-thumbs"' in html, (
             "bp-thumbs element missing from detour explore card"
         )
+
+    def test_quest_explore_has_feedback_context(self):
+        html = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}"
+            "{{ bp.quest_card('explore', idea, 0, home_iata='YVR', "
+            "quest_vibe='adventure', quest_prompt=prompt) }}",
+            idea=_minimal_quest_idea(),
+            prompt='A "slow" trip & good food',
+        )
+        assert 'class="bp-thumbs"' in html
+        assert 'data-quest-feedback="1"' in html
+        assert 'data-vibe="adventure"' in html
+        assert 'data-dest="HAN"' in html
+        assert 'data-query="A &#34;slow&#34; trip &amp; good food"' in html
+        assert "two one-way tickets" not in html
+
+    def test_quest_saved_and_shared_have_no_feedback(self):
+        idea = _minimal_quest_idea()
+        for mode in ("saved", "share"):
+            html = _render_macro(
+                "{% import '_boarding_pass.html' as bp %}"
+                "{{ bp.quest_card(mode, idea, 0, home_iata='YVR', "
+                "quest_vibe='adventure', quest_prompt='prompt') }}",
+                mode=mode,
+                idea=idea,
+            )
+            assert 'class="bp-thumbs"' not in html
+            assert 'data-quest-feedback="1"' not in html
+
+    def test_quest_explore_handles_blank_vibe_and_destination(self):
+        idea = _minimal_quest_idea()
+        idea.entry_iata = ""
+        html = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}"
+            "{{ bp.quest_card('explore', idea, 0, quest_vibe='', quest_prompt='') }}",
+            idea=idea,
+        )
+        assert 'class="bp-thumbs"' in html
+        assert 'data-vibe=""' in html
+        assert 'data-dest=""' in html
+        assert 'data-query=""' in html
 
     def test_escape_has_field_note_slot(self):
         html = _escape_explore_html()

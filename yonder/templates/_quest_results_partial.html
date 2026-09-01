@@ -19,7 +19,7 @@
   <div class="pass-stack">
     {% for idea in _qp.result %}
     {% set share = share_quest(request, idea, q_home) %}
-    {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe, share=share, place_books=_place_books) }}
+    {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe, quest_prompt=(_qp.ask if _qp.ask is defined else ''), share=share, place_books=_place_books) }}
     {% endfor %}
   </div>
 </div>

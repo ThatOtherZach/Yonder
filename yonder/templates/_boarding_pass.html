@@ -724,7 +724,7 @@
 {% endmacro %}
 
 
-{% macro quest_card(mode, idea, idx, home_iata='', quest_vibe='', share=none, s=none, place_books=none) %}
+{% macro quest_card(mode, idea, idx, home_iata='', quest_vibe='', quest_prompt='', share=none, s=none, place_books=none) %}
 {# ── Quest: open-jaw overland adventure card ──────────────────────────────────
    idea: QuestIdea Pydantic model or dict
    home_iata: the traveler's home airport IATA
@@ -990,7 +990,16 @@
         <span class="price-amt" style="font-size:1rem">—</span>
         {% endif %}
       </div>
-      <div style="font-size:0.76rem;color:var(--muted);margin-top:0.25rem">two one-way tickets</div>
+      {% if mode == 'explore' %}
+      <div class="bp-thumbs"
+           data-quest-feedback="1"
+           data-vibe="{{ quest_vibe | e }}"
+           data-dest="{{ (idea.entry_iata or '') | e }}"
+           data-query="{{ quest_prompt | e }}">
+        <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">👍</button>
+        <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">👎</button>
+      </div>
+      {% endif %}
     </div>
     {% if mode == 'explore' and share and share.qr_src %}
     <div class="bp-stub-qr">
