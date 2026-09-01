@@ -313,7 +313,7 @@
       </div>
     </div>
 
-    {# ── Save strip (hidden once saved, or if localStorage shows already saved) ── #}
+    {# ── Save strip (Quest state is resolved server-side from its bookmark) ── #}
     {% if share.kind in ('escape', 'detour', 'quest') %}
     {% if already_bookmarked %}
     <div class="trip-save-strip">
@@ -536,24 +536,40 @@
     var slug = {{ share.slug | tojson }};
     var kind = {{ share.kind | tojson }};
     var title = {{ share.title | tojson }};
+    var questSavedId = {{ (quest_saved_id or "") | tojson }};
     var lsKey = "ysaved_" + slug;
     var strip = document.getElementById("trip-save-strip");
     var btn   = document.getElementById("btn-trip-save");
     var msg   = document.getElementById("trip-save-msg");
     if (!strip || !btn) return;
 
-    // Already saved this browser session — hide immediately.
-    if (localStorage.getItem(lsKey)) { strip.style.display = "none"; return; }
+    // Escape and Detour retain their local hint for backwards compatibility.
+    // Quest saves are keyed by the exact global row and resolved on the
+    // server, so a route-level hint must never hide their Save control.
+    if (kind !== "quest" && localStorage.getItem(lsKey)) {
+      strip.style.display = "none";
+      return;
+    }
+
+    function resetSaveButton(message) {
+      btn.textContent = "★ Save this trip";
+      btn.disabled = false;
+      if (msg) msg.textContent = message || "Couldn't save — try again.";
+    }
 
     btn.addEventListener("click", function () {
       btn.disabled = true;
       btn.textContent = "Saving…";
 
       var payloadEl = document.getElementById("trip-share-payload");
-      if (!payloadEl) return;
+      if (!payloadEl) {
+        resetSaveButton("Couldn't read this trip — try again.");
+        return;
+      }
       var p;
       try { p = JSON.parse(payloadEl.textContent); } catch (e) {
-        btn.disabled = false; btn.textContent = "★ Save this trip"; return;
+        resetSaveButton("Couldn't read this trip — try again.");
+        return;
       }
 
       var body;
@@ -565,7 +581,11 @@
             + " → overland → "
             + (idea.exit_city || idea.exit_iata || "?");
         }
-        body = { itinerary: idea, trip_meta: Object.assign({}, p.trip_meta || {}, { origin: p.home_iata || "" }) };
+        var questMeta = Object.assign({}, p.trip_meta || {}, {
+          origin: p.home_iata || ""
+        });
+        if (questSavedId) questMeta.saved_id = questSavedId;
+        body = { itinerary: idea, trip_meta: questMeta };
       } else if (kind === "detour") {
         var it = p.itinerary || {};
         it.kind = "detour";
@@ -573,30 +593,40 @@
         body = { itinerary: it, trip_meta: p.trip_meta || {} };
       } else if (kind === "escape") {
         body = { kind: "escape", query: p.query || {}, offer: p.offer || {}, trip_meta: p.trip_meta || {} };
-      } else { return; }
+      } else {
+        resetSaveButton("Couldn't save this trip — try again.");
+        return;
+      }
 
       fetch("/api/saved", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (d && d.ok) {
-          localStorage.setItem(lsKey, "1");
-          btn.textContent = "✓ Saved";
-          if (msg) msg.textContent = "Added to your library.";
-          setTimeout(function () { strip.style.display = "none"; }, 900);
-        } else {
-          btn.textContent = "★ Save this trip";
-          btn.disabled = false;
-          if (msg) msg.textContent = d && d.error ? d.error : "Couldn't save — try again.";
-        }
+      .then(function (r) {
+        return r.json().then(function (d) { return { response: r, data: d }; });
       })
-      .catch(function () {
-        btn.textContent = "★ Save this trip";
-        btn.disabled = false;
-      });
+      .then(function (result) {
+        var r = result.response;
+        var d = result.data;
+        var questSaved = kind === "quest" &&
+          d && d.ok === true &&
+          d.bookmarked === true &&
+          d.id &&
+          (!questSavedId || String(d.id) === String(questSavedId));
+        var saved = kind === "quest" ? questSaved : d && d.ok === true;
+        if (!r.ok || !saved) {
+          resetSaveButton(d && d.error ? d.error : "Couldn't save — try again.");
+          return;
+        }
+        if (kind !== "quest") localStorage.setItem(lsKey, "1");
+        // The server response is authoritative for Quest shares; never
+        // persist a route-level client hint for them.
+        btn.textContent = "✓ Saved";
+        if (msg) msg.textContent = "Added to your library.";
+        setTimeout(function () { strip.style.display = "none"; }, 900);
+      })
+      .catch(function () { resetSaveButton("Couldn't save — try again."); });
     });
   })();
   </script>

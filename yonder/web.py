@@ -4352,17 +4352,25 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
                     brief["poi_picks"] = _share_poi_picks(code)
                     place_books[code] = brief
 
-    # Quest shares: render the Save strip server-side as already-saved when
-    # this browser session has bookmarked the quest (localStorage is only a
-    # secondary hint).
+    # Quest shares: resolve the global library row before rendering so the
+    # browser can bookmark the exact quest record.  Old shares may not carry
+    # saved_id, so retain the route-signature lookup as a compatibility
+    # fallback.
     _already_bookmarked = False
+    _quest_saved_id = ""
     if share.kind == "quest":
         try:
             from yonder.saved import bookmarked_quest_ids, find_global_quest_id
 
-            _q_saved_id = str((p.get("trip_meta") or {}).get("saved_id") or "").strip()
-            if not _q_saved_id:
-                _q_saved_id = (
+            _candidate_id = str(
+                (p.get("trip_meta") or {}).get("saved_id") or ""
+            ).strip()
+            if _candidate_id:
+                candidate = get_saved(_candidate_id)
+                if candidate and (candidate.kind or "").lower() == "quest":
+                    _quest_saved_id = _candidate_id
+            if not _quest_saved_id:
+                _quest_saved_id = (
                     find_global_quest_id(
                         p.get("idea") or {},
                         origin=str(p.get("home_iata") or "").upper() or None,
@@ -4371,11 +4379,12 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
                     )
                     or ""
                 )
-            if _q_saved_id:
-                _already_bookmarked = _q_saved_id in bookmarked_quest_ids(
+            if _quest_saved_id:
+                _already_bookmarked = _quest_saved_id in bookmarked_quest_ids(
                     owner_sess=_req_sess(request)
                 )
         except Exception:
+            _quest_saved_id = ""
             _already_bookmarked = False
 
     return templates.TemplateResponse(
@@ -4393,6 +4402,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
             "place_books": place_books,
             "share_vibe": share_vibe,
             "already_bookmarked": _already_bookmarked,
+            "quest_saved_id": _quest_saved_id,
             "og_image": f"{base}/static/share_bg.jpg",
         },
     )
@@ -4713,7 +4723,11 @@ async def api_save_itinerary(request: Request):
             )
         if target_id:
             try:
-                bookmark_quest(target_id, owner_sess=owner)
+                if not bookmark_quest(target_id, owner_sess=owner):
+                    return JSONResponse(
+                        {"ok": False, "error": "Quest is no longer available"},
+                        status_code=400,
+                    )
             except Exception as exc:  # noqa: BLE001
                 return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
             resp = JSONResponse(
@@ -4735,7 +4749,11 @@ async def api_save_itinerary(request: Request):
         trip_meta.pop("saved_id", None)
         try:
             saved_q = save_itinerary(itinerary, trip_meta=trip_meta, owner_sess=None)
-            bookmark_quest(saved_q.id, owner_sess=owner)
+            if not bookmark_quest(saved_q.id, owner_sess=owner):
+                return JSONResponse(
+                    {"ok": False, "error": "Couldn't add Quest to your library"},
+                    status_code=400,
+                )
         except Exception as exc:  # noqa: BLE001
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
         resp = JSONResponse(

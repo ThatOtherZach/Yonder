@@ -15,6 +15,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+import yonder.share as share_module
 import yonder.web as web_module
 from yonder.saved import (
     bookmark_quest,
@@ -197,3 +198,91 @@ def test_unbookmark_and_find_helpers():
     assert not unbookmark_quest(q.id, owner_sess="sessG")
     assert bookmark_quest("nonexistent", owner_sess="sessG") is False
     assert find_global_quest_id(_quest_it(), origin="YVR", dest="BKK") == q.id
+
+
+def _quest_share(q, *, include_saved_id: bool = True):
+    trip_meta = {"vibe": "adventure"}
+    if include_saved_id:
+        trip_meta["saved_id"] = q.id
+    return share_module.create_share(
+        kind="quest",
+        title=q.title,
+        payload={
+            "idea": q.itinerary,
+            "home_iata": q.origin or "YVR",
+            "trip_meta": trip_meta,
+        },
+    )
+
+
+def test_quest_share_resolves_exact_id_and_first_save_sets_cookie(client, monkeypatch):
+    q = _seed_global_quest()
+    share = _quest_share(q)
+
+    # The share page exposes the global row identity and starts unsaved for a
+    # first-time visitor with no yv_sess cookie.
+    page = client.get(f"/t/{share.id}")
+    assert page.status_code == 200
+    assert f'var questSavedId = "{q.id}"' in page.text
+    assert "★ Save this trip" in page.text
+    assert "Already in your saved trips." not in page.text
+
+    # TestClient speaks plain HTTP; model the browser sending the cookie back
+    # over HTTPS by disabling Secure for this isolated request.
+    monkeypatch.setattr(web_module, "_IS_HTTPS", False)
+    saved = client.post(
+        "/api/saved",
+        json={
+            "itinerary": q.itinerary,
+            "trip_meta": {"origin": q.origin, "saved_id": q.id},
+        },
+    )
+    assert saved.status_code == 200
+    saved_data = saved.json()
+    assert saved_data["ok"] is True
+    assert saved_data["id"] == q.id
+    assert saved_data["bookmarked"] is True
+    assert saved_data["saved_count"] == 0
+    assert "yv_sess=" in saved.headers.get("set-cookie", "")
+    assert q.id in bookmarked_quest_ids(owner_sess=client.cookies.get("yv_sess"))
+
+    # The same browser now sees server-authoritative Saved state and the
+    # bookmark is immediately included in the private Saved page.
+    reloaded = client.get(f"/t/{share.id}")
+    assert "✓ Saved" in reloaded.text
+    assert "Already in your saved trips." in reloaded.text
+    saved_page = client.get("/saved")
+    assert q.title in saved_page.text
+
+
+def test_quest_share_save_is_idempotent_and_same_route_quests_stay_distinct(client):
+    first = _seed_global_quest(entry="First", exit_="Same", entry_iata="BKK", exit_iata="SGN")
+    second = _seed_global_quest(entry="Second", exit_="Same", entry_iata="BKK", exit_iata="SGN")
+    first_share = _quest_share(first)
+    second_share = _quest_share(second)
+    client.cookies.set("yv_sess", "same-route-session")
+
+    first_page = client.get(f"/t/{first_share.id}")
+    assert f'var questSavedId = "{first.id}"' in first_page.text
+    client.post(
+        "/api/saved",
+        json={
+            "itinerary": first.itinerary,
+            "trip_meta": {"origin": first.origin, "saved_id": first.id},
+        },
+    )
+    repeat = client.post(
+        "/api/saved",
+        json={
+            "itinerary": first.itinerary,
+            "trip_meta": {"origin": first.origin, "saved_id": first.id},
+        },
+    )
+    assert repeat.status_code == 200
+    assert bookmarked_quest_ids(owner_sess="same-route-session") == {first.id}
+
+    # A route-level localStorage key must not affect another exact Quest.
+    second_page = client.get(f"/t/{second_share.id}")
+    assert f'var questSavedId = "{second.id}"' in second_page.text
+    assert "★ Save this trip" in second_page.text
+    assert "Already in your saved trips." not in second_page.text
