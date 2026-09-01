@@ -517,7 +517,7 @@
       z-index: 2;
       filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));
     }
-    /* Vibe name pill — now the form's submit button ("Find [vibe] Flights") */
+    /* Vibe name pill — the form's submit button ("Find [vibe]") */
     button.vibe-name-row {
       appearance: none;
       -webkit-appearance: none;
@@ -551,24 +551,7 @@
       outline: 2px solid var(--sky-bright);
       outline-offset: 2px;
     }
-    /* While a search runs (or prompt is empty) only .vibe-name text shows */
-    button.vibe-name-row.is-busy .vibe-name-find,
-    button.vibe-name-row.is-busy .vibe-name-flights,
-    button.vibe-name-row.is-busy .vibe-name-swatch {
-      display: none;
-    }
-    .vibe-name-swatch {
-      flex-shrink: 0;
-      font-size: 1.15rem;
-      line-height: 1;
-      background: none;
-      border: none;
-      width: auto;
-      height: auto;
-    }
-    .vibe-name,
-    .vibe-name-find,
-    .vibe-name-flights {
+    .vibe-name {
       min-width: 0;
       font-family: var(--font-display);
       font-size: 1.05rem;
@@ -1787,8 +1770,8 @@
       var errBox = document.getElementById("ask-client-error");
       var grokReady = {{ "true" if grok_ready else "false" }};
 
-      // Override the vibe-panel button label (e.g. "Planning…"); pass null to
-      // restore the live "Find [emoji] [vibe] Flights" label from the slider.
+      // Override the complete vibe-panel button label (e.g. "Planning…");
+      // pass null to restore the live "Find [vibe]" label from the slider.
       function setBtnLabel(text) {
         var b = getBtn();
         if (!b) return;
@@ -1797,6 +1780,7 @@
           b.classList.add("is-busy");
           if (out) out.textContent = text;
           else b.textContent = text;
+          b.setAttribute("aria-label", text);
         } else {
           b.classList.remove("is-busy");
           var host = document.querySelector("[data-vibe-slider]");
@@ -1804,7 +1788,10 @@
             host && host._vibeSlider && host._vibeSlider.getVibe
               ? host._vibeSlider.getVibe()
               : null;
-          if (out && v) out.textContent = v.label;
+          var label = v ? "Find " + v.label : "What's the vibe?";
+          if (out) out.textContent = label;
+          else b.textContent = label;
+          b.setAttribute("aria-label", label);
         }
       }
       function updateGoButton() {

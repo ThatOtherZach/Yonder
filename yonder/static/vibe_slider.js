@@ -478,17 +478,13 @@
         ? ' id="' + (opts.submitId || host.getAttribute("data-submit-id")) + '"'
         : "") +
       ">" +
-      '    <span class="vibe-name-find" aria-hidden="true">Find</span>' +
-      '    <span class="vibe-name-swatch" aria-hidden="true"></span>' +
       '    <span class="vibe-name" aria-live="polite"></span>' +
-      '    <span class="vibe-name-flights" aria-hidden="true">Flights</span>' +
       "  </button>" +
       "</div>";
 
     var hueEl = host.querySelector(".vibe-hue");
     var hueCursor = host.querySelector(".vibe-hue-cursor");
     var nameOut = host.querySelector(".vibe-name");
-    var nameSwatch = host.querySelector(".vibe-name-swatch");
 
     var h = start._hsv.h;
     var shell = host.closest(".compose-field");
@@ -569,16 +565,16 @@
       var vibe = currentVibe();
       var show = vibe.color;
       hueCursor.style.left = h * 100 + "%";
-      nameOut.textContent = vibe.label;
-      nameOut.style.color = "#ffffff";
-      nameSwatch.textContent = vibe.emoji || "";
       if (nameRow) {
         nameRow.style.backgroundColor = show;
         nameRow.style.borderColor = show;
-        nameRow.setAttribute(
-          "aria-label",
-          "Find " + vibe.label + " Flights"
-        );
+        // Do not interrupt an empty/loading label while the slider syncs.
+        if (!nameRow.classList.contains("is-busy")) {
+          var label = "Find " + vibe.label;
+          nameOut.textContent = label;
+          nameOut.style.color = "#ffffff";
+          nameRow.setAttribute("aria-label", label);
+        }
       }
       hueEl.setAttribute("aria-valuenow", String(Math.round(h * 100)));
       hueEl.setAttribute("aria-valuetext", vibe.label);
