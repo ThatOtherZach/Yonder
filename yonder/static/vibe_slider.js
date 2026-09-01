@@ -37,6 +37,25 @@
     return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
   }
 
+  function contrastInk(hex) {
+    var rgb = hexToRgb(hex);
+    function linear(channel) {
+      var value = channel / 255;
+      return value <= 0.04045
+        ? value / 12.92
+        : Math.pow((value + 0.055) / 1.055, 2.4);
+    }
+    // WCAG relative luminance. Black/white's crossover guarantees at least
+    // 4.58:1 contrast, including saturated mid-light vibe colors.
+    var y =
+      0.2126 * linear(rgb.r) +
+      0.7152 * linear(rgb.g) +
+      0.0722 * linear(rgb.b);
+    var whiteContrast = 1.05 / (y + 0.05);
+    var blackContrast = (y + 0.05) / 0.05;
+    return blackContrast >= whiteContrast ? "#000000" : "#ffffff";
+  }
+
   function rgbToHsv(r, g, b) {
     r /= 255;
     g /= 255;
@@ -499,13 +518,6 @@
       if (map) map.setVibePreview(color || null);
     }
 
-    function contrastInk(hex) {
-      var rgb = hexToRgb(hex);
-      // relative luminance — light vibes get dark label text
-      var y = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
-      return y > 0.62 ? "#1a1200" : "#ffffff";
-    }
-
     function mixToward(hex, toward, t) {
       var a = hexToRgb(hex);
       var b = hexToRgb(toward);
@@ -568,11 +580,13 @@
       if (nameRow) {
         nameRow.style.backgroundColor = show;
         nameRow.style.borderColor = show;
+        // Keep every label readable, including while the empty/loading state
+        // temporarily overrides the selected vibe wording.
+        nameOut.style.color = contrastInk(show);
         // Do not interrupt an empty/loading label while the slider syncs.
         if (!nameRow.classList.contains("is-busy")) {
           var label = "Find " + vibe.label;
           nameOut.textContent = label;
-          nameOut.style.color = "#ffffff";
           nameRow.setAttribute("aria-label", label);
         }
       }
@@ -669,6 +683,7 @@
     mountAll: mountAll,
     indexOfId: indexOfId,
     buildSuggestions: buildSuggestions,
+    contrastInk: contrastInk,
   };
 
   if (document.readyState === "loading") {
