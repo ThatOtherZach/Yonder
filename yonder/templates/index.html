@@ -2562,6 +2562,7 @@
             var offerIdx = b.getAttribute("data-offer-idx");
 
             var questIdx = b.getAttribute("data-quest-idx");
+            var questSavedId = b.getAttribute("data-saved-id") || "";
             var homeIata = b.getAttribute("data-home-iata") || "";
 
             if (questIdx !== null) {
@@ -2585,6 +2586,7 @@
                 chip_source: tripMeta.chip_source || attr.chip_source,
                 search_id: tripMeta.search_id || attr.search_id,
               });
+              if (questSavedId) qMeta.saved_id = questSavedId;
               postSaveAndShare({ itinerary: questData, trip_meta: qMeta }, b, shareUrl);
             } else if (itIdx !== null) {
               // Detour card

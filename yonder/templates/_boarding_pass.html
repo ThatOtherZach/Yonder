@@ -1009,6 +1009,7 @@
       <button type="button" class="bp-stub-share btn-save-and-share"
               data-share-url="{{ share.url }}"
               data-quest-idx="{{ idx }}"
+              data-saved-id="{{ share.saved_id or '' }}"
               data-home-iata="{{ home_iata }}">★ Save</button>
     </div>
     {% elif mode == 'explore' and share %}
@@ -1017,6 +1018,7 @@
       <button type="button" class="bp-stub-share btn-save-and-share"
               data-share-url="{{ share.url }}"
               data-quest-idx="{{ idx }}"
+              data-saved-id="{{ share.saved_id or '' }}"
               data-home-iata="{{ home_iata }}">★ Save</button>
     </div>
     {% elif mode == 'saved' and share and share.qr_src %}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import time
@@ -931,38 +932,142 @@ def list_bookmarked_quests(
     return out
 
 
+_QUEST_ID_EXCLUDED_FIELDS = {
+    "anchor_label",
+    "currency",
+    "display_total",
+    "gap_label",
+    "inbound_fare_missing",
+    "inbound_leg",
+    "model_source",
+    "outbound_fare_missing",
+    "outbound_leg",
+    "theme_accent",
+    "theme_country",
+    "theme_flag_img",
+    "theme_gradient",
+    "theme_label",
+    "theme_primary",
+    "total_price",
+    "vibe",
+}
+
+
+def quest_canonical_key(
+    itinerary: dict[str, Any], *, origin: str | None
+) -> str:
+    """Stable identity for a Quest's route, dates, and creative content.
+
+    Fare snapshots, generated booking links, display currency, and theme
+    decoration are intentionally excluded so repricing the same Quest does not
+    create another global row. Narrative/highlight content remains in the key,
+    keeping similar same-route Quests distinct.
+    """
+    idea = {
+        str(k): v
+        for k, v in (itinerary or {}).items()
+        if str(k) not in _QUEST_ID_EXCLUDED_FIELDS
+    }
+    idea["kind"] = "quest"
+    payload = {
+        "origin": str(origin or "").strip().upper(),
+        "idea": idea,
+    }
+    raw = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def canonical_quest_id(
+    itinerary: dict[str, Any], *, origin: str | None
+) -> str:
+    """Deterministic primary key used for newly canonicalized Quest rows."""
+    return f"quest-{quest_canonical_key(itinerary, origin=origin)[:24]}"
+
+
 def find_global_quest_id(
     itinerary: dict[str, Any], *, origin: str | None, dest: str | None
 ) -> str | None:
-    """Existing quest row matching this idea's route signature, any owner.
+    """Existing global Quest row with the same complete canonical content.
 
-    Quests are global library rows, so unlike _find_duplicate_id this match
-    is intentionally NOT owner-scoped.  Key: origin + entry + exit + title.
+    This is the compatibility path for old share links that predate saved_id.
+    Route/title-only matching is deliberately unsafe: two generated Quests can
+    share those fields while carrying different narratives and stops.
     """
     o = str(origin or "").strip().upper()
     d = str(dest or itinerary.get("entry_iata") or "").strip().upper()
-    exit_ = str(itinerary.get("exit_iata") or "").strip().upper()
-    title = str(itinerary.get("title") or "").strip()
-    if not d and not title:
+    if not d and not itinerary:
         return None
+    wanted_key = quest_canonical_key(itinerary, origin=o)
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, origin, destination, title, itinerary_json"
-            " FROM saved_itineraries WHERE kind = 'quest'"
+            " FROM saved_itineraries"
+            " WHERE kind = 'quest' AND owner_sess IS NULL"
         ).fetchall()
+    matches: list[str] = []
     for r in rows:
         try:
             it = json.loads(r["itinerary_json"] or "{}")
         except (TypeError, json.JSONDecodeError):
             it = {}
-        if (
-            str(r["origin"] or "").upper() == o
-            and str(r["destination"] or "").upper() == d
-            and str((it or {}).get("exit_iata") or "").upper() == exit_
-            and str(r["title"] or "").strip() == title
-        ):
-            return str(r["id"])
-    return None
+        row_origin = str(r["origin"] or "").strip().upper()
+        row_dest = str(r["destination"] or "").strip().upper()
+        if o and row_origin != o:
+            continue
+        if d and row_dest != d:
+            continue
+        if quest_canonical_key(it or {}, origin=row_origin) == wanted_key:
+            matches.append(str(r["id"]))
+    if not matches:
+        return None
+    preferred = canonical_quest_id(itinerary, origin=o)
+    return preferred if preferred in matches else sorted(matches)[0]
+
+
+def ensure_global_quest(
+    itinerary: dict[str, Any],
+    *,
+    trip_meta: dict[str, Any] | None = None,
+    origin: str | None = None,
+) -> SavedItinerary:
+    """Return the one canonical global row for this exact Quest.
+
+    Legacy UUID rows are reused when their full content matches. Otherwise a
+    deterministic primary key is inserted/upserted, so concurrent creators of
+    the same Quest converge on one row without a check-then-insert race.
+    """
+    idea = dict(itinerary or {})
+    idea["kind"] = "quest"
+    meta = dict(trip_meta or {})
+    home = (
+        str(origin or "").strip().upper()
+        or str(meta.get("origin") or "").strip().upper()
+        or str(idea.get("origin") or "").strip().upper()
+    )
+    meta["origin"] = home
+
+    existing_id = find_global_quest_id(
+        idea,
+        origin=home or None,
+        dest=str(idea.get("entry_iata") or "").strip().upper() or None,
+    )
+    if existing_id:
+        existing = get(existing_id)
+        if existing is not None:
+            return existing
+
+    return save_itinerary(
+        idea,
+        trip_meta=meta,
+        replace_id=canonical_quest_id(idea, origin=home),
+        owner_sess=None,
+    )
 
 
 def top_quest_routes(*, limit: int = 12, origin: str | None = None) -> list[dict]:

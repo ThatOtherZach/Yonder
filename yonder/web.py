@@ -59,6 +59,7 @@ from yonder.saved import (
     count_quests,
     count_saved,
     delete as delete_saved,
+    ensure_global_quest,
     get as get_saved,
     list_quests,
     list_saved,
@@ -228,9 +229,24 @@ def _share_quest(
         entry_city = str((idea_dict or {}).get("entry_city") or (idea_dict or {}).get("entry_iata") or "?")
         exit_city = str((idea_dict or {}).get("exit_city") or (idea_dict or {}).get("exit_iata") or "?")
         title = f"{entry_city} → overland → {exit_city}"
+        idea_dict["kind"] = "quest"
+        idea_dict.setdefault("title", title)
         meta = dict(trip_meta or {})
         meta.pop("model_source", None)
-        return _share_pack(
+        candidate_id = str(meta.get("saved_id") or "").strip()
+        canonical = get_saved(candidate_id) if candidate_id else None
+        if (
+            canonical is None
+            or (canonical.kind or "").lower() != "quest"
+            or canonical.owner_sess is not None
+        ):
+            canonical = ensure_global_quest(
+                idea_dict,
+                trip_meta=meta,
+                origin=str(home_iata or ""),
+            )
+        meta["saved_id"] = canonical.id
+        share = _share_pack(
             request,
             kind="quest",
             title=title,
@@ -240,6 +256,8 @@ def _share_quest(
                 "trip_meta": meta,
             },
         )
+        share["saved_id"] = canonical.id
+        return share
     except Exception:
         return None
 
@@ -4367,7 +4385,11 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
             ).strip()
             if _candidate_id:
                 candidate = get_saved(_candidate_id)
-                if candidate and (candidate.kind or "").lower() == "quest":
+                if (
+                    candidate
+                    and (candidate.kind or "").lower() == "quest"
+                    and candidate.owner_sess is None
+                ):
                     _quest_saved_id = _candidate_id
             if not _quest_saved_id:
                 _quest_saved_id = (
@@ -4708,20 +4730,20 @@ async def api_save_itinerary(request: Request):
     # duplicate.  Bookmarks are exempt from SAVE_LIMIT (they reference shared
     # rows, they are not per-user itinerary rows).
     if str(itinerary.get("kind") or "").lower() == "quest":
-        from yonder.saved import bookmark_quest, find_global_quest_id
+        from yonder.saved import bookmark_quest
 
         target_id = str(trip_meta.get("saved_id") or "").strip() or None
         if target_id:
             existing_q = get_saved(target_id)
-            if not existing_q or (existing_q.kind or "").lower() != "quest":
-                target_id = None
-        if not target_id:
-            target_id = find_global_quest_id(
-                itinerary,
-                origin=str(trip_meta.get("origin") or "").upper() or None,
-                dest=str(itinerary.get("entry_iata") or "").upper() or None,
-            )
-        if target_id:
+            if (
+                not existing_q
+                or (existing_q.kind or "").lower() != "quest"
+                or existing_q.owner_sess is not None
+            ):
+                return JSONResponse(
+                    {"ok": False, "error": "Quest is no longer available"},
+                    status_code=400,
+                )
             try:
                 if not bookmark_quest(target_id, owner_sess=owner):
                     return JSONResponse(
@@ -4744,11 +4766,15 @@ async def api_save_itinerary(request: Request):
                     "yv_sess", owner, httponly=True, samesite="lax", secure=_IS_HTTPS
                 )
             return resp
-        # Brand-new quest (not in the library yet): insert ONE global row
-        # (owner NULL, like recycled quests) then bookmark it for this session.
+        # Legacy shares have no saved_id. Match their full canonical content,
+        # or atomically create the deterministic global row when it is absent.
         trip_meta.pop("saved_id", None)
         try:
-            saved_q = save_itinerary(itinerary, trip_meta=trip_meta, owner_sess=None)
+            saved_q = ensure_global_quest(
+                itinerary,
+                trip_meta=trip_meta,
+                origin=str(trip_meta.get("origin") or ""),
+            )
             if not bookmark_quest(saved_q.id, owner_sess=owner):
                 return JSONResponse(
                     {"ok": False, "error": "Couldn't add Quest to your library"},

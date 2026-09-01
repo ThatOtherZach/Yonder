@@ -22,6 +22,8 @@ import yonder.web as web_module
 from yonder import quest_jobs
 from yonder.adventure import PricedLeg
 from yonder.config import Settings
+from yonder.saved import count_quests
+from yonder.share import get_share
 from yonder.types import FlightOffer
 
 _FUTURE_D = date.today() + timedelta(days=40)
@@ -201,6 +203,13 @@ class TestEagerQuestJobLifecycle:
         assert body["status"] == "done" and body["ok"] is True
         assert "quest-results-card" in body["html"]
         assert "HAN" in body["html"]
+        assert count_quests() == 1
+        saved_id = body["html"].split('data-saved-id="', 1)[1].split('"', 1)[0]
+        share_url = body["html"].split('data-share-url="', 1)[1].split('"', 1)[0]
+        share_id = share_url.rsplit("/", 1)[-1]
+        share = get_share(share_id)
+        assert share is not None
+        assert share.payload["trip_meta"]["saved_id"] == saved_id
 
     def test_timeout_degrades_to_retry_card(self, client, monkeypatch):
         """A hung Grok call → error state with the friendly retry card."""

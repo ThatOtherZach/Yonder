@@ -12,6 +12,8 @@ Design rules verified here:
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -21,6 +23,7 @@ from yonder.saved import (
     bookmark_quest,
     bookmarked_quest_ids,
     count_quests,
+    ensure_global_quest,
     find_global_quest_id,
     list_bookmarked_quests,
     list_quests,
@@ -45,7 +48,13 @@ def client():
     return TestClient(web_module.app, raise_server_exceptions=True)
 
 
-def _quest_it(entry="Bangkok", exit_="Saigon", entry_iata="BKK", exit_iata="SGN"):
+def _quest_it(
+    entry="Bangkok",
+    exit_="Saigon",
+    entry_iata="BKK",
+    exit_iata="SGN",
+    narrative="Take the train south.",
+):
     return {
         "kind": "quest",
         "title": f"{entry} → overland → {exit_}",
@@ -54,13 +63,16 @@ def _quest_it(entry="Bangkok", exit_="Saigon", entry_iata="BKK", exit_iata="SGN"
         "entry_city": entry,
         "exit_city": exit_,
         "depart_date": "2026-11-01",
+        "overland_narrative": narrative,
     }
 
 
 def _seed_global_quest(**kw):
     """Insert a library quest the way recycling does (owner NULL)."""
-    return save_itinerary(
-        _quest_it(**kw), trip_meta={"origin": "YVR", "vibe": "adventure"}, owner_sess=None
+    return ensure_global_quest(
+        _quest_it(**kw),
+        trip_meta={"origin": "YVR", "vibe": "adventure"},
+        origin="YVR",
     )
 
 
@@ -104,6 +116,56 @@ def test_save_without_saved_id_matches_existing_route(client):
     client.cookies.set("yv_sess", "sessB")
     data = _save_via_api(client)  # same route, no saved_id
     assert data["id"] == q.id
+    assert count_quests() == 1
+
+
+def test_legacy_save_matches_full_content_not_similar_route(client):
+    first = _seed_global_quest(narrative="Northern food trail")
+    second = _seed_global_quest(narrative="Coastal night trains")
+    client.cookies.set("yv_sess", "legacy-similar")
+
+    data = _save_via_api(client, narrative="Coastal night trains")
+
+    assert data["id"] == second.id
+    assert data["id"] != first.id
+    assert bookmarked_quest_ids(owner_sess="legacy-similar") == {second.id}
+    assert count_quests() == 2
+
+
+def test_concurrent_canonical_creates_converge_on_one_row():
+    itinerary = _quest_it(narrative="One canonical concurrent Quest")
+
+    def _ensure(_):
+        return ensure_global_quest(
+            itinerary,
+            trip_meta={"origin": "YVR", "vibe": "adventure"},
+            origin="YVR",
+        ).id
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        ids = list(pool.map(_ensure, range(12)))
+
+    assert len(set(ids)) == 1
+    assert count_quests() == 1
+
+
+def test_concurrent_legacy_api_saves_create_one_canonical_row():
+    body = {
+        "itinerary": _quest_it(narrative="Concurrent legacy share content"),
+        "trip_meta": {"origin": "YVR", "vibe": "adventure"},
+    }
+
+    def _save(i):
+        with TestClient(web_module.app, raise_server_exceptions=True) as worker:
+            worker.cookies.set("yv_sess", f"legacy-worker-{i}")
+            response = worker.post("/api/saved", json=body)
+            assert response.status_code == 200, response.text
+            return response.json()["id"]
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        ids = list(pool.map(_save, range(10)))
+
+    assert len(set(ids)) == 1
     assert count_quests() == 1
 
 
@@ -286,3 +348,15 @@ def test_quest_share_save_is_idempotent_and_same_route_quests_stay_distinct(clie
     assert f'var questSavedId = "{second.id}"' in second_page.text
     assert "★ Save this trip" in second_page.text
     assert "Already in your saved trips." not in second_page.text
+
+
+def test_legacy_share_without_id_resolves_same_route_quest_by_full_content(client):
+    first = _seed_global_quest(narrative="Mountain buses and markets")
+    second = _seed_global_quest(narrative="Coastal sleeper trains")
+    legacy_share = _quest_share(second, include_saved_id=False)
+
+    page = client.get(f"/t/{legacy_share.id}")
+
+    assert page.status_code == 200
+    assert f'var questSavedId = "{second.id}"' in page.text
+    assert f'var questSavedId = "{first.id}"' not in page.text
