@@ -34,18 +34,22 @@ def _prune(conn: Any, now: float) -> None:
     )
 
 
-def create_job(*, home_iata: str, vibe: str) -> str:
+def create_job(*, home_iata: str, vibe: str, owner_sess: str) -> str:
     """Register a new pending quest job; returns its id."""
+    owner = (owner_sess or "").strip()[:64]
+    if not owner:
+        raise ValueError("Quest jobs require an owning browser session")
     job_id = uuid.uuid4().hex
     now = time.time()
     with get_conn() as conn:
         _prune(conn, now)
         conn.execute(
             """
-            INSERT INTO quest_jobs (job_id, status, stage, home_iata, vibe, created_at)
-            VALUES (%s, 'pending', 'reading_vibe', %s, %s, %s)
+            INSERT INTO quest_jobs
+                (job_id, status, stage, home_iata, vibe, owner_sess, created_at)
+            VALUES (%s, 'pending', 'reading_vibe', %s, %s, %s, %s)
             """,
-            (job_id, home_iata, vibe, now),
+            (job_id, home_iata, vibe, owner, now),
         )
     return job_id
 
@@ -107,14 +111,31 @@ def set_error(job_id: str, error_text: str) -> None:
         )
 
 
-def get_job(job_id: str) -> dict[str, Any] | None:
-    """Snapshot of the job state, or None when unknown/expired."""
+def get_job(
+    job_id: str, *, owner_sess: str | None = None
+) -> dict[str, Any] | None:
+    """Snapshot of the job state, or None when unknown/expired/unowned.
+
+    Supplying ``owner_sess`` scopes the lookup to that browser. Legacy rows
+    with NULL ownership therefore fail closed through the polling endpoint.
+    """
     now = time.time()
+    if owner_sess is not None and not (owner_sess or "").strip():
+        return None
     with get_conn() as conn:
         _prune(conn, now)
-        cur = conn.execute(
-            "SELECT * FROM quest_jobs WHERE job_id = %s", (job_id,)
-        )
+        if owner_sess is None:
+            cur = conn.execute(
+                "SELECT * FROM quest_jobs WHERE job_id = %s", (job_id,)
+            )
+        else:
+            cur = conn.execute(
+                """
+                SELECT * FROM quest_jobs
+                 WHERE job_id = %s AND owner_sess = %s
+                """,
+                (job_id, (owner_sess or "")[:64]),
+            )
         row = cur.fetchone()
     if row is None:
         return None
@@ -123,6 +144,7 @@ def get_job(job_id: str) -> dict[str, Any] | None:
         "stage": row["stage"],
         "home_iata": row["home_iata"],
         "vibe": row["vibe"],
+        "owner_sess": row["owner_sess"],
         "ok": row["ok"],
         "error_text": row["error_text"],
         "created": row["created_at"],

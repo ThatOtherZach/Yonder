@@ -238,7 +238,9 @@ class TestEagerQuestAIOnlyBudgetGuard:
 
         # Run _run_eager_quest directly — the Quest background function
         from yonder import quest_jobs as _qjobs
-        job_id = _qjobs.create_job(home_iata="YVR", vibe="beach")
+        job_id = _qjobs.create_job(
+            home_iata="YVR", vibe="beach", owner_sess="rate-limit-test-session"
+        )
 
         asyncio.run(web_module._run_eager_quest(
             job_id,
@@ -278,7 +280,9 @@ class TestEagerQuestAIOnlyBudgetGuard:
 
         settings = _GrokOnlySettings(testing=True)
         from yonder import quest_jobs as _qjobs
-        job_id = _qjobs.create_job(home_iata="YVR", vibe="beach")
+        job_id = _qjobs.create_job(
+            home_iata="YVR", vibe="beach", owner_sess="rate-limit-test-session"
+        )
 
         asyncio.run(web_module._run_eager_quest(
             job_id,

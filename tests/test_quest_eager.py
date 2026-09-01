@@ -29,6 +29,7 @@ from yonder.types import FlightOffer
 _FUTURE_D = date.today() + timedelta(days=40)
 _FUTURE = _FUTURE_D.isoformat()
 _PROMPT = "overland food adventure through southeast asia"
+_TEST_SESS = "quest-eager-test-session"
 
 _RAW_HAN_BKK = {
     "entry_iata": "HAN",
@@ -43,7 +44,9 @@ _RAW_HAN_BKK = {
 
 @pytest.fixture()
 def client():
-    return TestClient(web_module.app, raise_server_exceptions=True)
+    test_client = TestClient(web_module.app, raise_server_exceptions=True)
+    test_client.cookies.set("yv_sess", _TEST_SESS)
+    return test_client
 
 
 @pytest.fixture(autouse=True)
@@ -65,7 +68,7 @@ def test_job_store_uses_isolated_schema(pg_schema):
     isolated schema's quest_jobs table (visible via the patched get_conn) and
     NOT in the default public.quest_jobs table.
     """
-    job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+    job_id = _new_job()
     with pg_schema() as conn:
         row = conn.execute(
             "SELECT job_id FROM quest_jobs WHERE job_id = %s", (job_id,)
@@ -87,6 +90,14 @@ def test_job_store_uses_isolated_schema(pg_schema):
         raw.close()
 
 
+@pytest.mark.parametrize("owner_sess", ["", "   "])
+def test_job_store_rejects_missing_owner(owner_sess):
+    with pytest.raises(ValueError, match="owning browser session"):
+        quest_jobs.create_job(
+            home_iata="YVR", vibe="adventure", owner_sess=owner_sess
+        )
+
+
 def _settings() -> Settings:
     # testing=True keeps the recycle pool (real DB) out of the job path;
     # no fare providers configured → MOCK pricing skeletons.
@@ -95,6 +106,12 @@ def _settings() -> Settings:
 
 def _run(coro):
     return asyncio.get_event_loop_policy().new_event_loop().run_until_complete(coro)
+
+
+def _new_job() -> str:
+    return quest_jobs.create_job(
+        home_iata="YVR", vibe="adventure", owner_sess=_TEST_SESS
+    )
 
 
 def _job_kwargs(settings, **over):
@@ -174,7 +191,7 @@ class TestEagerQuestJobLifecycle:
 
         monkeypatch.setattr(web_module, "plan_quest", _fail_quest)
 
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         _run(web_module._run_eager_quest(job_id, **_job_kwargs(settings)))
 
         assert not called
@@ -192,7 +209,7 @@ class TestEagerQuestJobLifecycle:
 
         monkeypatch.setattr(web_module, "plan_quest", _stub_quest)
 
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         _run(web_module._run_eager_quest(job_id, **_job_kwargs(settings)))
 
         job = quest_jobs.get_job(job_id)
@@ -220,7 +237,7 @@ class TestEagerQuestJobLifecycle:
 
         monkeypatch.setattr(web_module, "plan_quest", _timeout_quest)
 
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         _run(web_module._run_eager_quest(job_id, **_job_kwargs(settings)))
 
         job = quest_jobs.get_job(job_id)
@@ -250,7 +267,7 @@ class TestEagerQuestJobLifecycle:
 
         monkeypatch.setattr(web_module, "plan_quest", _flaky_quest)
 
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         _run(web_module._run_eager_quest(job_id, **_job_kwargs(settings)))
 
         assert len(attempts) == 2
@@ -267,7 +284,7 @@ class TestEagerQuestJobLifecycle:
 
         monkeypatch.setattr(web_module, "plan_quest", _fail_quest)
 
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         _run(web_module._run_eager_quest(job_id, **_job_kwargs(settings)))
 
         job = quest_jobs.get_job(job_id)
@@ -285,7 +302,7 @@ class TestEagerQuestJobLifecycle:
 
         monkeypatch.setattr(web_module, "plan_quest", _capture_quest)
 
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         _run(
             web_module._run_eager_quest(
                 job_id, **_job_kwargs(settings, exclude_dests=["NRT"])
@@ -295,13 +312,102 @@ class TestEagerQuestJobLifecycle:
         assert received.get("exclude_dests") == ["NRT"]
 
     def test_poll_states_pending_and_unknown(self, client):
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         body = client.get(f"/api/quest/status/{job_id}").json()
         assert body["status"] == "pending"
 
         body = client.get("/api/quest/status/nope").json()
         assert body["status"] == "error"
         assert "btn-plan-quest" in body["html"]
+
+    def test_poll_is_private_to_originating_session(self, client):
+        """A different browser cannot see pending or completed Quest content."""
+        owner = "quest-owner-session"
+        other = "quest-other-session"
+        job_id = quest_jobs.create_job(
+            home_iata="YVR", vibe="adventure", owner_sess=owner
+        )
+
+        pending = client.get(
+            f"/api/quest/status/{job_id}", cookies={"yv_sess": other}
+        ).json()
+        assert pending["status"] == "error"
+        assert "quest-owner-session" not in str(pending)
+        assert "Quest plan expired" in pending["error"]
+
+        quest_jobs.set_done(
+            job_id,
+            quest_panel={
+                "ask": "private prompt",
+                "result": [_fake_idea()],
+                "home_iata": "YVR",
+                "vibe": "adventure",
+            },
+        )
+        denied = client.get(
+            f"/api/quest/status/{job_id}", cookies={"yv_sess": other}
+        ).json()
+        assert denied["status"] == "error"
+        assert "private prompt" not in str(denied)
+        assert "HAN" not in denied["html"]
+
+        allowed = client.get(
+            f"/api/quest/status/{job_id}", cookies={"yv_sess": owner}
+        ).json()
+        assert allowed["status"] == "done"
+        assert "private prompt" in allowed["html"]
+        assert "HAN" in allowed["html"]
+
+    def test_legacy_unowned_job_is_not_pollable(self, client, pg_schema):
+        """Rows created before ownership migration fail closed at the endpoint."""
+        job_id = _new_job()
+        quest_jobs.set_done(
+            job_id,
+            quest_panel={"ask": "legacy secret prompt", "result": [_fake_idea()]},
+        )
+        with pg_schema() as conn:
+            conn.execute(
+                "UPDATE quest_jobs SET owner_sess = NULL WHERE job_id = %s",
+                (job_id,),
+            )
+
+        body = client.get(
+            f"/api/quest/status/{job_id}", cookies={"yv_sess": "any-session"}
+        ).json()
+        assert body["status"] == "error"
+        assert "btn-plan-quest" in body["html"]
+        assert "legacy secret prompt" not in str(body)
+        assert "HAN" not in body["html"]
+
+    def test_missing_session_cannot_poll_owned_job(self, client):
+        job_id = _new_job()
+        quest_jobs.set_done(
+            job_id,
+            quest_panel={"ask": "owned secret prompt", "result": [_fake_idea()]},
+        )
+        client.cookies.clear()
+
+        body = client.get(f"/api/quest/status/{job_id}").json()
+        assert body["status"] == "error"
+        assert "owned secret prompt" not in str(body)
+        assert "HAN" not in body["html"]
+
+    def test_expired_job_does_not_leak_completed_content(self, client, pg_schema):
+        job_id = _new_job()
+        quest_jobs.set_done(
+            job_id,
+            quest_panel={"ask": "expired secret prompt", "result": [_fake_idea()]},
+        )
+        with pg_schema() as conn:
+            conn.execute(
+                "UPDATE quest_jobs SET created_at = 0 WHERE job_id = %s",
+                (job_id,),
+            )
+
+        body = client.get(f"/api/quest/status/{job_id}").json()
+        assert body["status"] == "error"
+        assert "expired secret prompt" not in str(body)
+        assert "HAN" not in body["html"]
 
 
 class TestDestinationSeparation:
@@ -383,6 +489,7 @@ class TestDestinationSeparation:
 
         monkeypatch.setattr(web_module, "plan_quest", _capture_quest)
 
+        client.cookies.clear()
         resp = client.post(
             "/explore",
             data={
@@ -394,6 +501,10 @@ class TestDestinationSeparation:
         )
         assert resp.status_code == 200
         assert "data-quest-job" in resp.text
+        owner_sess = resp.cookies.get("yv_sess")
+        assert owner_sess
+        job_id = resp.text.split('data-quest-job="', 1)[1].split('"', 1)[0]
+        assert quest_jobs.get_job(job_id)["owner_sess"] == owner_sess
 
         # Give the background task a chance to run inside the client's loop
         import time
@@ -533,14 +644,14 @@ class TestStageProgressions:
 
     def test_new_job_has_reading_vibe_stage(self, client):
         """A freshly created pending job starts at reading_vibe."""
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         body = client.get(f"/api/quest/status/{job_id}").json()
         assert body["status"] == "pending"
         assert body.get("stage") == "reading_vibe"
 
     def test_stage_advances_to_scouting(self, client):
         """set_stage() pushes the visible stage to scouting_routes."""
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         quest_jobs.set_stage(job_id, "scouting_routes")
         body = client.get(f"/api/quest/status/{job_id}").json()
         assert body["status"] == "pending"
@@ -548,7 +659,7 @@ class TestStageProgressions:
 
     def test_stage_advances_to_pricing(self, client):
         """set_stage() pushes the visible stage to pricing_flights."""
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         quest_jobs.set_stage(job_id, "pricing_flights")
         body = client.get(f"/api/quest/status/{job_id}").json()
         assert body["status"] == "pending"
@@ -556,7 +667,7 @@ class TestStageProgressions:
 
     def test_set_stage_noop_on_done_job(self):
         """set_stage() is silently ignored on a finished job."""
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         quest_jobs.set_done(
             job_id,
             quest_panel={"ask": "test", "result": [], "home_iata": "YVR", "vibe": "adventure"},
@@ -591,7 +702,7 @@ class TestStageProgressions:
 
         monkeypatch.setattr(web_module, "plan_quest", _stub_quest)
 
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         _run(web_module._run_eager_quest(job_id, **_job_kwargs(settings)))
 
         assert "scouting_routes" in stage_calls, f"scouting_routes never set; got: {stage_calls}"
@@ -622,7 +733,7 @@ class TestStageProgressions:
 
         monkeypatch.setattr(web_module, "plan_quest", _fail_quest)
 
-        job_id = quest_jobs.create_job(home_iata="YVR", vibe="adventure")
+        job_id = _new_job()
         _run(web_module._run_eager_quest(job_id, **_job_kwargs(settings)))
 
         job = quest_jobs.get_job(job_id)

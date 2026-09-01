@@ -1236,6 +1236,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     Durable writes only happen later via ★ Save (not here).
     """
     import time as _time
+    import uuid as _uuid
 
     from yonder.intent import decide_shape, mix_candidate_cap
     from yonder.grok import _guess_home_iata
@@ -1243,6 +1244,23 @@ async def explore_run(request: Request) -> HTMLResponse:
 
     settings = _session_settings(request)
     sess = _req_sess(request)
+    _set_sess_cookie = not sess
+    if _set_sess_cookie:
+        # Normal browsers receive this from GET / first, but direct POSTs
+        # should still get a private Quest job rather than an unowned one.
+        sess = _uuid.uuid4().hex[:32]
+
+    def _attach_session_cookie(response):
+        if _set_sess_cookie:
+            response.set_cookie(
+                "yv_sess",
+                sess,
+                httponly=True,
+                samesite="lax",
+                secure=_IS_HTTPS,
+            )
+        return response
+
     form_data = await request.form()
 
     def _s(key: str, fallback: str = "") -> str:
@@ -1269,7 +1287,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     # ── Rate limiting ─────────────────────────────────────────────────────────
     _rl = await _rate_limit.check_search(request, sess, mock=_rl_mock)
     if not _rl.allowed:
-        return templates.TemplateResponse(
+        return _attach_session_cookie(templates.TemplateResponse(
             request,
             "index.html",
             _compose_page_ctx(
@@ -1283,9 +1301,9 @@ async def explore_run(request: Request) -> HTMLResponse:
             ),
             status_code=429,
             headers={"Retry-After": str(_rl.retry_after)},
-        )
+        ))
     if not _rate_limit.check_daily_budget(mock=_rl_mock):
-        return templates.TemplateResponse(
+        return _attach_session_cookie(templates.TemplateResponse(
             request,
             "index.html",
             _compose_page_ctx(
@@ -1300,7 +1318,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 detour_override={"form": _adventure_form_defaults(settings)},
                 lock_vibe=True,
             ),
-        )
+        ))
 
     # Return-flight toggle: strip return_date when the user opts for one-way.
     # Omitting the field (legacy clients) defaults to one-way (False).
@@ -2349,7 +2367,9 @@ async def explore_run(request: Request) -> HTMLResponse:
                     _q_depart_dt = date.fromisoformat(depart)
                 except (ValueError, TypeError):
                     _q_depart_dt = date.today() + timedelta(days=45)
-                quest_job_id = _qjobs.create_job(home_iata=home_iata, vibe=vibe)
+                quest_job_id = _qjobs.create_job(
+                    home_iata=home_iata, vibe=vibe, owner_sess=sess
+                )
 
                 # Best-effort exclusion hints, in reliability order:
                 # unified parse > recycled/resolved route > prompt text > chip seeds.
@@ -2815,9 +2835,11 @@ async def explore_run(request: Request) -> HTMLResponse:
             ctx["ai_usage_display"] = fmt_usage(_usage)
             if _usage.get("total_tokens"):
                 asyncio.create_task(_log_ai_usage("explore", _usage))
-        return templates.TemplateResponse(request, "index.html", ctx)
+        return _attach_session_cookie(
+            templates.TemplateResponse(request, "index.html", ctx)
+        )
     except Exception as exc:  # noqa: BLE001
-        return templates.TemplateResponse(
+        return _attach_session_cookie(templates.TemplateResponse(
             request,
             "index.html",
             _compose_page_ctx(
@@ -2830,7 +2852,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 lock_vibe=True,
             ),
             status_code=400,
-        )
+        ))
     finally:
         if search_id:
             clear_search_cancel(search_id)
@@ -3379,7 +3401,7 @@ async def quest_status_api(job_id: str, request: Request):
     """
     from yonder import quest_jobs as _qjobs
 
-    job = _qjobs.get_job(job_id)
+    job = _qjobs.get_job(job_id, owner_sess=_req_sess(request))
     if job is None:
         _err = "Quest plan expired — try again."
         html = _render_quest_partial_html(

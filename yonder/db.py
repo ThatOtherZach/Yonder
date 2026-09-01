@@ -389,12 +389,17 @@ CREATE TABLE IF NOT EXISTS quest_jobs (
     stage TEXT NOT NULL DEFAULT 'reading_vibe',
     home_iata TEXT NOT NULL DEFAULT '',
     vibe TEXT NOT NULL DEFAULT '',
+    owner_sess TEXT,
     ok BOOLEAN,
     error_text TEXT,
     payload BYTEA,
     created_at DOUBLE PRECISION NOT NULL
 );
+-- Legacy Quest jobs predate browser ownership.  They remain inaccessible to
+-- the status endpoint because their owner_sess is NULL.
+ALTER TABLE quest_jobs ADD COLUMN IF NOT EXISTS owner_sess TEXT;
 CREATE INDEX IF NOT EXISTS idx_quest_jobs_created ON quest_jobs(created_at);
+CREATE INDEX IF NOT EXISTS idx_quest_jobs_owner ON quest_jobs(owner_sess);
 
 -- Detour candidate pool: quest-seeded legs with connection stops.
 -- Deduplicated by route (origin|stop|destination); re-runs refresh.
