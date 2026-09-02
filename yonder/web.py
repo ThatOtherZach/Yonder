@@ -7,7 +7,7 @@ import os
 import json
 from datetime import date
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
@@ -167,15 +167,52 @@ def _share_base_url(request: Request) -> str:
     Production records live behind the canonical production domain.  Preview
     records live in the development database and must use the managed preview
     domain instead, otherwise a link created in Preview 404s in production.
-    The request host is only a local/test fallback; deployed environments use
-    platform-managed environment values rather than a forgeable Host header.
+    Published and Preview domains can both be present in the editor
+    environment.  Replit's deployment marker is therefore the authoritative
+    environment switch; the request Host header is never copied into a link.
     """
-    dev_domain = (os.environ.get("REPLIT_DEV_DOMAIN") or "").strip()
-    if dev_domain:
-        return "https://" + dev_domain.removeprefix("https://").removeprefix("http://").rstrip("/")
+    def _managed_host(value: str | None) -> str:
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        # Environment values are documented as hostnames, but accepting an
+        # accidental scheme keeps this helper robust without trusting paths,
+        # ports, or user-controlled input.
+        parsed = urlsplit(raw if "://" in raw else f"//{raw}")
+        try:
+            if parsed.username or parsed.password or parsed.port:
+                return ""
+        except ValueError:
+            return ""
+        if parsed.path not in ("", "/") or parsed.query or parsed.fragment:
+            return ""
+        return (parsed.hostname or "").strip().lower().rstrip(".")
+
+    dev_host = _managed_host(os.environ.get("REPLIT_DEV_DOMAIN"))
+    request_host = (request.url.hostname or "").strip().lower().rstrip(".")
+    is_deployment = (os.environ.get("REPLIT_DEPLOYMENT") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+    # REPLIT_DEPLOYMENT is set only for a published app.  Do not infer this
+    # from REPLIT_DOMAINS: the editor can expose both that variable and the
+    # managed Preview domain at the same time.
+    if is_deployment:
+        return PRODUCTION_URL
+    if dev_host:
+        return f"https://{dev_host}"
     if _IS_HTTPS:
         return PRODUCTION_URL
-    return str(request.base_url).rstrip("/")
+
+    # This is only reached outside Replit's managed environments (for example
+    # a local test server).  Keep the old local behavior, but only for the
+    # conventional loopback/test hosts; arbitrary Host headers never become
+    # share origins.
+    if request_host in {"localhost", "127.0.0.1", "::1", "testserver"}:
+        return str(request.base_url).rstrip("/")
+    return PRODUCTION_URL
 
 
 def _share_pack(request: Request, *, kind: str, title: str, payload: dict) -> dict:
