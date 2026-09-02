@@ -21,6 +21,7 @@ from fastapi.testclient import TestClient
 
 import yonder.saved as saved_module
 import yonder.web as web_module
+from yonder.saved import ensure_global_quest, list_bookmarked_quests
 
 
 @pytest.fixture()
@@ -91,6 +92,53 @@ def test_saved_quest_has_view_trip_link(client):
     assert "Open Quest" in resp.text or "View trip" in resp.text
 
 
+def test_quest_save_target_stays_relative_and_bookmark_is_visible_in_saved(client):
+    """Browse-card Save must stay on this host after creating its bookmark."""
+    quest = ensure_global_quest(
+        {
+            "kind": "quest",
+            "title": "Lisbon → overland → Porto",
+            "entry_iata": "LIS",
+            "exit_iata": "OPO",
+            "entry_city": "Lisbon",
+            "exit_city": "Porto",
+            "depart_date": "2026-11-01",
+        },
+        trip_meta={"origin": "YVR", "vibe": "adventure"},
+        origin="YVR",
+    )
+    client.cookies.set("yv_sess", "browse-save-session")
+
+    browse = client.get("/quests?origin=YVR", follow_redirects=False)
+    assert browse.status_code == 200
+    assert f'data-saved-id="{quest.id}"' in browse.text
+    assert 'data-share-url="/t/quest/' in browse.text
+    assert 'data-share-url="https://yonder.city/' not in browse.text
+
+    saved = client.post(
+        "/api/saved",
+        json={
+            "itinerary": quest.itinerary,
+            "trip_meta": {
+                "origin": quest.origin,
+                "destination": quest.destination,
+                "vibe": quest.vibe,
+                "saved_id": quest.id,
+            },
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["ok"] is True
+    assert saved.json()["id"] == quest.id
+    assert [item.id for item in list_bookmarked_quests(owner_sess="browse-save-session")] == [
+        quest.id
+    ]
+
+    saved_page = client.get("/saved")
+    assert saved_page.status_code == 200
+    assert quest.title in saved_page.text
+
+
 def test_saved_quest_origin_column_populated(client):
     """The saved row's origin column must be set from trip_meta so /quests?origin=X works."""
     _save_quest(client, origin="JFK", entry_city="Tokyo", entry_iata="NRT")
@@ -128,7 +176,7 @@ def test_explicit_empty_origin_shows_all(client):
 
     resp = client.get("/quests?origin=", follow_redirects=False)
     assert resp.status_code == 200
-    assert "2 quests found" in resp.text
+    assert "2 Quests" in resp.text
     assert "Madrid" in resp.text
     assert "Nairobi" in resp.text
 
@@ -197,7 +245,7 @@ def test_pagination_across_multiple_pages(client, pg_schema):
     page1 = client.get("/quests?origin=YVR&page=1", follow_redirects=False)
     assert page1.status_code == 200
     assert "Next →" in page1.text
-    assert "13 quests found" in page1.text
+    assert "13 Quests" in page1.text
 
     page2 = client.get("/quests?origin=YVR&page=2", follow_redirects=False)
     assert page2.status_code == 200

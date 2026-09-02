@@ -731,7 +731,7 @@
                           data-ql-idx="{{ loop.index0 }}"
                           data-saved-id="{{ s.id }}"
                           data-home-iata="{{ s.origin or '' }}"
-                          data-share-url="{{ share.url if share else '' }}">
+                          data-share-url="{{ share.path if share else '' }}">
                     ★ Save
                   </button>
                   {% endif %}
