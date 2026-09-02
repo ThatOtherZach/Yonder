@@ -267,14 +267,14 @@
   function ProgressController(opts) {
     opts = opts || {};
     this.mode = opts.mode || "adventure"; // adventure | search
-    this.expectedMs = opts.expectedMs || 30000;
-    // When Skip appears (default 42s). 0 = never auto-show.
+    this.expectedMs = opts.expectedMs || 18000;
+    // When the fares-now action appears (default 24s). 0 = never auto-show.
     this.skipAfterMs =
       opts.skipAfterMs != null
         ? opts.skipAfterMs
         : opts.maxMs != null
           ? opts.maxMs
-          : 42000;
+          : 24000;
     this.searchId = opts.searchId || "";
     // When set, mount the same progress card inline inside this element instead of the overlay
     this.container = opts.container || null;
@@ -315,14 +315,14 @@
           aimS +
           "s. After " +
           skipS +
-          "s you can Skip for fares only — wait longer for field notes."
+          "s you can show available fares while Quest keeps planning in the background."
         : "Aiming for ~" + aimS + "s. Hang tight while we craft field notes.";
     }
     var skipBtn = document.getElementById("fs-progress-skip");
     if (skipBtn) {
       skipBtn.hidden = true;
       skipBtn.disabled = false;
-      skipBtn.textContent = "Skip";
+      skipBtn.textContent = "Show fares now";
       skipBtn.onclick = null;
     }
 
@@ -374,7 +374,7 @@
           var hintEl = document.getElementById("fs-progress-hint");
           if (hintEl) {
             hintEl.textContent =
-              "Skip = fares now. Stay and we’ll add culture / food / vibe field notes.";
+              "Show fares now returns Escape; Quest keeps planning in the background.";
           }
         }
       }, 200)
@@ -433,7 +433,7 @@
       btn.textContent = "Wrapping up…";
     }
     var msg = document.getElementById("fs-progress-msg");
-    if (msg) msg.textContent = "Skip — finishing with what we have…";
+    if (msg) msg.textContent = "Showing available Escape fares… Quest keeps planning.";
     var stage = document.getElementById("fs-progress-stage");
     if (stage) stage.textContent = "Wrapping up";
     if (this.onSkip) {
@@ -508,8 +508,8 @@
     if (options.skipAfterMs == null && options.maxMs == null && t.search_max_seconds) {
       options.skipAfterMs = Math.round(Number(t.search_max_seconds) * 1000);
     }
-    if (options.expectedMs == null) options.expectedMs = 30000;
-    if (options.skipAfterMs == null) options.skipAfterMs = 42000;
+    if (options.expectedMs == null) options.expectedMs = 18000;
+    if (options.skipAfterMs == null) options.skipAfterMs = 24000;
 
     // Per-run id so Skip can finish the job with partial results
     var searchId =
@@ -551,18 +551,14 @@
         // Prefer real navigation so URL/query (flash) and scripts load cleanly
         if (res.redirected && res.url) {
           progress.finish();
-          setTimeout(function () {
-            window.location.href = res.url;
-          }, 280);
+          window.location.href = res.url;
           return;
         }
         return res.text().then(function (html) {
           progress.finish();
-          setTimeout(function () {
-            document.open();
-            document.write(html);
-            document.close();
-          }, 350);
+          document.open();
+          document.write(html);
+          document.close();
         });
       })
       .catch(function (err) {

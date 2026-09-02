@@ -205,8 +205,8 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
     # Numeric Detour defaults — never leave blank (Settings UI / pydantic ints)
     _detour_defaults = {
         "DETOUR_MAX_CANDIDATES": "5",
-        "SEARCH_BUDGET_SECONDS": "30",
-        "SEARCH_MAX_SECONDS": "42",
+        "SEARCH_BUDGET_SECONDS": "18",
+        "SEARCH_MAX_SECONDS": "24",
     }
     for key, default in _detour_defaults.items():
         if not str(current.get(key) or "").strip():
@@ -220,19 +220,19 @@ def write_env(updates: dict[str, str], *, clear_keys: set[str] | None = None) ->
             current[key] = str(max(2, min(5, n)))
         if key == "SEARCH_BUDGET_SECONDS":
             try:
-                n = float(str(current.get(key) or "30").strip() or "30")
+                n = float(str(current.get(key) or "18").strip() or "18")
             except ValueError:
-                n = 30.0
+                n = 18.0
             current[key] = str(max(8, min(180, n)))
         if key == "SEARCH_MAX_SECONDS":
             try:
-                n = float(str(current.get(key) or "42").strip() or "42")
+                n = float(str(current.get(key) or "24").strip() or "24")
             except ValueError:
-                n = 42.0
+                n = 24.0
             try:
-                aim = float(str(current.get("SEARCH_BUDGET_SECONDS") or "30").strip() or "30")
+                aim = float(str(current.get("SEARCH_BUDGET_SECONDS") or "18").strip() or "18")
             except ValueError:
-                aim = 30.0
+                aim = 18.0
             current[key] = str(max(aim, min(600, n)))
 
     lines: list[str] = [
@@ -380,8 +380,8 @@ def settings_view() -> dict:
         "testing": str(env.get("TESTING") or "false").strip().lower()
         in ("1", "true", "yes", "on"),
         "detour_max_candidates": env.get("DETOUR_MAX_CANDIDATES") or "5",
-        "search_budget_seconds": env.get("SEARCH_BUDGET_SECONDS") or "30",
-        "search_max_seconds": env.get("SEARCH_MAX_SECONDS") or "42",
+        "search_budget_seconds": env.get("SEARCH_BUDGET_SECONDS") or "18",
+        "search_max_seconds": env.get("SEARCH_MAX_SECONDS") or "24",
         "affiliate_tag": env.get("AFFILIATE_TAG") or "",
         "affiliate_tag_live": str(env.get("AFFILIATE_TAG_LIVE") or "false").strip().lower()
         in ("1", "true", "yes", "on"),

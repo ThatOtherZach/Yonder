@@ -13,7 +13,7 @@ from yonder.links import attach_links_to_offer, aviasales_url
 from yonder.money import price_display
 from yonder.providers import build_providers
 from yonder.quota import choose_providers
-from yonder.types import FlightOffer, SearchQuery, UnifiedSearchResult
+from yonder.types import FlightOffer, ProviderResult, SearchQuery, UnifiedSearchResult
 
 logger = logging.getLogger("yonder.engine")
 
@@ -97,10 +97,49 @@ async def search_flights(
             fallback = _build_fallback_offer(query, target, results=[])
             return UnifiedSearchResult(query=query, results=[], offers=[fallback])
 
-        results = await asyncio.wait_for(
-            asyncio.gather(*(p.safe_search(query) for p in providers)),
-            timeout=http_timeout,
-        )
+        provider_tasks = [
+            (provider, asyncio.create_task(provider.safe_search(query)))
+            for provider in providers
+        ]
+        tasks = [task for _, task in provider_tasks]
+        try:
+            done, pending = await asyncio.wait(tasks, timeout=http_timeout)
+        except asyncio.CancelledError:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
+
+        results: list[ProviderResult] = []
+        for provider, task in provider_tasks:
+            if task in done:
+                try:
+                    results.append(task.result())
+                except Exception as exc:  # defensive: safe_search normally normalizes
+                    results.append(
+                        ProviderResult(
+                            provider=getattr(
+                                provider, "name", provider.__class__.__name__.lower()
+                            ),
+                            ok=False,
+                            error=str(exc) or repr(exc),
+                            failure_kind="error",
+                        )
+                    )
+            else:
+                task.cancel()
+                results.append(
+                    ProviderResult(
+                        provider=getattr(
+                            provider, "name", provider.__class__.__name__.lower()
+                        ),
+                        ok=False,
+                        error=f"Provider timed out after {http_timeout:g}s",
+                        failure_kind="error",
+                    )
+                )
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         all_offers = merge_offers(o for r in results for o in r.offers)
 
         if convert_currency and all_offers:

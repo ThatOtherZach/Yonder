@@ -165,6 +165,68 @@ async def test_refresh_bypasses_cache(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_escape_only_prompt_omits_detour_and_quest(monkeypatch):
+    captured = {}
+
+    async def _fake_chat(self, system, user, *, temperature=0.2):
+        captured["system"] = system
+        captured["user"] = json.loads(user)
+        return json.dumps({"escape": _full_payload()["escape"]})
+
+    monkeypatch.setattr(GrokClient, "_chat", _fake_chat)
+    monkeypatch.setattr(grok_mod, "_PARSE_CACHE", {})
+    async with GrokClient(_settings()) as grok:
+        out = await grok.plan_unified(
+            "somewhere with great food",
+            "food",
+            "YVR",
+            depart_date=DEPART,
+            currency="USD",
+            include_detour=False,
+            include_quest=False,
+        )
+
+    assert isinstance(out["escape"], ParsedTrip)
+    assert out["detour_cities"] is None
+    assert out["quest_pairs"] == []
+    assert '"detour"' not in captured["system"]
+    assert '"quest"' not in captured["system"]
+    assert "SECTION detour" not in captured["system"]
+    assert "SECTION quest" not in captured["system"]
+    assert "quest_outbound_date" not in captured["user"]
+
+
+@pytest.mark.anyio
+async def test_escape_only_cache_does_not_collide_with_full_plan(monkeypatch):
+    calls = {"n": 0}
+
+    async def _fake_chat(self, system, user, *, temperature=0.2):
+        calls["n"] += 1
+        return json.dumps(
+            {"escape": _full_payload()["escape"]}
+            if calls["n"] == 1
+            else _full_payload()
+        )
+
+    monkeypatch.setattr(GrokClient, "_chat", _fake_chat)
+    monkeypatch.setattr(grok_mod, "_PARSE_CACHE", {})
+    kwargs = dict(depart_date=DEPART, currency="USD")
+    async with GrokClient(_settings()) as grok:
+        await grok.plan_unified(
+            "somewhere with great food", "food", "YVR",
+            include_detour=False, include_quest=False, **kwargs
+        )
+    async with GrokClient(_settings()) as grok:
+        full = await grok.plan_unified(
+            "somewhere with great food", "food", "YVR", **kwargs
+        )
+
+    assert calls["n"] == 2
+    assert full["detour_cities"] is not None
+    assert full["quest_pairs"]
+
+
+@pytest.mark.anyio
 async def test_model_switch_busts_cache(monkeypatch):
     byom = Settings(
         xai_api_key="test-key",

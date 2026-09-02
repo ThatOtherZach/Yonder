@@ -85,10 +85,10 @@ class Settings(BaseSettings):
     # How many detour ideas to invent/price (results always capped at 5 cheapest)
     detour_max_candidates: int = 5
     # Soft aim for Escape + Detour pacing (seconds) — try to finish by this
-    search_budget_seconds: float = 30.0
+    search_budget_seconds: float = 18.0
     # When the progress Skip button appears (seconds). Not a hard kill:
     # without Skip the search may run as long as needed.
-    search_max_seconds: float = 42.0
+    search_max_seconds: float = 24.0
     # Affiliate / partner tag for outbound booking links (product attribution)
     affiliate_tag: str = ""
     # When false (default), the tag is suppressed in deployed/production contexts
@@ -132,8 +132,8 @@ class Settings(BaseSettings):
             "col_culture": 0.0,
             "col_expected_daily": 0.0,
             "col_tolerance_pct": 25.0,
-            "search_budget_seconds": 30.0,
-            "search_max_seconds": 42.0,
+            "search_budget_seconds": 18.0,
+            "search_max_seconds": 24.0,
         }
         if v is None or (isinstance(v, str) and not str(v).strip()):
             return defaults.get(getattr(info, "field_name", ""), 0.0)
@@ -142,13 +142,13 @@ class Settings(BaseSettings):
     def search_timing(self) -> tuple[float, float]:
         """(soft_aim_seconds, skip_after_seconds) clamped to safe ranges."""
         try:
-            aim = float(self.search_budget_seconds or 30.0)
+            aim = float(self.search_budget_seconds or 18.0)
         except (TypeError, ValueError):
-            aim = 30.0
+            aim = 18.0
         try:
-            mx = float(self.search_max_seconds or 42.0)
+            mx = float(self.search_max_seconds or 24.0)
         except (TypeError, ValueError):
-            mx = 42.0
+            mx = 24.0
         aim = max(8.0, min(180.0, aim))
         mx = max(aim, min(600.0, mx))
         return aim, mx

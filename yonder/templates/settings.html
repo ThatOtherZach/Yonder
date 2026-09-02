@@ -638,14 +638,14 @@
             </div>
             <div class="col-12 col-sm-4">
             <label for="SEARCH_BUDGET_SECONDS">Soft aim (sec)
-              <span class="help">Try to finish by this (default 30). Pacing only.</span>
+              <span class="help">Try to finish by this (default 18). Pacing only.</span>
               <input id="SEARCH_BUDGET_SECONDS" name="SEARCH_BUDGET_SECONDS" type="number" min="8" max="180" step="1"
                 value="{{ view.search_budget_seconds }}" />
             </label>
             </div>
             <div class="col-12 col-sm-4">
-            <label for="SEARCH_MAX_SECONDS">Skip after (sec)
-              <span class="help">When <strong>Skip</strong> appears on the progress screen (default 42).</span>
+            <label for="SEARCH_MAX_SECONDS">Show fares after (sec)
+              <span class="help">When <strong>Show fares now</strong> appears (default 24).</span>
               <input id="SEARCH_MAX_SECONDS" name="SEARCH_MAX_SECONDS" type="number" min="8" max="600" step="1"
                 value="{{ view.search_max_seconds }}" />
             </label>

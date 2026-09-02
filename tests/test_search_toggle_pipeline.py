@@ -12,6 +12,10 @@ settings.configured_providers() returns empty, which forces mock=True.
 """
 from __future__ import annotations
 
+import asyncio
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -20,6 +24,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import yonder.grok as grok_module
+import yonder.encyclopedia as encyclopedia_module
 import yonder.intent as intent_module
 import yonder.last_search as ls_module
 import yonder.web as web_module
@@ -27,7 +32,7 @@ from yonder.adventure import AdventureRequest, AdventureResult, StopoverIdea
 from yonder.config import Settings
 from yonder.grok import ParsedTrip
 from yonder.intent import IntentDecision
-from yonder.types import SearchQuery, UnifiedSearchResult
+from yonder.types import FlightOffer, SearchQuery, UnifiedSearchResult
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -211,6 +216,79 @@ class TestMultiCityToggle:
         assert not captures["plan_calls"], (
             "plan_adventure must NOT be called when multi_city is omitted (escape-only)"
         )
+
+    def test_show_fares_now_cancels_active_field_note_and_returns_escape(
+        self, monkeypatch
+    ):
+        settings = _no_provider_settings()
+        monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
+        parsed = _make_parsed_trip()
+
+        async def _fake_unified(self, *args, **kwargs):
+            return {"escape": parsed, "detour_cities": None, "quest_pairs": []}
+
+        monkeypatch.setattr(grok_module.GrokClient, "plan_unified", _fake_unified)
+
+        async def _fake_search(query, **kwargs):
+            return UnifiedSearchResult(
+                query=query,
+                results=[],
+                offers=[
+                    FlightOffer(
+                        provider="test",
+                        price=499,
+                        currency="USD",
+                    )
+                ],
+            )
+
+        monkeypatch.setattr(web_module, "search_flights", _fake_search)
+        monkeypatch.setattr(encyclopedia_module, "get_cached", lambda key: None)
+
+        brief_started = threading.Event()
+        brief_cancelled = threading.Event()
+
+        async def _stalled_brief(*args, **kwargs):
+            brief_started.set()
+            try:
+                await asyncio.sleep(30)
+            finally:
+                brief_cancelled.set()
+
+        monkeypatch.setattr(encyclopedia_module, "get_place_brief", _stalled_brief)
+
+        async def _no_quest(*args, **kwargs):
+            return None
+
+        monkeypatch.setattr(web_module, "_run_eager_quest", _no_quest)
+
+        search_id = "show-fares-now-test"
+        client = TestClient(web_module.app, raise_server_exceptions=True)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                client.post,
+                "/explore",
+                data={
+                    "prompt": _ESCAPE_PROMPT,
+                    "origin": "YVR",
+                    "depart": _DEPART,
+                    "vibe": "adventure",
+                    "force_mode": "escape",
+                    "search_id": search_id,
+                },
+            )
+            assert brief_started.wait(timeout=3)
+            started = time.monotonic()
+            cancel = TestClient(web_module.app).post(
+                "/api/search-cancel", json={"search_id": search_id}
+            )
+            response = future.result(timeout=3)
+
+        assert cancel.status_code == 200
+        assert response.status_code == 200
+        assert time.monotonic() - started < 2
+        assert brief_cancelled.is_set()
+        assert "NRT" in response.text
 
     def test_multi_city_false_explicit_uses_escape_only(self, client, monkeypatch):
         """multi_city=false explicitly → plan_adventure never called."""

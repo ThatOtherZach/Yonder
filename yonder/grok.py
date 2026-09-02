@@ -1114,9 +1114,10 @@ class GrokClient:
         today: date | None = None,
         use_cache: bool = True,
         anchor_legs: list[dict] | None = None,
+        include_detour: bool = True,
         include_quest: bool = True,
     ) -> dict:
-        """ONE Grok call covering all three Find panels on a cold start.
+        """ONE Grok call covering the requested Find panels on a cold start.
 
         Replaces separate escape-parse + detour-invent + quest-pairs calls.
         Returns a typed dict:
@@ -1170,6 +1171,8 @@ class GrokClient:
                     depart_date.isoformat(),
                     ",".join(excl),
                     _anchor_fingerprint(anchor_legs),
+                    f"detour={int(include_detour)}",
+                    f"quest={int(include_quest)}",
                 ]
             ),
         )
@@ -1182,7 +1185,25 @@ class GrokClient:
                     _PARSE_CACHE.pop(cache_k, None)
 
         _xp = _compute_xp(visited_codes, avoid_codes)
-        _section_count = "THREE" if include_quest else "TWO"
+        _requested_sections = ["escape"]
+        if include_detour:
+            _requested_sections.append("detour")
+        if include_quest:
+            _requested_sections.append("quest")
+        _section_count = {
+            1: "ONE",
+            2: "TWO",
+            3: "THREE",
+        }[len(_requested_sections)]
+        _detour_schema = (
+            ',"detour":{'
+            '"trip_kind":"detour|getaway","origin":"YVR","destination":"YVR",'
+            '"depart_date":"YYYY-MM-DD","arrive_by":null,"currency":"USD",'
+            '"min_stop_days":3,"max_stop_days":5,"vibe":"adventure",'
+            '"intent_summary":"one line",'
+            '"candidates":[{"iata":"PDX","city":"Portland","country":"US",'
+            '"stay_days":3,"why":"...","vibe_tags":["city","cheap"]}]}'
+        ) if include_detour else ""
         _quest_schema = (
             ',"quest":{"ideas":['
             '{"entry_iata":"HAN","exit_iata":"BKK","entry_city":"Hanoi","exit_city":"Bangkok",'
@@ -1196,28 +1217,7 @@ class GrokClient:
             "routes, bus companies). The overland journey must be feasible in window_days. "
             "Vary regions across ideas.\n"
         ) if include_quest else ""
-        system = (
-            f"You are the planning engine for a vibe-first travel app. From ONE traveler "
-            f"prompt, produce {_section_count} independent sections in a single reply. "
-            "Return STRICT JSON only (no markdown fences) with exactly this shape:\n"
-            "{"
-            '"escape":{'
-            f'"origin":"{home}","destination":"NRT","depart_date":"YYYY-MM-DD",'
-            '"return_date":"YYYY-MM-DD"|null,"currency":"USD","nonstop_only":false,'
-            '"intent_summary":"one line","assumptions":["..."]},'
-            '"detour":{'
-            '"trip_kind":"detour|getaway","origin":"YVR","destination":"YVR",'
-            '"depart_date":"YYYY-MM-DD","arrive_by":null,"currency":"USD",'
-            '"min_stop_days":3,"max_stop_days":5,"vibe":"adventure",'
-            '"intent_summary":"one line",'
-            '"candidates":[{"iata":"PDX","city":"Portland","country":"US",'
-            '"stay_days":3,"why":"...","vibe_tags":["city","cheap"]}]}'
-            + _quest_schema
-            + "}\n"
-            "SECTION escape — parse the prompt as a point-to-point flight search. "
-            "IATA codes only; prefer major commercial airports; resolve relative dates from today. "
-            "If the user omits a from-city, origin MUST be default_origin. "
-            "Open-ended / vibe-only prompts still need a concrete destination IATA.\n"
+        _detour_section_desc = (
             "SECTION detour — trip_kind rules: getaway ONLY when the user names NO second city "
             "(origin=destination=home IATA; candidates are round-trip DESTINATIONS). "
             "detour when the user names two different cities (candidates are mid-route stops; "
@@ -1226,6 +1226,25 @@ class GrokClient:
             "country = ISO2 for each candidate. traveler_comfort rank guides boldness: "
             "Chaos Pilot/Nomadic Soul → off-beaten-path; Armchair Explorer/Day Tripper → "
             "nearby safe hubs and easy connections.\n"
+        ) if include_detour else ""
+        system = (
+            f"You are the planning engine for a vibe-first travel app. From ONE traveler "
+            f"prompt, produce {_section_count} requested section(s) in a single reply: "
+            f"{', '.join(_requested_sections)}. "
+            "Return STRICT JSON only (no markdown fences) with exactly this shape:\n"
+            "{"
+            '"escape":{'
+            f'"origin":"{home}","destination":"NRT","depart_date":"YYYY-MM-DD",'
+            '"return_date":"YYYY-MM-DD"|null,"currency":"USD","nonstop_only":false,'
+            '"intent_summary":"one line","assumptions":["..."]}'
+            + _detour_schema
+            + _quest_schema
+            + "}\n"
+            "SECTION escape — parse the prompt as a point-to-point flight search. "
+            "IATA codes only; prefer major commercial airports; resolve relative dates from today. "
+            "If the user omits a from-city, origin MUST be default_origin. "
+            "Open-ended / vibe-only prompts still need a concrete destination IATA.\n"
+            + _detour_section_desc
             + _quest_section_desc
             + "PASSPORT RULES (hard constraints for ALL sections — ground truth is the ISO2 lists):\n"
             "- NEVER use a destination/candidate/entry/exit in avoid_countries.\n"
@@ -1245,7 +1264,9 @@ class GrokClient:
         # Refresh-for-novelty (use_cache=False) skips injection: re-suggesting
         # the same learned destinations defeats the point of a refresh.
         learned = (
-            _learned_seed_candidates(vibe=vibe, origin=home) if use_cache else []
+            _learned_seed_candidates(vibe=vibe, origin=home)
+            if use_cache and (include_detour or include_quest)
+            else []
         )
         if learned:
             system += (
@@ -1265,9 +1286,6 @@ class GrokClient:
             "default_origin": home,
             "default_currency": currency.upper(),
             "depart_date": depart_date.isoformat(),
-            "min_stop_days": min_stop_days,
-            "max_stop_days": max_stop_days,
-            "max_candidates": max_candidates,
             "vibe": vibe,
             "avoid_countries": avoid_codes,
             "visited_countries": visited_codes,
@@ -1276,6 +1294,14 @@ class GrokClient:
             "visited_country_count": len(visited_codes),
             "user_prompt": prompt.strip()[:400],
         }
+        if include_detour:
+            _user_payload.update(
+                {
+                    "min_stop_days": min_stop_days,
+                    "max_stop_days": max_stop_days,
+                    "max_candidates": max_candidates,
+                }
+            )
         if include_quest:
             _user_payload["quest_outbound_date"] = outbound_date.isoformat()
             _user_payload["window_days"] = days
@@ -1320,7 +1346,7 @@ class GrokClient:
 
         # ── detour section ───────────────────────────────────────────────────
         det_raw = payload.get("detour")
-        if isinstance(det_raw, dict):
+        if include_detour and isinstance(det_raw, dict):
             try:
                 req, ideas = self._adventure_from_payload(
                     det_raw,

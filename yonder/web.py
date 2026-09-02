@@ -1434,6 +1434,32 @@ async def explore_run(request: Request) -> HTMLResponse:
         # Past soft aim and not skipped — keep going
         return 120.0
 
+    class _SearchCancelled(RuntimeError):
+        pass
+
+    async def _await_search_work(awaitable, *, timeout: float | None = None):
+        """Await one blocking search phase while honoring Show fares now."""
+        task = asyncio.create_task(awaitable)
+        deadline = _time.monotonic() + timeout if timeout is not None else None
+        try:
+            while True:
+                if search_id and is_cancelled(search_id):
+                    raise _SearchCancelled("Show fares now requested")
+                wait_for = 0.2
+                if deadline is not None:
+                    remaining_wait = deadline - _time.monotonic()
+                    if remaining_wait <= 0:
+                        raise asyncio.TimeoutError
+                    wait_for = min(wait_for, remaining_wait)
+                done, _ = await asyncio.wait({task}, timeout=wait_for)
+                if done:
+                    return task.result()
+        except BaseException:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            raise
+
     # Chip / form seed IATAs (product flywheel — skip cold invent when strong)
     chip_seeds: list[dict] = []
     for part in seed_iatas_raw.replace(";", ",").split(","):
@@ -1598,14 +1624,17 @@ async def explore_run(request: Request) -> HTMLResponse:
                         f"Do NOT use these destinations (already shown): "
                         f"{', '.join(sorted(exclude_iatas))}. Pick a different city."
                     )
-                trip = await grok.parse_natural_language(
-                    ask_esc,
-                    default_currency=currency,
-                    default_origin=home_iata,
-                    avoid_countries=avoid,
-                    visited_countries=visited,
-                    # Refresh wants novelty — a cached repeat defeats the point
-                    use_cache=not is_refresh,
+                trip = await _await_search_work(
+                    grok.parse_natural_language(
+                        ask_esc,
+                        default_currency=currency,
+                        default_origin=home_iata,
+                        avoid_countries=avoid,
+                        visited_countries=visited,
+                        # Refresh wants novelty — a cached repeat defeats the point
+                        use_cache=not is_refresh,
+                    ),
+                    timeout=16.0,
                 )
             if search_id and is_cancelled(search_id):
                 errors.append("Escape skipped mid-parse — user hit Skip")
@@ -1690,7 +1719,9 @@ async def explore_run(request: Request) -> HTMLResponse:
                 and _ro != _rd
             ):
                 resolved_route = (_ro, _rd)
-            fare_timeout = min(18.0, max(5.0, remaining * 0.5 if remaining < 100 else 14.0))
+            # A stalled provider must not hold the rendered Escape page.
+            # search_flights turns this timeout into the normal history/link fallback.
+            fare_timeout = 8.0
             result = await search_flights(
                 query,
                 settings=settings,
@@ -1751,14 +1782,16 @@ async def explore_run(request: Request) -> HTMLResponse:
                 }
             # Phase B: live field note if user didn't Skip
             elif not (search_id and is_cancelled(search_id)) and settings.grok_ready():
-                brief = await get_place_brief(
-                    settings,
-                    iata=query.destination,
-                    country=dest_cc,
-                    city=None,
-                    role="destination",
-                    user_prompt=prompt,
-                    trip_vibe=vibe,
+                brief = await _await_search_work(
+                    get_place_brief(
+                        settings,
+                        iata=query.destination,
+                        country=dest_cc,
+                        city=None,
+                        role="destination",
+                        user_prompt=prompt,
+                        trip_vibe=vibe,
+                    )
                 )
                 if brief:
                     place_book = brief.to_dict()
@@ -2346,7 +2379,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                     )
                 ) as _uni_http:
                     _ugrok = GrokClient(settings, client=_uni_http)
-                    _uni = await asyncio.wait_for(
+                    _uni = await _await_search_work(
                         _ugrok.plan_unified(
                             prompt,
                             vibe,
@@ -2365,10 +2398,12 @@ async def explore_run(request: Request) -> HTMLResponse:
                             # non-refresh today; the flag keeps that safe.)
                             use_cache=not is_refresh,
                             anchor_legs=anchor_legs,
-                            # Quest runs on demand — skip AI budget for it here
+                            # Escape is the only blocking panel. Detour is
+                            # on-demand and Quest has its own background job.
+                            include_detour=False,
                             include_quest=False,
                         ),
-                        timeout=34.0,
+                        timeout=16.0,
                     )
                     _route_usage.append(_ugrok.accumulated_usage)
                 _uni_trip = _uni.get("escape")
