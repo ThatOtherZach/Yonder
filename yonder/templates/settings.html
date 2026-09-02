@@ -129,6 +129,7 @@
       display: flex;
       gap: 0.85rem;
       align-items: stretch;
+      min-width: 0;
       background:
         radial-gradient(circle at 100% 50%, transparent 6px, color-mix(in srgb, var(--accent, #1d6b4f) 8%, var(--paper-2, #f0ede6)) 6px)
         100% 0 / 7px 14px repeat-y,
@@ -147,10 +148,12 @@
     }
     .xp-emoji { font-size: 1.35rem; line-height: 1; }
     .xp-rank-name {
+      min-width: 0;
       font-size: 1.05rem;
       font-weight: 780;
       letter-spacing: -0.02em;
       color: var(--ink);
+      overflow-wrap: anywhere;
     }
     .xp-amount {
       margin-left: auto;
@@ -166,6 +169,7 @@
       color: var(--muted);
       margin: 0 0 0.6rem;
       line-height: 1.4;
+      overflow-wrap: anywhere;
     }
     .xp-bar-wrap {
       height: 6px;

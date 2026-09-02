@@ -215,6 +215,8 @@
     a.xp-rank-badge {
       display: inline-flex;
       align-items: center;
+      min-width: 0;
+      max-width: 100%;
       gap: 0.35rem;
       padding: 0.3rem 0.7rem 0.3rem 0.5rem;
       background: color-mix(in srgb, var(--accent, #1d6b4f) 9%, var(--paper-2));
@@ -231,7 +233,7 @@
       border-color: color-mix(in srgb, var(--accent, #1d6b4f) 45%, var(--line));
     }
     .xp-rank-badge-emoji { font-size: 1rem; line-height: 1; }
-    .xp-rank-badge-name  { letter-spacing: -0.01em; }
+    .xp-rank-badge-name  { min-width: 0; letter-spacing: -0.01em; overflow-wrap: anywhere; }
     .xp-rank-badge-xp    { color: var(--muted); font-weight: 400; font-size: 0.72rem; }
 
     main.container {
@@ -1643,7 +1645,7 @@
       white-space: nowrap;
     }
   </style>
-  <link rel="stylesheet" href="/static/country_map.css?v=23" />
+  <link rel="stylesheet" href="/static/country_map.css?v=24" />
   <script>
     window.FS_TRAVEL = {{ (travel_ctx or {"avoid": [], "visited": [], "avoid_names": [], "visited_names": [], "country_names": {}, "primary_iata": {}, "home_iata": "JFK", "home_iata_setting": "", "home_iata_fallback": "JFK"}) | tojson }};
     window.FS_PROMO = {{ (promo_offers() or None) | tojson }};

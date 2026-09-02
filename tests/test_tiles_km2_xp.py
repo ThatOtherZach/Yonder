@@ -117,12 +117,57 @@ def test_visited_countries_from_tiles_keeps_stamp_order():
 # ---------------------------------------------------------------------------
 
 
-def test_rank_names_preserved():
-    assert [r[1] for r in RANKS] == [
+def test_rank_names_preserved_and_ladder_expanded():
+    names = [r[1] for r in RANKS]
+    existing = [
         "Armchair Explorer", "Day Tripper", "Weekend Wanderer",
         "Seasoned Traveller", "Globe-Trotter", "Nomadic Soul",
         "Expedition Regular", "Chaos Pilgrim", "Chaos Pilot",
     ]
+    assert len(RANKS) > 9
+    assert [name for name in names if name in existing] == existing
+
+
+def test_rank_thresholds_and_metadata_are_distinct():
+    thresholds = [r[0] for r in RANKS]
+    assert thresholds == sorted(set(thresholds))
+    assert thresholds[0] == 0
+    assert all(r[1] and r[2] and r[3] and r[4] for r in RANKS)
+    assert len({r[1] for r in RANKS}) == len(RANKS)
+    assert len({r[2] for r in RANKS}) == len(RANKS)
+    assert len({r[4] for r in RANKS}) == len(RANKS)
+
+
+def test_exact_threshold_and_between_threshold_progress(monkeypatch):
+    import yonder.xp as xp_module
+
+    for i, (threshold, name, *_rest) in enumerate(RANKS[:-1]):
+        monkeypatch.setattr(xp_module, "unlocked_km2", lambda _tiles, value=threshold: value)
+        profile = compute_xp([], [])
+        assert profile["rank"] == name
+        assert profile["progress_pct"] == 0
+        assert profile["next_rank"] == RANKS[i + 1][1]
+
+    threshold, *_ = RANKS[8]
+    next_threshold = RANKS[9][0]
+    midpoint = threshold + (next_threshold - threshold) // 2
+    monkeypatch.setattr(xp_module, "unlocked_km2", lambda _tiles: midpoint)
+    profile = compute_xp([], [])
+    assert profile["rank"] == RANKS[8][1]
+    assert profile["progress_pct"] == int(
+        (midpoint - threshold) / (next_threshold - threshold) * 100
+    )
+
+
+def test_real_tile_totals_progress_monotonically():
+    samples = [
+        ["GB-NIR"],
+        ["GB-ENG", "GB-SCT", "GB-WLS", "GB-NIR"],
+        ["FR", "ES", "IT", "DE", "PT"],
+        ["RU", "CA", "US", "CN", "BR", "AU", "IN", "AR"],
+    ]
+    indices = [[r[1] for r in RANKS].index(compute_xp(tiles, [])["rank"]) for tiles in samples]
+    assert indices == sorted(indices)
 
 
 def test_zero_tiles_is_armchair():
@@ -158,6 +203,21 @@ def test_profile_exposes_km2_fields_and_ladder():
     assert p["visited_count"] == 1  # one country with coverage
     assert p["tile_count"] == 1
     assert len(p["ladder"]) == len(RANKS)
+    assert p["ladder"][-1]["threshold_label"] == RANKS[-1][4]
+    assert p["ladder"][-1]["blurb"] == RANKS[-1][3]
+
+
+def test_maximum_rank_has_no_next_rank():
+    from yonder.countries import COUNTRIES
+
+    p = compute_xp([code for code, _label in COUNTRIES], [])
+    assert p["xp"] >= RANKS[-1][0]
+    assert p["rank"] == RANKS[-1][1]
+    assert p["next_rank"] is None
+    assert p["next_rank_emoji"] is None
+    assert p["next_rank_xp"] is None
+    assert p["progress_pct"] == 100
+    assert p["xp_to_next"] == 0
 
 
 # ---------------------------------------------------------------------------

@@ -222,9 +222,13 @@
   .ymap-compact-hint {
     display: none;
   }
-  /* Keep the compact bar from wrapping on narrow screens */
+  /* Let the rank badge wrap instead of pushing the map wider than the viewport. */
   .ymap-compact-bar {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
+  }
+  .ymap-compact-bar .xp-rank-badge {
+    white-space: normal;
+    max-width: 100%;
   }
 }
 
