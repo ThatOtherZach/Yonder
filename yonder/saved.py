@@ -8,8 +8,9 @@ import os
 import re
 import time
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from yonder.db import get_conn
@@ -125,6 +126,24 @@ class SavedItinerary:
         except (TypeError, ValueError):
             return None
 
+    @property
+    def itinerary_dates(self) -> list[date]:
+        return itinerary_dates(self.itinerary)
+
+    @property
+    def is_expired(self) -> bool:
+        dates = self.itinerary_dates
+        return bool(dates) and max(dates) < date.today()
+
+    @property
+    def first_departure_date(self) -> str | None:
+        dates = self.itinerary_dates
+        return min(dates).isoformat() if dates else None
+
+    @property
+    def minimum_reschedule_date(self) -> str:
+        return date.today().isoformat()
+
 
 def _row_to_saved(row: dict[str, Any]) -> SavedItinerary:
     notes_raw = row["notes_json"] or "[]"
@@ -182,6 +201,78 @@ def _row_to_saved(row: dict[str, Any]) -> SavedItinerary:
         trip_meta=trip_meta,
         owner_sess=row.get("owner_sess") or None,
     )
+
+
+_SHIFT_DATE_KEYS = {"depart_date", "outbound_date", "return_date"}
+_DATE_BOUND_URL_KEYS = {"booking_url", "google_flights_url", "kayak_url"}
+_STALE_FARE_KEYS = {
+    "all_in_display",
+    "display_price",
+    "display_price_base",
+    "display_total",
+    "offer",
+    "price_glyph",
+    "price_sign",
+    "price_tone",
+    "total_price",
+}
+
+
+def itinerary_dates(itinerary: dict[str, Any]) -> list[date]:
+    """Return the actual travel dates represented by an itinerary."""
+    found: list[date] = []
+
+    def walk(value: Any, key: str = "") -> None:
+        if key in _SHIFT_DATE_KEYS and value:
+            try:
+                found.append(date.fromisoformat(str(value)[:10]))
+            except (TypeError, ValueError):
+                pass
+        if isinstance(value, dict):
+            for child_key, child in value.items():
+                walk(child, str(child_key))
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(itinerary or {})
+    return sorted(set(found))
+
+
+def shift_itinerary_dates(
+    itinerary: dict[str, Any], new_departure: date
+) -> dict[str, Any]:
+    """Shift every travel date by the first departure's offset."""
+    dates = itinerary_dates(itinerary)
+    if not dates:
+        raise ValueError("This trip has no travel dates to update")
+    offset = new_departure - min(dates)
+    shifted = deepcopy(itinerary)
+
+    def walk(value: Any, key: str = "") -> Any:
+        if key in _SHIFT_DATE_KEYS and value:
+            try:
+                return (date.fromisoformat(str(value)[:10]) + offset).isoformat()
+            except (TypeError, ValueError):
+                return value
+        if isinstance(value, dict):
+            return {
+                child_key: (
+                    None
+                    if str(child_key) in (_DATE_BOUND_URL_KEYS | _STALE_FARE_KEYS)
+                    else walk(child, str(child_key))
+                )
+                for child_key, child in value.items()
+            }
+        if isinstance(value, list):
+            return [walk(child) for child in value]
+        return value
+
+    shifted = walk(shifted)
+    if str(shifted.get("kind") or "").lower() == "quest":
+        shifted["inbound_fare_missing"] = True
+        shifted["outbound_fare_missing"] = True
+    return shifted
 
 
 def _anchor_city(iata: str) -> str:
@@ -912,7 +1003,8 @@ def list_bookmarked_quests(
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT s.*, qb.created_at AS bookmark_at
+            SELECT s.*, qb.created_at AS bookmark_at,
+                   qb.itinerary_override_json, qb.override_updated_at
             FROM quest_bookmarks qb
             JOIN saved_itineraries s ON s.id = qb.saved_id
             WHERE qb.owner_sess = %s AND s.kind = 'quest'
@@ -925,11 +1017,42 @@ def list_bookmarked_quests(
     for r in rows:
         s = _row_to_saved(r)
         try:
+            override_raw = r["itinerary_override_json"]
+        except (KeyError, TypeError):
+            override_raw = None
+        if override_raw:
+            try:
+                override = json.loads(override_raw)
+                if isinstance(override, dict):
+                    s.itinerary = override
+            except (TypeError, json.JSONDecodeError):
+                pass
+        try:
             s.saved_at = float(r["bookmark_at"])
         except (TypeError, ValueError, KeyError):
             pass
         out.append(s)
     return out
+
+
+def update_quest_bookmark_override(
+    saved_id: str, itinerary: dict[str, Any], *, owner_sess: str | None
+) -> bool:
+    """Persist one browser's personal Quest itinerary without touching the Quest."""
+    owner = (owner_sess or "").strip()[:64] or None
+    if not owner or not saved_id or not isinstance(itinerary, dict):
+        return False
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            UPDATE quest_bookmarks
+            SET itinerary_override_json = %s, override_updated_at = %s
+            WHERE owner_sess = %s AND saved_id = %s
+            """,
+            (json.dumps(itinerary, separators=(",", ":")), time.time(), owner, saved_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
 
 
 _QUEST_ID_EXCLUDED_FIELDS = {

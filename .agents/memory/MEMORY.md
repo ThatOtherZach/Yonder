@@ -24,3 +24,4 @@
 - [Fare composition trust boundary](fare-composition-security.md) — verify server-signed selections and public HTTPS links before composing, rendering, saving, or sharing fare data.
 - [Save-before-navigation](save-before-navigation.md) — save actions must await confirmed persistence before leaving; fallback timers can cancel writes and create false success.
 - [Share environment affinity](share-environment-affinity.md) — share URLs must target the same environment/database where the share record was created.
+- [Trip reschedule ordering](trip-reschedule-ordering.md) — persist shifted dates before fare calls, and clear old-date fare/link snapshots before repricing.

@@ -92,8 +92,12 @@ CREATE INDEX IF NOT EXISTS idx_saved_owner ON saved_itineraries(owner_sess);
 CREATE TABLE IF NOT EXISTS quest_bookmarks (
     owner_sess TEXT NOT NULL,
     saved_id TEXT NOT NULL,
-    created_at DOUBLE PRECISION NOT NULL
+    created_at DOUBLE PRECISION NOT NULL,
+    itinerary_override_json TEXT,
+    override_updated_at DOUBLE PRECISION
 );
+ALTER TABLE quest_bookmarks ADD COLUMN IF NOT EXISTS itinerary_override_json TEXT;
+ALTER TABLE quest_bookmarks ADD COLUMN IF NOT EXISTS override_updated_at DOUBLE PRECISION;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_quest_bookmark
     ON quest_bookmarks(owner_sess, saved_id);
 CREATE INDEX IF NOT EXISTS idx_qb_saved ON quest_bookmarks(saved_id);

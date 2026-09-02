@@ -698,9 +698,18 @@
       <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
       {% endfor %}
       {% if mode == 'saved' %}
+      {% if s.is_expired %}
+      <form method="post" action="/saved/{{ s.id }}/reschedule" class="reschedule-form" style="margin-left:auto">
+        <span class="expired-label" role="status">Dates passed</span>
+        <label for="new-date-{{ s.id }}">New departure</label>
+        <input id="new-date-{{ s.id }}" name="new_departure_date" type="date" min="{{ s.minimum_reschedule_date }}" required>
+        <button type="submit" class="refresh-btn">Update dates &amp; fares</button>
+      </form>
+      {% else %}
       <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form" style="margin-left: auto;">
         <button type="submit" class="refresh-btn">Refresh fares</button>
       </form>
+      {% endif %}
       <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form">
         <button type="button" class="danger js-remove-confirm">Remove</button>
       </form>
@@ -825,6 +834,7 @@
   data-ticket-variant="full"
   data-quest-entry="{{ idea.entry_iata }}"
   data-quest-exit="{{ idea.exit_iata }}"
+  {% if mode == 'saved' and s %}data-saved-title="{{ s.title }}"{% endif %}
   style="--bp-accent: {{ accent }}; border-color: color-mix(in srgb, {{ accent }} 35%, var(--line));"
 >
   <div class="bp-main">
@@ -1035,9 +1045,18 @@
       <a class="btn secondary" href="{{ _ob_url }}" target="_blank" rel="noopener">Book {{ idea.exit_iata }} → {{ home_iata }} ↗</a>
       {% endif %}
       {% if mode == 'saved' and s %}
+      {% if s.is_expired %}
+      <form method="post" action="/saved/{{ s.id }}/reschedule" class="reschedule-form" style="margin-left:auto">
+        <span class="expired-label" role="status">Dates passed</span>
+        <label for="new-date-{{ s.id }}">New departure</label>
+        <input id="new-date-{{ s.id }}" name="new_departure_date" type="date" min="{{ s.minimum_reschedule_date }}" required>
+        <button type="submit" class="refresh-btn">Update dates &amp; fares</button>
+      </form>
+      {% else %}
       <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form" style="margin-left: auto;">
         <button type="submit" class="refresh-btn">Refresh fares</button>
       </form>
+      {% endif %}
       <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form">
         <button type="button" class="danger js-remove-confirm">Remove</button>
       </form>

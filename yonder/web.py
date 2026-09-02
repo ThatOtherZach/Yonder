@@ -4886,6 +4886,7 @@ async def saved_list_page(
             "flash": flash,
             "error": err,
             "save_limit": SAVE_LIMIT,
+            "today_iso": date.today().isoformat(),
         },
     )
     if need_cookie:
@@ -5198,6 +5199,207 @@ async def saved_refresh(request: Request, saved_id: str) -> HTMLResponse:
             url="/saved?err=" + quote(f"Refresh failed: {exc}"),
             status_code=302,
         )
+
+
+@app.post("/saved/{saved_id}/reschedule", response_class=HTMLResponse)
+async def saved_reschedule(request: Request, saved_id: str) -> HTMLResponse:
+    """Shift an expired save first, then best-effort reprice its future dates."""
+    from yonder.adventure import PricedLeg
+    from yonder.money import format_approx
+    from yonder.saved import (
+        bookmarked_quest_ids,
+        shift_itinerary_dates,
+        update_quest_bookmark_override,
+    )
+
+    owner = _req_sess(request)
+    item = get_saved(saved_id)
+    if not item:
+        return RedirectResponse(url="/saved?err=" + quote("Itinerary not found"), status_code=302)
+    is_quest = (item.kind or "").lower() == "quest"
+    if is_quest:
+        if not owner or saved_id not in bookmarked_quest_ids(owner_sess=owner):
+            return RedirectResponse(url="/saved?err=" + quote("Not authorised"), status_code=302)
+        # Read this browser's current override, if any.
+        from yonder.saved import list_bookmarked_quests
+        item = next((q for q in list_bookmarked_quests(owner_sess=owner) if q.id == saved_id), item)
+    else:
+        item_owner = (item.owner_sess or "").strip()[:64] or None
+        if not item_owner or owner != item_owner:
+            return RedirectResponse(url="/saved?err=" + quote("Not authorised"), status_code=302)
+    if not item.is_expired:
+        return RedirectResponse(
+            url="/saved?err=" + quote("This trip's dates have not passed"), status_code=302
+        )
+
+    form = await request.form()
+    raw_date = str(form.get("new_departure_date") or "").strip()
+    try:
+        new_departure = date.fromisoformat(raw_date)
+    except ValueError:
+        return RedirectResponse(
+            url="/saved?err=" + quote("Choose a valid new departure date"), status_code=302
+        )
+    if new_departure < date.today():
+        return RedirectResponse(
+            url="/saved?err=" + quote("Choose today or a future departure date"), status_code=302
+        )
+    try:
+        shifted = shift_itinerary_dates(item.itinerary, new_departure)
+    except ValueError as exc:
+        return RedirectResponse(url="/saved?err=" + quote(str(exc)), status_code=302)
+    # Older Escape round trips stored the return only in query.return_date.
+    # Normalize that into a second leg before the durable write so provider
+    # failure cannot collapse the saved round trip into one way.
+    shifted_query = (
+        shifted.get("query") if isinstance(shifted.get("query"), dict) else {}
+    )
+    shifted_legs = shifted.get("legs") if isinstance(shifted.get("legs"), list) else []
+    if (
+        not is_quest
+        and (item.kind or "").lower() == "escape"
+        and shifted_query.get("return_date")
+        and len(shifted_legs) == 1
+        and isinstance(shifted_legs[0], dict)
+    ):
+        outbound = shifted_legs[0]
+        shifted["legs"] = [
+            outbound,
+            {
+                "from_iata": outbound.get("to_iata") or shifted_query.get("destination"),
+                "to_iata": outbound.get("from_iata") or shifted_query.get("origin"),
+                "depart_date": shifted_query["return_date"],
+                "offer": None,
+                "google_flights_url": None,
+                "booking_url": None,
+            },
+        ]
+
+    # Dates are the durable user edit. Save them before any provider call.
+    if is_quest:
+        persisted = update_quest_bookmark_override(saved_id, shifted, owner_sess=owner)
+    else:
+        persisted = update_from_itinerary(
+            saved_id, shifted, owner_sess=item.owner_sess or owner or None
+        ) is not None
+    if not persisted:
+        return RedirectResponse(
+            url="/saved?err=" + quote("Could not update this saved trip"), status_code=302
+        )
+
+    settings = _session_settings(request)
+    mock = not settings.configured_providers()
+    _rl = await _rate_limit.check_fare(request, owner, mock=mock)
+    if not _rl.allowed:
+        return RedirectResponse(
+            url="/saved?flash="
+            + quote("Dates updated — wait a moment before checking fares"),
+            status_code=302,
+        )
+    if not _rate_limit.check_daily_budget(mock=mock, cost=0.5):
+        return RedirectResponse(
+            url="/saved?flash="
+            + quote("Dates updated — fare checks are full for today"),
+            status_code=302,
+        )
+    cabin_raw = (item.cabin or "economy").lower()
+    try:
+        cabin = CabinClass(cabin_raw)
+    except ValueError:
+        cabin = CabinClass.ECONOMY
+    try:
+        if is_quest:
+            quest = QuestIdea.model_validate(shifted)
+            legs = [leg for leg in (quest.inbound_leg, quest.outbound_leg) if leg]
+            if len(legs) != 2:
+                home = item.origin or str((item.trip_meta or {}).get("origin") or "")
+                legs = [
+                    PricedLeg(from_iata=home, to_iata=quest.entry_iata, depart_date=quest.depart_date),
+                    PricedLeg(from_iata=quest.exit_iata, to_iata=home, depart_date=quest.outbound_date),
+                ]
+            shell = AdventureItinerary(
+                kind="quest", title=item.title, currency=item.currency, legs=legs
+            )
+            refreshed, rmeta = await reprice_itinerary(
+                shell, adults=item.adults, currency=item.currency, cabin=cabin,
+                settings=settings, include_mock=mock,
+            )
+            repriced = dict(shifted)
+            if len(refreshed.legs) >= 2:
+                repriced["inbound_leg"] = refreshed.legs[0].model_dump(mode="json")
+                repriced["outbound_leg"] = refreshed.legs[1].model_dump(mode="json")
+                live_prices = [leg.price for leg in refreshed.legs if leg.price is not None]
+                repriced["total_price"] = sum(live_prices) if len(live_prices) == 2 else None
+                repriced["display_total"] = (
+                    format_approx(repriced["total_price"], item.currency)
+                    if repriced["total_price"] is not None
+                    else None
+                )
+                repriced["inbound_fare_missing"] = refreshed.legs[0].price is None
+                repriced["outbound_fare_missing"] = refreshed.legs[1].price is None
+            update_quest_bookmark_override(saved_id, repriced, owner_sess=owner)
+        else:
+            itinerary = AdventureItinerary.model_validate(shifted)
+            legacy_query = (
+                shifted.get("query") if isinstance(shifted.get("query"), dict) else {}
+            )
+            legacy_return = legacy_query.get("return_date")
+            if (
+                (item.kind or "").lower() == "escape"
+                and legacy_return
+                and len(itinerary.legs) == 1
+            ):
+                outbound = itinerary.legs[0]
+                itinerary = itinerary.model_copy(
+                    update={
+                        "legs": [
+                            outbound,
+                            PricedLeg(
+                                from_iata=outbound.to_iata,
+                                to_iata=outbound.from_iata,
+                                depart_date=date.fromisoformat(str(legacy_return)[:10]),
+                            ),
+                        ]
+                    }
+                )
+            refreshed, rmeta = await reprice_itinerary(
+                itinerary, adults=item.adults, currency=item.currency, cabin=cabin,
+                settings=settings, include_mock=mock,
+            )
+            if not refreshed.legs or any(leg.price is None for leg in refreshed.legs):
+                refreshed = refreshed.model_copy(
+                    update={
+                        "total_price": None,
+                        "display_price": None,
+                        "display_price_base": None,
+                        "price_glyph": None,
+                        "price_sign": None,
+                        "price_tone": None,
+                        "all_in_display": None,
+                    }
+                )
+            refreshed_payload = {
+                **shifted,
+                **refreshed.model_dump(mode="json"),
+            }
+            update_from_itinerary(
+                saved_id, refreshed_payload,
+                trip_meta={
+                    **(item.trip_meta or {}),
+                    "last_refresh_status": rmeta.get("status"),
+                    "last_refresh_message": rmeta.get("message"),
+                },
+                owner_sess=item.owner_sess or owner or None,
+            )
+        status = rmeta.get("status") or "failed"
+        message = (
+            "Dates updated and fares refreshed"
+            if status in ("live", "mixed")
+            else "Dates updated — check fares when providers are available"
+        )
+    except Exception:
+        message = "Dates updated — check fares when providers are available"
+    return RedirectResponse(url="/saved?flash=" + quote(message), status_code=302)
 
 
 @app.post("/saved/{saved_id}/delete", response_class=HTMLResponse)

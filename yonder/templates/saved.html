@@ -36,6 +36,33 @@
       font-family: inherit;
     }
     button.refresh-btn:disabled { opacity: 0.7; cursor: wait; }
+    .reschedule-form {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .reschedule-form label {
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .reschedule-form input[type="date"] {
+      min-height: 42px;
+      padding: 0.4rem 0.55rem;
+      border: 1px solid var(--line);
+      border-radius: 0.55rem;
+      font: inherit;
+    }
+    .expired-label {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    @media (max-width: 560px) {
+      .reschedule-form { width: 100%; margin-left: 0 !important; }
+      .reschedule-form input[type="date"],
+      .reschedule-form button { flex: 1 1 100%; min-height: 44px; }
+    }
     .bp-actions button.danger {
       background: linear-gradient(135deg, #c0392b, #e74c3c) !important;
       color: #fff !important;
@@ -229,9 +256,18 @@
             <p class="bp-cities">{{ s.title }}</p>
             <p class="bp-note">Couldn’t restore full pass layout for this save.</p>
             <div class="bp-actions">
+              {% if s.is_expired %}
+              <form method="post" action="/saved/{{ s.id }}/reschedule" class="reschedule-form">
+                <span class="expired-label" role="status">Dates passed</span>
+                <label for="new-date-{{ s.id }}">New departure</label>
+                <input id="new-date-{{ s.id }}" name="new_departure_date" type="date" min="{{ today_iso }}" required>
+                <button type="submit" class="refresh-btn">Update dates &amp; fares</button>
+              </form>
+              {% else %}
               <form method="post" action="/saved/{{ s.id }}/refresh" class="refresh-form">
                 <button type="submit" class="refresh-btn">Refresh fares</button>
               </form>
+              {% endif %}
               <form method="post" action="/saved/{{ s.id }}/delete" class="js-delete-form">
                 <button type="button" class="danger js-remove-confirm">Remove</button>
               </form>
