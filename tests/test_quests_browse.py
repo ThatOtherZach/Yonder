@@ -8,16 +8,21 @@ Covers:
   5. Share link: browse cards link to the shared trip page (not just "Plan this Quest").
   6. Sitemap includes /quests.
   7. Nav active class is applied on /quests.
+  8. Real-browser save follows the current host and preserves the browser session.
+  9. A rejected real-browser save restores the button without navigating.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
+import socket
+import threading
 import time
 import uuid
 
 import pytest
+import uvicorn
 from fastapi.testclient import TestClient
 from playwright.sync_api import sync_playwright
 
@@ -29,6 +34,43 @@ from yonder.saved import ensure_global_quest, list_bookmarked_quests
 @pytest.fixture()
 def client():
     return TestClient(web_module.app, raise_server_exceptions=True)
+
+
+@pytest.fixture()
+def browser_server(monkeypatch):
+    """Serve the patched app over HTTP so Chromium exercises real navigation."""
+    monkeypatch.setattr(web_module, "_IS_HTTPS", False)
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+
+    server = uvicorn.Server(
+        uvicorn.Config(
+            web_module.app,
+            host="127.0.0.1",
+            port=port,
+            log_level="error",
+            access_log=False,
+        )
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not server.started and time.monotonic() < deadline:
+        if not thread.is_alive():
+            pytest.fail("Uvicorn browser test server exited during startup")
+        time.sleep(0.01)
+    if not server.started:
+        server.should_exit = True
+        thread.join(timeout=5)
+        pytest.fail("Uvicorn browser test server did not start")
+
+    try:
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
 
 
 @pytest.fixture(autouse=True)
@@ -141,6 +183,129 @@ def test_quest_save_target_opens_saved_page_and_bookmark_is_visible(client):
     saved_page = client.get("/saved")
     assert saved_page.status_code == 200
     assert quest.title in saved_page.text
+
+
+def test_real_browser_quest_save_posts_and_stays_on_current_host(
+    client, browser_server
+):
+    """A browse-card save follows a same-host relative Saved URL in Chromium."""
+    chromium = shutil.which("chromium")
+    if not chromium:
+        pytest.skip("Chromium is required for browser save regressions")
+
+    quest = ensure_global_quest(
+        {
+            "kind": "quest",
+            "title": "Lisbon → overland → Porto",
+            "entry_iata": "LIS",
+            "exit_iata": "OPO",
+            "entry_city": "Lisbon",
+            "exit_city": "Porto",
+            "depart_date": "2026-11-01",
+        },
+        trip_meta={"origin": "YVR", "vibe": "adventure"},
+        origin="YVR",
+    )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
+            headless=True,
+            executable_path=chromium,
+            args=["--no-sandbox"],
+        )
+        page = browser.new_page()
+        browse_url = f"{browser_server}/quests?origin=YVR"
+        page.goto(browse_url, wait_until="domcontentloaded")
+
+        button = page.locator(".btn-ql-save").first
+        assert button.is_visible()
+        with page.expect_request(
+            lambda request: request.method == "POST"
+            and request.url == f"{browser_server}/api/saved"
+        ) as save_request:
+            with page.expect_response(
+                lambda response: response.url == f"{browser_server}/api/saved"
+                and response.request.method == "POST"
+            ) as save_response:
+                with page.expect_navigation(wait_until="domcontentloaded"):
+                    button.click()
+
+        request = save_request.value
+        payload = request.post_data_json
+        assert payload["itinerary"]["title"] == quest.title
+        assert payload["trip_meta"]["saved_id"] == quest.id
+        assert save_response.value.status == 200
+        assert page.url == f"{browser_server}/saved?flash=Quest%20saved"
+        assert quest.title in page.content()
+        browser.close()
+
+    saved = client.get("/saved")
+    assert saved.status_code == 200
+    assert quest.title not in saved.text  # Chromium used its own session cookie
+
+
+def test_real_browser_rejected_quest_save_restores_button_without_navigation(
+    browser_server,
+):
+    """A failed browse-card save clears the optimistic disabled state."""
+    chromium = shutil.which("chromium")
+    if not chromium:
+        pytest.skip("Chromium is required for browser save regressions")
+
+    # The route only needs a rendered card; its response is deliberately
+    # rejected before the server's bookmark endpoint is reached.
+    ensure_global_quest(
+        {
+            "kind": "quest",
+            "title": "Lisbon → overland → Porto",
+            "entry_iata": "LIS",
+            "exit_iata": "OPO",
+            "entry_city": "Lisbon",
+            "exit_city": "Porto",
+            "depart_date": "2026-11-01",
+        },
+        trip_meta={"origin": "YVR", "vibe": "adventure"},
+        origin="YVR",
+    )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
+            headless=True,
+            executable_path=chromium,
+            args=["--no-sandbox"],
+        )
+        page = browser.new_page()
+        page.route(
+            f"{browser_server}/api/saved",
+            lambda route: route.fulfill(
+                status=503,
+                content_type="application/json",
+                body=json.dumps({"ok": False, "error": "temporarily unavailable"}),
+            ),
+        )
+        browse_url = f"{browser_server}/quests?origin=YVR"
+        page.goto(browse_url, wait_until="domcontentloaded")
+        initial_url = page.url
+        button = page.locator(".btn-ql-save").first
+        assert button.is_visible()
+
+        with page.expect_request(
+            lambda request: request.method == "POST"
+            and request.url == f"{browser_server}/api/saved"
+        ):
+            button.click()
+
+        page.wait_for_function(
+            """() => {
+                const button = document.querySelector(".btn-ql-save");
+                return button && button.textContent === "★ Save" && !button.disabled;
+            }"""
+        )
+        assert page.url == initial_url
+        assert button.inner_text() == "★ Save"
+        assert button.is_enabled()
+        assert button.get_attribute("title") == "temporarily unavailable"
+        browser.close()
 
 
 def test_quests_page_mints_session_before_first_save_and_saved_page_uses_it():
