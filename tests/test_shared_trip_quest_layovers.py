@@ -116,6 +116,8 @@ class TestQuestSharePage:
         share = _quest_share(_SEGMENTS_STR)
         resp = client.get(f"/t/{share.id}")
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
+        assert '<span class="trip-title-part">to</span>' in resp.text
+        assert '<span class="trip-title-part">overland</span>' not in resp.text
 
     def test_layover_text_rendered_from_string_times(self, client):
         share = _quest_share(_SEGMENTS_STR)

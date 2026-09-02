@@ -715,38 +715,6 @@
     .fare-table tbody tr:last-child td { border-bottom: none; }
     .fare-table tr:hover td { background: var(--sky-mist); }
     .fare-table .price { font-weight: 700; color: var(--good); white-space: nowrap; }
-    /* ── thumb votes ── */
-    .bp-thumbs {
-      display: flex;
-      justify-content: center;
-      gap: 0.3rem;
-      margin-top: 0.55rem;
-    }
-    .thumb-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 2rem;
-      height: 2rem;
-      border-radius: 8px;
-      border: 1px solid var(--line);
-      background: transparent;
-      color: var(--muted);
-      font-size: 0.95rem;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s, border-color 0.15s;
-      line-height: 1;
-      padding: 0;
-    }
-    .thumb-btn.thumb-up   { background: color-mix(in srgb, var(--good, #1a9e5c) 10%, transparent); border-color: color-mix(in srgb, var(--good, #1a9e5c) 30%, var(--line)); }
-    .thumb-btn.thumb-down { background: color-mix(in srgb, #e05 9%, transparent); border-color: color-mix(in srgb, #e05 25%, var(--line)); }
-    .thumb-btn:hover { border-color: var(--sky); color: var(--sky); background: var(--sky-mist); }
-    .thumb-btn.voted-up   { background: color-mix(in srgb, var(--good) 18%, transparent); border-color: var(--good); color: var(--good); }
-    .thumb-btn.voted-down { background: color-mix(in srgb, #e05 16%, transparent); border-color: #e05; color: #e05; }
-    .thumb-btn:disabled   { opacity: 0.45; cursor: default; }
-    @media (max-width: 575.98px) {
-      .thumb-btn { width: 2.6rem; height: 2.6rem; font-size: 1.15rem; border-radius: 10px; }
-    }
     .fare-table .provider {
       font-family: ui-monospace, Consolas, monospace;
       font-size: 0.78rem;

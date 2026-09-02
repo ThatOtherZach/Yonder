@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_boarding_pass.html" as bp %}
 {% block title %}Quest Library · Yonder{% endblock %}
 {% block canonical_url %}https://yonder.city/quests{% endblock %}
 {% block meta_description %}Browse Yonder's library of open-jaw Quest adventures — filter by departure airport and find your next overland journey.{% endblock %}
@@ -222,243 +223,39 @@
     align-self: flex-end;
   }
   /* ── Quest cards ── */
-  .quest-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
-    gap: 1.1rem;
-    margin-bottom: 1.5rem;
-  }
-  .quest-card {
-    background: var(--white);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    display: flex;
-    flex-direction: row;
-    position: relative;
-    overflow: hidden;
-    transition: box-shadow 0.18s, transform 0.18s;
-  }
-  .quest-card:hover {
-    box-shadow: 0 2px 4px rgba(20,28,40,0.06), 0 18px 48px rgba(20,28,40,0.12);
-    transform: translateY(-2px);
-  }
-  /* left accent stripe */
-  .qc-stripe {
-    width: 4px;
-    flex-shrink: 0;
-    border-radius: var(--radius) 0 0 var(--radius);
-    background: var(--sky-bright);
-  }
-  /* main content area */
-  .qc-body {
-    flex: 1;
-    padding: 1.15rem 1.25rem 1.05rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    min-width: 0;
-  }
-  /* header row: vibe pill */
-  .qc-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 0.75rem;
-  }
-  .qc-vibe-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.63rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    background: transparent;
-    border: 1px solid currentColor;
-    border-radius: 999px;
-    padding: 0.2rem 0.6rem 0.2rem 0.45rem;
-    white-space: nowrap;
-    opacity: 0.85;
-  }
-  .qc-vibe-emoji {
-    font-size: 0.75rem;
-    line-height: 1;
-    flex-shrink: 0;
-  }
-  /* route: two cities with transport bridge */
-  .qc-route {
-    margin-bottom: 0.9rem;
-  }
-  .qc-city {
-    font-family: var(--font-display);
-    font-size: 1.32rem;
-    font-weight: 400;
-    letter-spacing: -0.025em;
-    color: var(--ink);
-    line-height: 1.15;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .qc-city-iata {
-    font-family: inherit;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    color: var(--muted);
-    text-transform: uppercase;
-    margin-left: 0.35em;
-    vertical-align: middle;
-  }
-  .qc-transport-bridge {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    margin: 0.22rem 0;
-    padding-left: 0.1rem;
-  }
-  .qc-transport-line {
-    width: 1.5px;
-    height: 1.25rem;
-    background: var(--line-strong);
-    border-radius: 1px;
-    margin-left: 0.55rem;
-    flex-shrink: 0;
-  }
-  .qc-transport-label {
-    font-size: 0.72rem;
-    color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 16rem;
-  }
-  /* overland lore text */
-  .qc-narrative {
-    font-size: 0.82rem;
-    font-style: italic;
-    color: var(--ink-soft);
-    line-height: 1.5;
-    margin-bottom: 0.75rem;
-  }
-  /* highlight objectives */
-  .qc-objectives {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-    margin-bottom: 0.85rem;
-  }
-  .qc-obj-chip {
-    font-size: 0.7rem;
-    font-weight: 500;
-    color: var(--ink-soft);
-    background: var(--paper-2);
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 0.18rem 0.6rem;
-    white-space: nowrap;
-    max-width: 12rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  /* stat strip */
-  .qc-stats {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.2rem 0.7rem;
-    font-size: 0.76rem;
-    color: var(--muted);
-    margin-bottom: 1rem;
-  }
-  .qc-stat {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    white-space: nowrap;
-  }
-  .qc-stat-label {
-    font-size: 0.62rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-    opacity: 0.7;
-  }
-  .qc-stat-sep {
-    color: var(--line-strong);
-    font-size: 0.7rem;
-  }
-  /* Departs + outbound date pair — single flex child so they stay on one row */
-  .qc-stat-group {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem 0.5rem;
-    white-space: nowrap;
-  }
-  @media (max-width: 540px) {
-    .qc-stats {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 0.3rem;
-    }
-    .qc-stat-sep:not(.qc-stat-sep--arrow) {
-      display: none;
-    }
-  }
-  /* Footer: QR left + stats/CTA right */
-  .qc-footer {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.9rem;
-    align-items: start;
-    margin-top: auto;
-  }
-  .qc-qr {
-    flex-shrink: 0;
-    width: 72px;
-    height: 72px;
-    border-radius: 6px;
-    overflow: hidden;
-    background: #fff;
-    padding: 4px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .qc-qr img, .qc-qr svg {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
-  .qc-footer-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    min-width: 0;
-  }
-  @media (max-width: 400px) {
-    .qc-footer {
-      grid-template-columns: 1fr;
-    }
-    .qc-qr { display: none; }
-  }
-  /* CTA */
-  .qc-cta {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    margin-top: 0.75rem;
-  }
-  .qc-cta a {
-    font-size: 0.83rem;
-    padding: 0.4rem 1rem;
-  }
-  .qc-cta a.btn-gold {
-    color: #1a1200 !important;
-  }
+   .quest-grid {
+     display: grid;
+     grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+     gap: 1rem;
+     margin-bottom: 1.5rem;
+   }
+   .quest-ticket--compact { height: 100%; box-shadow: var(--shadow-sm); transition: transform .16s ease, box-shadow .16s ease; }
+   .quest-ticket--compact:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+   .quest-ticket--compact .bp-main { display:flex; flex-direction:column; }
+   .quest-ticket--compact .bp-route { gap:.35rem; }
+   .quest-ticket--compact .bp-iata { font-size:1.2rem; }
+   .quest-ticket--compact .bp-iata-mid { opacity:.72; font-size:1rem; }
+   .quest-browse-details { margin-top:.75rem; }
+   .quest-browse-transport { display:flex; align-items:baseline; gap:.5rem; color:var(--ink-soft); font-size:.78rem; line-height:1.4; }
+   .quest-browse-transport > span:last-child { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; white-space:normal; }
+   .quest-browse-details .bp-why { margin:.45rem 0 .55rem; font-size:.82rem; }
+   .quest-browse-details .bp-why.mt-\[0px\] { margin-top:0; }
+   .quest-ticket--compact .bp-cities.text-left { text-align:left; }
+   .quest-browse-highlights { margin:.5rem 0 0; row-gap:.55rem; }
+   .quest-browse-highlights.mb-\[8px\] { margin-bottom:8px; }
+   .quest-browse-highlights .pb-fact { font-size:.7rem; font-weight:500; }
+   .quest-browse-stats { display:flex; flex-wrap:wrap; gap:.3rem .8rem; margin-top:.7rem; color:var(--bp-accent); font-size:.72rem; }
+   .quest-browse-stats.mt-\[0px\] { margin-top:0; }
+   .quest-browse-stats strong { margin-right:.2rem; color:var(--bp-accent); font-size:.61rem; letter-spacing:.06em; text-transform:uppercase; }
+   .quest-ticket--compact .bp-actions { margin-top:auto; padding-top:.8rem; }
+   .quest-ticket--compact .bp-stub { justify-content:center; align-items:center; gap:1rem; }
+   .quest-ticket--compact .bp-qr { display:block; width:72px; height:72px; padding:4px; background:#fff; border-radius:6px; }
+   .quest-ticket--compact .bp-qr img, .quest-ticket--compact .bp-qr svg { display:block; width:100%; height:100%; }
+   @media (max-width:575px) {
+      .quest-ticket--compact .bp-stub { border-top:1.5px dashed var(--line-strong); grid-template-columns:1fr auto; }
+      .quest-browse-details { margin-top:.65rem; }
+      .quest-browse-stats { gap:.25rem .6rem; }
+   }
   .quests-empty {
     text-align: center;
     padding: 3rem 1.25rem;
@@ -586,163 +383,7 @@
 
     <div class="quest-grid">
       {% for card in quest_cards %}
-        {% set s = card.saved %}
-        {% set share = card.share %}
-        {% set accent = s.theme_accent or '#2a6fad' %}
-        {% set vibe_label = s.theme_label or (s.vibe or '') | capitalize %}
-        {% set it = s.itinerary %}
-        {% set entry_city = it.get('entry_city') or it.get('entry_iata') or s.destination or '?' %}
-        {% set entry_iata = it.get('entry_iata') or '' %}
-        {% set exit_city = it.get('exit_city') or it.get('exit_iata') or '?' %}
-        {% set exit_iata = it.get('exit_iata') or '' %}
-        {% set depart_date = it.get('depart_date') or '' %}
-        {% set outbound_date = it.get('outbound_date') or '' %}
-        {% set transport_list = it.get('transport') or [] %}
-        {% set highlights = it.get('highlights') or [] %}
-        {% set narrative = it.get('overland_narrative') or '' %}
-
-        <article class="quest-card">
-          <div class="qc-stripe" style="background: {{ accent }};"></div>
-
-          <div class="qc-body">
-            {# — Header: vibe pill — #}
-            {% set _vr = resolve_vibe(s.vibe) %}
-            <div class="qc-header">
-              {% if vibe_label %}
-                <span class="qc-vibe-pill" style="background: {{ _vr.color }}; border-color: {{ _vr.color }}; color: #fff;">
-                  <span class="qc-vibe-emoji" aria-hidden="true">{{ _vr.emoji or '✦' }}</span>
-                  {{ _vr.label or vibe_label }}
-                </span>
-              {% else %}
-                <span></span>
-              {% endif %}
-            </div>
-
-            {# — Route: entry city → transport bridge → exit city — #}
-            <div class="qc-route">
-              <div class="qc-city">
-                {{ entry_city }}
-                {% if entry_iata and entry_iata != entry_city %}
-                  <span class="qc-city-iata">{{ entry_iata }}</span>
-                {% endif %}
-              </div>
-
-              <div class="qc-transport-bridge">
-                <div class="qc-transport-line"></div>
-                {% if transport_list %}
-                  <span class="qc-transport-label">
-                    {%- set t0 = transport_list[0] | truncate(38, true, '…') -%}
-                    {%- if transport_list | length > 1 -%}
-                      {%- set t1 = transport_list[1] | truncate(28, true, '…') -%}
-                      {{ t0 }} · {{ t1 }}
-                    {%- else -%}
-                      {{ t0 }}
-                    {%- endif -%}
-                  </span>
-                {% else %}
-                  <span class="qc-transport-label">overland</span>
-                {% endif %}
-              </div>
-
-              <div class="qc-city">
-                {{ exit_city }}
-                {% if exit_iata and exit_iata != exit_city %}
-                  <span class="qc-city-iata">{{ exit_iata }}</span>
-                {% endif %}
-              </div>
-            </div>
-
-            {# — Lore: overland narrative excerpt — #}
-            {% if narrative %}
-              <p class="qc-narrative">{{ narrative }}</p>
-            {% endif %}
-
-            {# — Objectives: highlights — #}
-            {% if highlights %}
-              <div class="qc-objectives">
-                {% for h in highlights[:4] %}
-                  <span class="qc-obj-chip">● {{ h }}</span>
-                {% endfor %}
-              </div>
-            {% endif %}
-
-            {# — Footer: QR left + stats/CTA right — #}
-            <div class="qc-footer">
-              {% if share and share.qr_src %}
-                <a class="qc-qr" href="{{ share.path }}" title="Open quest">
-                  <img src="{{ share.qr_src }}" alt="QR code" width="72" height="72" loading="lazy" decoding="async" />
-                </a>
-              {% elif share and share.qr_svg %}
-                <a class="qc-qr" href="{{ share.path }}" title="Open quest">
-                  {{ share.qr_svg | safe }}
-                </a>
-              {% else %}
-                <div class="qc-qr" style="background:var(--paper-2);"></div>
-              {% endif %}
-
-              <div class="qc-footer-content">
-                {# — Stats strip — #}
-                <div class="qc-stats">
-                  {% if s.origin %}
-                    <span class="qc-stat">
-                      <span class="qc-stat-label">From</span>
-                      <strong>{{ s.origin | upper }}</strong>
-                    </span>
-                    <span class="qc-stat-sep">·</span>
-                  {% endif %}
-                  {% if depart_date %}
-                    <span class="qc-stat-group">
-                      <span class="qc-stat">
-                        <span class="qc-stat-label">Departs</span>
-                        {{ depart_date | fmt_date_short }}
-                      </span>
-                      {% if outbound_date %}
-                        <span class="qc-stat-sep qc-stat-sep--arrow">→</span>
-                        <span class="qc-stat">{{ outbound_date | fmt_date_short }}</span>
-                      {% endif %}
-                    </span>
-                    <span class="qc-stat-sep">·</span>
-                  {% endif %}
-                  {% if s.display_price %}
-                    <span class="qc-stat">
-                      <span class="qc-stat-label">Est.</span>
-                      <strong>{{ s.display_price }}</strong>
-                    </span>
-                  {% endif %}
-                </div>
-
-                {# — CTA — #}
-                <div class="qc-cta">
-                  {% if share and share.path %}
-                    <a class="btn btn-gold" href="{{ share.path }}">
-                      Open Quest ↗
-                    </a>
-                  {% else %}
-                    <a class="btn secondary" href="/?mode=quest&amp;origin={{ s.origin | urlencode if s.origin else '' }}">
-                      Plan this Quest
-                    </a>
-                  {% endif %}
-                  {% if s.id in bookmarked_ids %}
-                  <button type="button" class="btn secondary btn-ql-save" disabled>
-                    ✓ Saved
-                  </button>
-                  {% else %}
-                  <button type="button" class="btn secondary btn-ql-save"
-                          data-ql-idx="{{ loop.index0 }}"
-                          data-saved-id="{{ s.id }}"
-                          data-home-iata="{{ s.origin or '' }}"
-                          data-saved-url="/saved?flash=Quest%20saved">
-                    ★ Save
-                  </button>
-                  {% endif %}
-                </div>
-              </div>
-            </div>
-          </div>{# /.qc-body #}
-          {# JSON blobs for the save handler #}
-          <script type="application/json" id="ql-quest-json-{{ loop.index0 }}">{{ it | tojson }}</script>
-          <script type="application/json" id="ql-meta-json-{{ loop.index0 }}">{{ (s.trip_meta or {}) | tojson }}</script>
-        </article>
+        {{ bp.quest_compact_card(card.saved, card.saved.itinerary, loop.index0, share=card.share, bookmarked=(card.saved.id in bookmarked_ids)) }}
       {% endfor %}
     </div>
 

@@ -166,6 +166,15 @@ def test_shared_quest_feedback_handler_restores_both_buttons_on_failure():
     assert "downBtn.disabled = false" in failure_path
 
 
+def test_shared_quest_feedback_uses_shared_explore_button_styles():
+    """Shared Quest feedback controls must use the Explore result presentation."""
+    base = Path("yonder/templates/base.html").read_text()
+    assert ".bp-thumbs {" in base
+    assert ".thumb-btn.thumb-up" in base
+    assert ".thumb-btn.thumb-down" in base
+    assert "@media (max-width: 575.98px)" in base
+
+
 def test_shared_escape_and_detour_cards_still_have_no_feedback_controls(client):
     """The shared-Quest feedback addition must not change other share cards."""
     for kind, payload in (

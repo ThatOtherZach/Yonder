@@ -13,11 +13,13 @@ Covers:
 from __future__ import annotations
 
 import json
+import shutil
 import time
 import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from playwright.sync_api import sync_playwright
 
 import yonder.saved as saved_module
 import yonder.web as web_module
@@ -335,3 +337,150 @@ def test_nav_active_class(client):
     assert 'href="/quests"' in resp.text
     # The nav link for /quests should carry the active class
     assert 'class="active"' in resp.text
+
+def test_browse_cards_use_compact_canonical_ticket_and_keep_save_hooks(client):
+    """The browse-only Quest variant remains a ticket, not a separate card UI."""
+    _save_quest(client, origin="YVR", entry_city="Lisbon", entry_iata="LIS")
+    resp = client.get("/quests?origin=YVR", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.text
+    assert 'data-ticket-kind="quest"' in html
+    assert 'data-ticket-variant="compact"' in html
+    assert "quest-ticket--compact" in html
+    assert '<span class="bp-label">Quest</span>' in html
+    assert "Quest · library" not in html
+    assert 'class="bp-cities text-left"' in html
+    assert 'class="quest-browse-stats mt-[0px]"' in html
+    assert '<span class="price-amt">👀</span>' in html
+    assert 'class="bp-plane bp-overland-mark" role="img" aria-label="Overland connection"' in html
+    assert '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"' in html
+    assert 'class="bp-plane bp-overland-mark" role="img" aria-label="Overland connection">🚶</span>' not in html
+    assert 'class="bp-overland-mark" aria-label="Overland connection">overland' not in html
+    assert 'class="quest-browse-details-label"' not in html
+    assert "Open Quest" in html
+    assert "btn-ql-save" in html
+    assert 'id="ql-quest-json-0"' in html
+    assert 'id="ql-meta-json-0"' in html
+
+def test_browse_card_keeps_overland_context_out_of_flight_details(client):
+    """Browse gives the Quest story priority; the full page owns flight metadata."""
+    ensure_global_quest(
+        {
+            "kind": "quest",
+            "title": "Lisbon → overland → Porto",
+            "entry_iata": "LIS",
+            "exit_iata": "OPO",
+            "entry_city": "Lisbon",
+            "exit_city": "Porto",
+            "depart_date": "2026-11-01",
+            "outbound_date": "2026-11-12",
+            "transport": ["regional trains", "coastal buses"],
+            "overland_narrative": "Follow the coast slowly, stopping wherever the light is good.",
+            "highlights": ["Atlantic cliffs", "small wine towns"],
+        },
+        trip_meta={"origin": "YVR", "vibe": "adventure"},
+        origin="YVR",
+    )
+
+    resp = client.get("/quests?origin=YVR", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.text
+    assert "Follow the coast slowly" in html
+    assert "Via regional trains · coastal buses" in html
+    assert html.index('class="bp-route"') < html.index('aria-label="Quest timing"')
+    assert html.index('aria-label="Quest timing"') < html.index('class="bp-cities text-left"')
+    assert html.index('class="bp-cities text-left"') < html.index("Via regional trains · coastal buses")
+    assert 'class="bp-why mt-[0px]"' in html
+    assert "Atlantic cliffs" in html
+    assert 'class="bp-fast-facts quest-browse-highlights mb-[8px]"' in html
+    assert "📍 Atlantic cliffs" in html
+    assert "● Atlantic cliffs" not in html
+    assert '<p class="bp-cities text-left">Lisbon <span aria-hidden="true">→</span> Porto</p>' in html
+    assert html.index('class="bp-top"') < html.index('class="bp-route"')
+    assert "Entry flight" not in html
+    assert "Exit flight" not in html
+
+def test_compact_ticket_css_has_mobile_single_column_fallback():
+    """Keep the responsive source contract explicit alongside browser coverage."""
+    template = (web_module.templates.env.loader.searchpath[0] + "/quests.html")
+    with open(template, encoding="utf-8") as source:
+        css = source.read()
+    assert "@media (max-width:575px)" in css
+    assert ".quest-browse-details" in css
+    assert "minmax(min(100%, 22rem), 1fr)" in css
+    assert "overflow-wrap:anywhere" in css
+    assert "white-space:normal" in css
+    assert "row-gap:.55rem" in css
+    assert r".quest-browse-details .bp-why.mt-\[0px\] { margin-top:0; }" in css
+    assert r".quest-browse-stats.mt-\[0px\] { margin-top:0; }" in css
+    assert r".quest-browse-highlights.mb-\[8px\] { margin-bottom:8px; }" in css
+    assert ".quest-ticket--compact .bp-stub { justify-content:center; align-items:center; gap:1rem; }" in css
+    assert "grid-template-columns:1fr auto;" in css
+    assert "color:var(--bp-accent); font-size:.72rem;" in css
+    assert "color:var(--bp-accent); font-size:.61rem;" in css
+
+@pytest.mark.parametrize("width", [390, 1280])
+def test_compact_ticket_fits_real_browser_viewports(client, tmp_path, width):
+    """The live browse HTML keeps route, context, actions, and stub on-canvas."""
+    chromium = shutil.which("chromium")
+    if not chromium:
+        pytest.skip("Chromium is required for ticket layout regressions")
+
+    _save_quest(client, origin="YVR", entry_city="Lisbon", entry_iata="LIS")
+    resp = client.get("/quests?origin=YVR", follow_redirects=False)
+    assert resp.status_code == 200
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
+            headless=True,
+            executable_path=chromium,
+            args=["--no-sandbox"],
+        )
+        page = browser.new_page(viewport={"width": width, "height": 1100})
+        page.set_content(resp.text, wait_until="domcontentloaded")
+        page.screenshot(path=str(tmp_path / f"quest-browse-{width}.png"))
+
+        assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+        card = page.locator(
+            '[data-ticket-kind="quest"][data-ticket-variant="compact"]'
+        ).first
+        bounds = card.bounding_box()
+        assert bounds is not None
+        assert bounds["x"] >= 0
+        assert bounds["x"] + bounds["width"] <= width + 1
+        assert card.locator(".bp-route").is_visible()
+        details = card.locator(".quest-browse-details")
+        if details.count():
+            assert details.is_visible()
+        assert card.locator(".bp-actions .btn-ql-save").is_visible()
+        assert card.locator(".bp-stub").is_visible()
+        timing = card.locator(".quest-browse-stats")
+        assert timing.evaluate(
+            "(element) => getComputedStyle(element).marginTop"
+        ) == "0px"
+        timing_color = timing.evaluate("(element) => getComputedStyle(element).color")
+        assert timing.locator("strong").first.evaluate(
+            "(element) => getComputedStyle(element).color"
+        ) == timing_color
+        highlights = card.locator(".quest-browse-highlights")
+        if highlights.count():
+            assert highlights.evaluate(
+                "(element) => getComputedStyle(element).marginBottom"
+            ) == "8px"
+        assert card.locator(".bp-cities").evaluate(
+            "(element) => getComputedStyle(element).textAlign"
+        ) == "left"
+        price = card.locator(".bp-stub-price").bounding_box()
+        qr = card.locator(".bp-qr").bounding_box()
+        stub = card.locator(".bp-stub").bounding_box()
+        if price and qr and stub:
+            if width >= 576:
+                stub_center = stub["x"] + stub["width"] / 2
+                assert abs((price["x"] + price["width"] / 2) - stub_center) <= 3
+                assert abs((qr["x"] + qr["width"] / 2) - stub_center) <= 3
+                vertical_gap = qr["y"] - (price["y"] + price["height"])
+                assert vertical_gap >= 0
+                assert vertical_gap <= stub["height"] * 0.5
+            else:
+                assert abs((price["y"] + price["height"] / 2) - (qr["y"] + qr["height"] / 2)) <= 12
+        browser.close()

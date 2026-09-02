@@ -12,11 +12,16 @@
     {{ candidates|length }} quest snapshot{{ 's' if candidates|length != 1 else '' }}
     &middot; priced while planning your Quest
   </p>
-  <div class="pass-stack">
+    <div class="pass-stack detour-candidate-stack" data-ticket-variant="preview">
     {% for c in candidates %}
-    <div class="pass-card" style="padding:1rem 1.25rem 0.9rem;">
+    <article class="boarding-pass is-adventure ticket-preview ticket-preview--candidate" data-ticket-variant="candidate-preview">
+      <div class="bp-main">
+       <div class="bp-top">
+         <span class="bp-label">Detour · preview</span>
+         <span class="bp-badge soft">Quest snapshot</span>
+       </div>
       {# Route line: origin → stop (highlighted) → destination #}
-      <div style="display:flex;align-items:center;gap:0.45rem;font-weight:700;font-size:1.05rem;letter-spacing:0.02em;margin-bottom:0.4rem;">
+      <div class="bp-route" aria-label="Candidate route">
         <span>{{ c.origin }}</span>
         <span style="opacity:0.45;font-weight:400;">&#8594;</span>
         <span style="color:var(--accent,#e6b450)">{{ c.stop_iata }}</span>
@@ -49,13 +54,11 @@
          link for the selected flights so travelers can check live fares #}
       {% set _book_url = c.booking_url or c.google_flights_url %}
       {% if _book_url %}
-      <a href="{{ _book_url }}"
-         target="_blank" rel="noopener noreferrer"
-         style="display:inline-block;padding:0.3rem 0.9rem;background:var(--accent,#e6b450);color:#000;border-radius:6px;font-weight:700;text-decoration:none;font-size:0.88rem;">
-        {{ "Book" if (c.price or c.display_price) else "Check Fares" }} &#8594;
-      </a>
+      <div class="bp-actions"><a class="btn secondary" href="{{ _book_url }}" target="_blank" rel="noopener noreferrer">{{ "Book" if (c.price or c.display_price) else "Check Fares" }} ↗</a></div>
       {% endif %}
-    </div>
+      </div>
+      <div class="bp-stub"><div><div class="bp-stub-label">Snapshot</div><div class="bp-stub-meta">{{ c.age_label }}</div></div><div class="bp-barcode" aria-hidden="true"></div></div>
+    </article>
     {% endfor %}
   </div>
   <p class="muted" style="margin-top:0.6rem;font-size:0.8em;opacity:0.7;">

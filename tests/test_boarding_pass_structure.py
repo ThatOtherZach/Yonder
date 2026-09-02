@@ -23,12 +23,15 @@ Both escape-card and detour-card macros are exercised in every mode.
 
 from __future__ import annotations
 
+import re
+import shutil
 import time
 from datetime import date, timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from playwright.sync_api import sync_playwright
 
 import yonder.encyclopedia as enc_module
 import yonder.saved as saved_module
@@ -333,6 +336,138 @@ class TestCanonicalStructure:
                 f"Share detour card missing section '{section}'"
             )
 
+    def test_full_ticket_variants_have_canonical_identity_attributes(self):
+        """All full result cards identify their canonical type and variant."""
+        escape = _escape_explore_html()
+        detour = _detour_explore_html()
+        quest = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}"
+            "{{ bp.quest_card('explore', idea, 0, home_iata='YVR') }}",
+            idea=_minimal_quest_idea(),
+        )
+        for html, kind in ((escape, "escape"), (detour, "detour"), (quest, "quest")):
+            assert f'data-ticket-kind="{kind}"' in html
+            assert 'data-ticket-variant="full"' in html
+            assert "bp-route" in html and "bp-actions" in html and "bp-stub" in html
+
+    def test_quest_city_context_follows_route_and_precedes_fare_legs(self):
+        quest = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}"
+            "{{ bp.quest_card('explore', idea, 0, home_iata='YVR') }}",
+            idea=_minimal_quest_idea(),
+        )
+        city_context = (
+            '<p class="bp-cities text-left">'
+            "Hanoi → Bangkok"
+            "</p>"
+        )
+        assert city_context in quest
+        assert quest.index('class="bp-route"') < quest.index(city_context)
+        assert quest.index(city_context) < quest.index('class="bp-legs"')
+
+    def test_fare_meta_sparse_values_never_emit_orphaned_separators(self):
+        """Metadata separators are emitted only between actual metadata values."""
+        only_direction = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}{{ bp.fare_meta(none, 'One way in') }}"
+        )
+        assert 'meta-sep' not in only_direction
+        full = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}{{ bp.fare_meta(none, 'One way in', 'JL', 0, 510) }}"
+        )
+        assert full.count('class="meta-sep"') == 3
+        assert "8h30m" in full
+
+    def test_detour_and_quest_leg_metadata_include_direction_and_duration(self):
+        """Leg detail stays semantically useful after migrating to fare_meta."""
+        detour = _minimal_detour_it()
+        detour.legs[0].offer.duration_out_minutes = 510
+        detour_html = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}{{ bp.detour_card('explore', it, 0) }}",
+            it=detour,
+        )
+        assert "Leg 1 · YVR to TYO" in detour_html
+        assert "8h30m" in detour_html
+
+        quest = _minimal_quest_idea()
+        from yonder.adventure import PricedLeg
+
+        quest.inbound_leg = PricedLeg(
+            from_iata="YVR", to_iata="HAN", depart_date=date.today() + timedelta(days=30),
+            offer=_minimal_flight_offer().model_copy(update={"duration_out_minutes": 510}),
+        )
+        quest.outbound_leg = PricedLeg(
+            from_iata="BKK", to_iata="YVR", depart_date=date.today() + timedelta(days=37),
+            offer=_minimal_flight_offer().model_copy(update={"duration_out_minutes": 615}),
+        )
+        quest.depart_date = date.today() + timedelta(days=30)
+        quest.outbound_date = date.today() + timedelta(days=37)
+        quest_html = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}{{ bp.quest_card('explore', idea, 0, home_iata='YVR') }}",
+            idea=quest,
+        )
+        assert "One way in" in quest_html and "One way out" in quest_html
+        assert "8h30m" in quest_html and "10h15m" in quest_html
+
+    @pytest.mark.parametrize("width", [390, 1280])
+    def test_full_ticket_core_fits_real_browser_viewports(self, client, tmp_path, width):
+        """A real browser guards the shared full-ticket shell at narrow and desktop widths."""
+        chromium = shutil.which("chromium")
+        if not chromium:
+            pytest.skip("Chromium is required for ticket layout regressions")
+
+        css_page = client.get("/quests?origin=", follow_redirects=False)
+        assert css_page.status_code == 200
+        styles = "\n".join(
+            re.findall(r"<style[^>]*>(.*?)</style>", css_page.text, flags=re.DOTALL)
+        )
+        cards = "\n".join(
+            (
+                _escape_explore_html(),
+                _detour_explore_html(),
+                _render_macro(
+                    "{% import '_boarding_pass.html' as bp %}"
+                    "{{ bp.quest_card('explore', idea, 0, home_iata='YVR') }}",
+                    idea=_minimal_quest_idea(),
+                ),
+            )
+        )
+        html = (
+            '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">'
+            f"<style>{styles}</style><main style='max-width:70rem;margin:auto;padding:1rem'>"
+            f"<div class='pass-stack'>{cards}</div></main>"
+        )
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(
+                headless=True,
+                executable_path=chromium,
+                args=["--no-sandbox"],
+            )
+            page = browser.new_page(viewport={"width": width, "height": 1100})
+            page.set_content(html, wait_until="domcontentloaded")
+            page.screenshot(path=str(tmp_path / f"full-ticket-core-{width}.png"))
+
+            assert page.evaluate(
+                "document.documentElement.scrollWidth <= window.innerWidth"
+            )
+            for kind in ("escape", "detour", "quest"):
+                card = page.locator(
+                    f'[data-ticket-kind="{kind}"][data-ticket-variant="full"]'
+                )
+                assert card.count() == 1
+                bounds = card.bounding_box()
+                assert bounds is not None
+                assert bounds["x"] >= 0
+                assert bounds["x"] + bounds["width"] <= width + 1
+                assert card.locator(".bp-route").is_visible()
+                assert card.locator(".bp-actions").is_visible()
+                assert card.locator(".bp-stub").is_visible()
+                if kind == "quest":
+                    assert card.locator(".bp-cities").evaluate(
+                        "(element) => getComputedStyle(element).textAlign"
+                    ) == "left"
+            browser.close()
+
 
 # ===========================================================================
 # Suite 2 — Explore-mode interactive hooks
@@ -434,6 +569,22 @@ class TestExploreHooks:
         assert 'data-vibe=""' in html
         assert 'data-dest=""' in html
         assert 'data-query=""' in html
+
+    def test_quest_destination_loading_note_has_no_details_toggle(self):
+        """A loading destination note must not expose an empty details control."""
+        html = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}"
+            "{{ bp.quest_card('explore', idea, 0, home_iata='YVR', "
+            "quest_vibe='adventure', quest_prompt='prompt', place_books={}) }}",
+            idea=_minimal_quest_idea(),
+        )
+        assert re.search(
+            r'class="[^"]*\bfield-note-slot\b[^"]*\bis-loading\b[^"]*"'
+            r'[^>]*data-role="quest"',
+            html,
+        )
+        assert "pb-fn-loading" in html
+        assert "Culture, Food &amp; Budget" not in html
 
     def test_escape_has_field_note_slot(self):
         html = _escape_explore_html()

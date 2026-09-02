@@ -2,7 +2,7 @@ modules = ["python-3.11", "web", "nodejs-20", "postgresql-16"]
 
 [nix]
 channel = "stable-25_05"
-packages = ["libxcrypt"]
+packages = ["chromium", "gitFull", "libxcrypt", "playwright-driver"]
 
 [agent]
 expertMode = true
