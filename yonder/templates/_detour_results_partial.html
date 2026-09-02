@@ -8,6 +8,7 @@
 {% set _det_text = (_df.prompt if _df and _df.prompt is defined else '') or '' %}
 {% set _return_days = return_days if return_days is defined else 7 %}
 {% set _ai_usage = ai_usage_display if ai_usage_display is defined else '' %}
+{% set _testing = testing if testing is defined else false %}
 {% set _cand_src = candidate_source if candidate_source is defined else '' %}
 
 {% if _det_result and _det_result.itineraries %}
@@ -27,7 +28,7 @@
       · <span style="opacity:0.6;font-size:0.82em">{{ _cand_src }}</span>
     {% endif %}
   </p>
-  {% if _ai_usage %}
+  {% if _testing and _ai_usage %}
   <div class="pills" style="margin-top:0;margin-bottom:0.85rem">
     <span class="pill" style="opacity:0.7">{{ _ai_usage }}</span>
   </div>

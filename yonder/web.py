@@ -3676,6 +3676,7 @@ async def detour_plan_api(request: Request):
             place_books=place_books or {},
             candidate_source=candidate_source,
             ai_usage_display=ai_usage_display,
+            testing=bool(settings.testing),
             return_days=return_days,
         )
 

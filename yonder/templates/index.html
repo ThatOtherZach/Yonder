@@ -1573,7 +1573,7 @@
             · {{ escape_dest_theme.label }}
           {% endif %}
         </p>
-        {% if escape_result.results %}
+        {% if testing and escape_result.results %}
         <div class="pills" style="margin-top:0;margin-bottom:0.85rem">
           {% for r in escape_result.results %}
             {% if r.ok %}
@@ -1718,7 +1718,7 @@
             · no direct baseline
           {% endif %}
         </p>
-        {% if ai_usage_display %}
+        {% if testing and ai_usage_display %}
         <div class="pills" style="margin-top:0;margin-bottom:0.85rem">
           <span class="pill" style="opacity:0.7">{{ ai_usage_display }}</span>
         </div>
