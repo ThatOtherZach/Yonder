@@ -4659,6 +4659,16 @@ async def quests_browse_page(
     origin: str | None = None,
 ) -> HTMLResponse:
     """Public browse page for all saved Quest itineraries."""
+    import uuid as _uuid
+
+    # Establish the browser identity before a Quest can be bookmarked.  Waiting
+    # until the fetch response to mint this cookie is racy in embedded previews:
+    # an immediate navigation can reach /saved before the new cookie sticks.
+    sess = _req_sess(request)
+    need_cookie = not sess
+    if need_cookie:
+        sess = _uuid.uuid4().hex[:32]
+
     page = max(1, page)
 
     # origin param: absent or "" → show all; "JFK" → filter by that origin
@@ -4693,11 +4703,10 @@ async def quests_browse_page(
     saved_count = 0
     bookmarked_ids: set[str] = set()
     try:
-        _q_sess = _req_sess(request)
-        saved_count = count_saved(owner_sess=_q_sess)
+        saved_count = count_saved(owner_sess=sess)
         from yonder.saved import bookmarked_quest_ids
 
-        bookmarked_ids = bookmarked_quest_ids(owner_sess=_q_sess)
+        bookmarked_ids = bookmarked_quest_ids(owner_sess=sess)
     except Exception:
         pass
 
@@ -4707,7 +4716,7 @@ async def quests_browse_page(
     except Exception:
         pass
 
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         request,
         "quests.html",
         {
@@ -4723,6 +4732,15 @@ async def quests_browse_page(
             "bookmarked_ids": bookmarked_ids,
         },
     )
+    if need_cookie:
+        response.set_cookie(
+            "yv_sess",
+            sess,
+            httponly=True,
+            samesite="lax",
+            secure=_IS_HTTPS,
+        )
+    return response
 
 
 @app.get("/saved", response_class=HTMLResponse)

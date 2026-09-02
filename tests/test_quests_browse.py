@@ -141,8 +141,8 @@ def test_quest_save_target_opens_saved_page_and_bookmark_is_visible(client):
     assert quest.title in saved_page.text
 
 
-def test_first_quest_save_mints_session_and_appears_on_saved_page():
-    """A first-time visitor must read the bookmark under the session just minted."""
+def test_quests_page_mints_session_before_first_save_and_saved_page_uses_it():
+    """A first-time visitor must bookmark under the session minted on /quests."""
     quest = ensure_global_quest(
         {
             "kind": "quest",
@@ -163,6 +163,11 @@ def test_first_quest_save_mints_session_and_appears_on_saved_page():
         raise_server_exceptions=True,
     ) as first_visit:
         assert first_visit.cookies.get("yv_sess") is None
+        browse = first_visit.get("/quests?origin=YVR")
+        assert browse.status_code == 200
+        browse_session = first_visit.cookies.get("yv_sess")
+        assert browse_session
+
         saved = first_visit.post(
             "/api/saved",
             json={
@@ -178,7 +183,7 @@ def test_first_quest_save_mints_session_and_appears_on_saved_page():
 
         assert saved.status_code == 200
         assert saved.json()["ok"] is True
-        assert first_visit.cookies.get("yv_sess")
+        assert first_visit.cookies.get("yv_sess") == browse_session
 
         saved_page = first_visit.get("/saved")
         assert saved_page.status_code == 200
