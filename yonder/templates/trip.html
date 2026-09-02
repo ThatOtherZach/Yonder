@@ -513,6 +513,43 @@
         });
       });
 
+      // Shared Quest feedback uses the same endpoint and interaction as Explore.
+      document.addEventListener("click", function (e) {
+        if (!e.target || !e.target.closest) return;
+        var btn = e.target.closest(".thumb-btn");
+        if (!btn) return;
+        var container = btn.closest(".bp-thumbs");
+        if (!container) return;
+
+        var upBtn = container.querySelector(".thumb-up");
+        var downBtn = container.querySelector(".thumb-down");
+        var direction = btn.classList.contains("thumb-up") ? "up" : "down";
+        upBtn.classList.remove("voted-up");
+        downBtn.classList.remove("voted-down");
+        btn.classList.add(direction === "up" ? "voted-up" : "voted-down");
+        upBtn.disabled = true;
+        downBtn.disabled = true;
+
+        fetch("/api/result-feedback", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            direction: direction,
+            vibe: container.dataset.vibe || "",
+            dest_iata: container.dataset.dest || "",
+            query: container.dataset.query || "",
+          }),
+        }).then(function (response) {
+          if (!response.ok) throw new Error("feedback request failed");
+        }).catch(function () {
+          upBtn.classList.remove("voted-up");
+          downBtn.classList.remove("voted-down");
+          upBtn.disabled = false;
+          downBtn.disabled = false;
+        });
+      }, true);
+
       // Field note expand / collapse
       document.querySelectorAll(".place-book .pb-toggle").forEach(function (toggle) {
         var slot = toggle.closest(".place-book");

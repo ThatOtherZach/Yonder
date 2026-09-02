@@ -398,18 +398,29 @@ class TestExploreHooks:
         assert 'data-query="A &#34;slow&#34; trip &amp; good food"' in html
         assert "two one-way tickets" not in html
 
-    def test_quest_saved_and_shared_have_no_feedback(self):
+    def test_quest_saved_has_no_feedback_and_shared_places_it_below_label(self):
         idea = _minimal_quest_idea()
-        for mode in ("saved", "share"):
-            html = _render_macro(
-                "{% import '_boarding_pass.html' as bp %}"
-                "{{ bp.quest_card(mode, idea, 0, home_iata='YVR', "
-                "quest_vibe='adventure', quest_prompt='prompt') }}",
-                mode=mode,
-                idea=idea,
-            )
-            assert 'class="bp-thumbs"' not in html
-            assert 'data-quest-feedback="1"' not in html
+        saved_html = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}"
+            "{{ bp.quest_card('saved', idea, 0, home_iata='YVR', "
+            "quest_vibe='adventure', quest_prompt='prompt') }}",
+            idea=idea,
+        )
+        assert 'class="bp-thumbs"' not in saved_html
+        assert 'data-quest-feedback="1"' not in saved_html
+
+        shared_html = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}"
+            "{{ bp.quest_card('share', idea, 0, home_iata='YVR', "
+            "quest_vibe='adventure', quest_prompt='prompt') }}",
+            idea=idea,
+        )
+        label_pos = shared_html.index(">One Way</div>")
+        thumbs_pos = shared_html.index('class="bp-thumbs"', label_pos)
+        assert thumbs_pos > label_pos
+        assert 'data-quest-feedback="1"' in shared_html
+        assert "thumb-up" in shared_html
+        assert "thumb-down" in shared_html
 
     def test_quest_explore_handles_blank_vibe_and_destination(self):
         idea = _minimal_quest_idea()

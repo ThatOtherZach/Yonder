@@ -848,7 +848,7 @@
       </div>
     </div>
 
-    <p class="bp-cities">{{ idea.entry_city }} → overland → {{ idea.exit_city }}</p>
+    <p class="bp-cities text-center">{{ idea.entry_city }} → overland → {{ idea.exit_city }}</p>
 
     {% if idea.overland_narrative %}
     <p class="bp-why">{{ idea.overland_narrative }}</p>
@@ -1057,7 +1057,15 @@
       <a href="{{ share.url }}" class="bp-stub-share btn-save-and-share">Share ➤</a>
     </div>
     {% elif mode == 'share' %}
-    <div class="bp-stub-meta">open-jaw quest</div>
+    <div class="bp-stub-meta">One Way</div>
+    <div class="bp-thumbs"
+         data-quest-feedback="1"
+         data-vibe="{{ quest_vibe | e }}"
+         data-dest="{{ (idea.entry_iata or '') | e }}"
+         data-query="{{ quest_prompt | e }}">
+      <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">👍</button>
+      <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">👎</button>
+    </div>
     {% else %}
     <div class="bp-barcode" aria-hidden="true"></div>
     {% endif %}
