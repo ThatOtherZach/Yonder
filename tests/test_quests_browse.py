@@ -92,8 +92,8 @@ def test_saved_quest_has_view_trip_link(client):
     assert "Open Quest" in resp.text or "View trip" in resp.text
 
 
-def test_quest_save_target_stays_relative_and_bookmark_is_visible_in_saved(client):
-    """Browse-card Save must stay on this host after creating its bookmark."""
+def test_quest_save_target_opens_saved_page_and_bookmark_is_visible(client):
+    """Browse-card Save must open this browser's updated Saved page."""
     quest = ensure_global_quest(
         {
             "kind": "quest",
@@ -112,8 +112,10 @@ def test_quest_save_target_stays_relative_and_bookmark_is_visible_in_saved(clien
     browse = client.get("/quests?origin=YVR", follow_redirects=False)
     assert browse.status_code == 200
     assert f'data-saved-id="{quest.id}"' in browse.text
-    assert 'data-share-url="/t/quest/' in browse.text
-    assert 'data-share-url="https://yonder.city/' not in browse.text
+    assert 'data-saved-url="/saved?flash=Quest%20saved"' in browse.text
+    assert "window.location.href = savedUrl || \"/saved\"" in browse.text
+    assert "setTimeout(go, 6000)" not in browse.text
+    assert 'credentials: "same-origin"' in browse.text
 
     saved = client.post(
         "/api/saved",
@@ -137,6 +139,50 @@ def test_quest_save_target_stays_relative_and_bookmark_is_visible_in_saved(clien
     saved_page = client.get("/saved")
     assert saved_page.status_code == 200
     assert quest.title in saved_page.text
+
+
+def test_first_quest_save_mints_session_and_appears_on_saved_page():
+    """A first-time visitor must read the bookmark under the session just minted."""
+    quest = ensure_global_quest(
+        {
+            "kind": "quest",
+            "title": "Tokyo → overland → Kyoto",
+            "entry_iata": "NRT",
+            "exit_iata": "KIX",
+            "entry_city": "Tokyo",
+            "exit_city": "Kyoto",
+            "depart_date": "2026-11-01",
+        },
+        trip_meta={"origin": "YVR", "vibe": "adventure"},
+        origin="YVR",
+    )
+
+    with TestClient(
+        web_module.app,
+        base_url="https://testserver",
+        raise_server_exceptions=True,
+    ) as first_visit:
+        assert first_visit.cookies.get("yv_sess") is None
+        saved = first_visit.post(
+            "/api/saved",
+            json={
+                "itinerary": quest.itinerary,
+                "trip_meta": {
+                    "origin": quest.origin,
+                    "destination": quest.destination,
+                    "vibe": quest.vibe,
+                    "saved_id": quest.id,
+                },
+            },
+        )
+
+        assert saved.status_code == 200
+        assert saved.json()["ok"] is True
+        assert first_visit.cookies.get("yv_sess")
+
+        saved_page = first_visit.get("/saved")
+        assert saved_page.status_code == 200
+        assert quest.title in saved_page.text
 
 
 def test_saved_quest_origin_column_populated(client):

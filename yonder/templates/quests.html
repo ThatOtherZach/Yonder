@@ -731,7 +731,7 @@
                           data-ql-idx="{{ loop.index0 }}"
                           data-saved-id="{{ s.id }}"
                           data-home-iata="{{ s.origin or '' }}"
-                          data-share-url="{{ share.path if share else '' }}">
+                          data-saved-url="/saved?flash=Quest%20saved">
                     ★ Save
                   </button>
                   {% endif %}
@@ -961,44 +961,47 @@
 
 <script>
 (function () {
-  function postQlSave(body, btn, shareUrl) {
+  function postQlSave(body, btn, savedUrl) {
     btn.disabled = true;
     btn.textContent = "Saving…";
-    var navigated = false;
-    function go() {
-      if (navigated) return;
-      navigated = true;
-      window.location.href = shareUrl || "/saved";
-    }
-    var failsafe = setTimeout(go, 6000);
     var opts = {
       method: "POST",
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     };
     if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) {
-      try { opts.signal = AbortSignal.timeout(5000); } catch (e) {}
+      try { opts.signal = AbortSignal.timeout(15000); } catch (e) {}
     }
     fetch("/api/saved", opts)
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        clearTimeout(failsafe);
-        if (d && d.ok) {
+      .then(function (r) {
+        return r.json().then(function (d) {
+          return { responseOk: r.ok, data: d };
+        });
+      })
+      .then(function (result) {
+        var d = result.data;
+        if (result.responseOk && d && d.ok) {
           btn.textContent = "✓ Saved";
-          setTimeout(go, 500);
+          window.location.href = savedUrl || "/saved";
         } else {
           btn.textContent = "★ Save";
           btn.disabled = false;
+          btn.title = (d && d.error) ? d.error : "Couldn't save this Quest";
         }
       })
-      .catch(function () { clearTimeout(failsafe); btn.textContent = "★ Save"; btn.disabled = false; });
+      .catch(function () {
+        btn.textContent = "★ Save";
+        btn.disabled = false;
+        btn.title = "Couldn't save this Quest";
+      });
   }
 
   document.querySelectorAll(".btn-ql-save").forEach(function (btn) {
     btn.addEventListener("click", function () {
       var idx      = btn.getAttribute("data-ql-idx");
       var homeIata = btn.getAttribute("data-home-iata") || "";
-      var shareUrl = btn.getAttribute("data-share-url") || "";
+      var savedUrl = btn.getAttribute("data-saved-url") || "/saved";
       var jsonEl   = document.getElementById("ql-quest-json-" + idx);
       if (!jsonEl) return;
       var questData;
@@ -1017,7 +1020,7 @@
         origin:      homeIata,
         destination: questData.entry_iata || ""
       });
-      postQlSave({ itinerary: questData, trip_meta: qMeta }, btn, shareUrl);
+      postQlSave({ itinerary: questData, trip_meta: qMeta }, btn, savedUrl);
     });
   });
 })();

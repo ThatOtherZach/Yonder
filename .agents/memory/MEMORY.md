@@ -22,3 +22,4 @@
 - [Quest dual completion paths](quest-dual-completion-paths.md) — "quest finished" features must hook both the eager PG job path and the manual Plan Quest endpoint + both JS handlers.
 - [Affiliate link fallback](affiliate-link-fallback.md) — engine generates fare-missing offer with Aviasales URL when providers fail; fare_note shows history or "no history"; detour/quest get inline template URLs.
 - [Fare composition trust boundary](fare-composition-security.md) — verify server-signed selections and public HTTPS links before composing, rendering, saving, or sharing fare data.
+- [Save-before-navigation](save-before-navigation.md) — save actions must await confirmed persistence before leaving; fallback timers can cancel writes and create false success.
