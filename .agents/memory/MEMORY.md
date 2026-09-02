@@ -23,3 +23,4 @@
 - [Affiliate link fallback](affiliate-link-fallback.md) — engine generates fare-missing offer with Aviasales URL when providers fail; fare_note shows history or "no history"; detour/quest get inline template URLs.
 - [Fare composition trust boundary](fare-composition-security.md) — verify server-signed selections and public HTTPS links before composing, rendering, saving, or sharing fare data.
 - [Save-before-navigation](save-before-navigation.md) — save actions must await confirmed persistence before leaving; fallback timers can cancel writes and create false success.
+- [Share environment affinity](share-environment-affinity.md) — share URLs must target the same environment/database where the share record was created.

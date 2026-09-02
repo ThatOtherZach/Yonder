@@ -14,8 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-# Canonical production URL — used for og:image and share links so crawlers
-# always receive an https:// URL even when the dev proxy rewrites base_url.
+# Canonical production URL — used for og:image and production share links.
 PRODUCTION_URL = "https://yonder.city"
 
 from yonder.adventure import (
@@ -162,6 +161,23 @@ def _vibes_data() -> tuple[str, str]:
     return _vibes_json, _vibes_v
 
 
+def _share_base_url(request: Request) -> str:
+    """Return the trusted public origin for the database serving this request.
+
+    Production records live behind the canonical production domain.  Preview
+    records live in the development database and must use the managed preview
+    domain instead, otherwise a link created in Preview 404s in production.
+    The request host is only a local/test fallback; deployed environments use
+    platform-managed environment values rather than a forgeable Host header.
+    """
+    dev_domain = (os.environ.get("REPLIT_DEV_DOMAIN") or "").strip()
+    if dev_domain:
+        return "https://" + dev_domain.removeprefix("https://").removeprefix("http://").rstrip("/")
+    if _IS_HTTPS:
+        return PRODUCTION_URL
+    return str(request.base_url).rstrip("/")
+
+
 def _share_pack(request: Request, *, kind: str, title: str, payload: dict) -> dict:
     """Stable share URL + scannable PNG QR for a boarding-pass stub.
 
@@ -176,7 +192,7 @@ def _share_pack(request: Request, *, kind: str, title: str, payload: dict) -> di
                 part.pop("model_source", None)
         packed.pop("model_source", None)
     trip = create_share(kind=kind, title=title, payload=packed)
-    base = PRODUCTION_URL
+    base = _share_base_url(request)
     url = f"{base}{trip.path}"
     return {
         "id": trip.id,
@@ -4479,7 +4495,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
             _error_ctx(),
             status_code=404,
         )
-    base = PRODUCTION_URL
+    base = _share_base_url(request)
     url = f"{base}{share.path}"
     kind_label = {
         "escape": "Escape",
