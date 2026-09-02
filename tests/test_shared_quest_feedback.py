@@ -9,11 +9,14 @@ original prompt.
 
 from __future__ import annotations
 
+import json
 from html.parser import HTMLParser
 from pathlib import Path
+import shutil
 
 import pytest
 from fastapi.testclient import TestClient
+from playwright.sync_api import sync_playwright
 
 import yonder.share as share_module
 import yonder.web as web_module
@@ -164,6 +167,115 @@ def test_shared_quest_feedback_handler_restores_both_buttons_on_failure():
     assert "downBtn.classList.remove(\"voted-down\")" in failure_path
     assert "upBtn.disabled = false" in failure_path
     assert "downBtn.disabled = false" in failure_path
+
+
+def test_shared_quest_feedback_works_in_a_real_browser(client):
+    """Shared Quest votes use the live handler and recover from a rejected vote."""
+    chromium = shutil.which("chromium")
+    if not chromium:
+        pytest.skip("Chromium is required for shared Quest feedback regressions")
+
+    share = _quest_share()
+    page_response = client.get(f"/t/{share.id}")
+    assert page_response.status_code == 200
+
+    captured: list[dict] = []
+    pending_routes = []
+
+    def intercept_feedback(route, request):
+        assert request.method == "POST"
+        captured.append(json.loads(request.post_data or "{}"))
+        # Reject the first vote so the browser must clear the optimistic state
+        # before the opposite-direction vote can be submitted.
+        if len(captured) == 1:
+            pending_routes.append(route)
+        else:
+            route.fulfill(status=200, content_type="application/json", body="{}")
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
+            headless=True,
+            executable_path=chromium,
+            args=["--no-sandbox"],
+        )
+        page = browser.new_page()
+        # set_content keeps this test on the exact rendered shared-page HTML.
+        # The base makes the relative fetch an actual browser request, which
+        # Playwright can observe and reject/accept through the route above.
+        html = page_response.text.replace(
+            "<head>", '<head><base href="http://shared-quest.test/">', 1
+        )
+        page.route("**/api/result-feedback", intercept_feedback)
+        page.set_content(html, wait_until="domcontentloaded")
+
+        thumbs = page.locator('.bp-thumbs[data-quest-feedback="1"]')
+        assert thumbs.count() == 1
+        up_button = thumbs.locator(".thumb-up")
+        down_button = thumbs.locator(".thumb-down")
+
+        with page.expect_request("**/api/result-feedback") as first_request:
+            up_button.click()
+        assert first_request.value.method == "POST"
+        assert up_button.is_disabled()
+        assert down_button.is_disabled()
+        assert up_button.evaluate(
+            "(button) => button.classList.contains('voted-up')"
+        )
+        assert not down_button.evaluate(
+            "(button) => button.classList.contains('voted-down')"
+        )
+        assert len(pending_routes) == 1
+        pending_routes[0].fulfill(
+            status=500,
+            content_type="application/json",
+            body="{}",
+        )
+        page.wait_for_function(
+            """() => {
+                const container = document.querySelector(
+                  '.bp-thumbs[data-quest-feedback="1"]'
+                );
+                const buttons = container.querySelectorAll(".thumb-btn");
+                return [...buttons].every((button) => !button.disabled) &&
+                  !container.querySelector(".voted-up") &&
+                  !container.querySelector(".voted-down");
+            }"""
+        )
+        assert captured[0] == {
+            "direction": "up",
+            "vibe": "adventure",
+            "dest_iata": "HAN",
+            "query": _PROMPT,
+        }
+        assert up_button.is_enabled()
+        assert down_button.is_enabled()
+        assert not up_button.evaluate(
+            "(button) => button.classList.contains('voted-up')"
+        )
+        assert not down_button.evaluate(
+            "(button) => button.classList.contains('voted-down')"
+        )
+
+        with page.expect_request("**/api/result-feedback") as second_request:
+            down_button.click()
+        assert second_request.value.method == "POST"
+        page.wait_for_function(
+            """() => document.querySelector(
+                '.bp-thumbs[data-quest-feedback="1"] .thumb-down'
+            ).disabled"""
+        )
+        assert captured[1] == {
+            "direction": "down",
+            "vibe": "adventure",
+            "dest_iata": "HAN",
+            "query": _PROMPT,
+        }
+        assert up_button.is_disabled()
+        assert down_button.is_disabled()
+        assert down_button.evaluate(
+            "(button) => button.classList.contains('voted-down')"
+        )
+        browser.close()
 
 
 def test_shared_quest_feedback_uses_shared_explore_button_styles():
