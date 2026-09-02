@@ -212,9 +212,19 @@
 
     <script type="application/json" id="escape-offer-json-{{ idx }}">{{ o.model_dump_json() | safe }}</script>
     <script type="application/json" id="escape-query-json-{{ idx }}">{{ query.model_dump_json() | safe }}</script>
+    <script type="application/json" class="compose-selection-token">{{ compose_fare_token(query, o, esc_vibe, (ask or esc_text or '')) | tojson }}</script>
     {% endif %}
     {# promo moved to loading overlay (progress.js) #}
     <div class="bp-actions">
+      {% if mode == 'explore' %}
+      <button type="button"
+              class="btn secondary compose-select-btn"
+              data-compose-select="escape"
+              aria-pressed="false"
+              aria-label="Select this Escape fare for a Quest or Detour">
+        ＋ Select fare
+      </button>
+      {% endif %}
       {% if mode in ('explore', 'saved') %}
       <div class="rt-picker esc-rt-picker"
            data-esc-origin="{{ query.origin }}"
@@ -938,6 +948,18 @@
 
     {# Booking links + saved actions #}
     <div class="bp-actions">
+      {% if mode == 'explore' %}
+      <button type="button"
+              class="btn secondary compose-select-btn"
+              data-compose-select="quest"
+              data-home-iata="{{ home_iata }}"
+              data-compose-vibe="{{ quest_vibe | e }}"
+              data-compose-prompt="{{ quest_prompt | e }}"
+              aria-pressed="false"
+              aria-label="Select this Quest for a compatible Detour">
+        ＋ Add to Detour
+      </button>
+      {% endif %}
       {%- set _ib_url = (ib_leg.google_flights_url if ib_leg else none) -%}
       {%- if not _ib_url and home_iata and idea.entry_iata and idea.depart_date -%}
         {%- if idea.depart_date is string -%}
@@ -975,6 +997,7 @@
     {# JSON blob for JS save handler (explore mode only) #}
     {% if mode == 'explore' %}
     <script type="application/json" id="quest-json-{{ idx }}">{{ idea.model_dump_json() | safe }}</script>
+    <script type="application/json" class="compose-selection-token">{{ compose_quest_token(idea, home_iata, quest_vibe, quest_prompt) | tojson }}</script>
     {% endif %}
   </div>
 

@@ -20,14 +20,22 @@ PRODUCTION_URL = "https://yonder.city"
 
 from yonder.adventure import (
     AdventureItinerary,
+    AdventureResult,
     AdventureRequest,
     QuestIdea,
+    StopoverIdea,
     corridor_candidates,
     detect_trip_gaps,
     plan_adventure,
     plan_quest,
     reprice_itinerary,
     seed_ideas,
+)
+from yonder.composition import (
+    FareCompositionError,
+    compose_selected,
+    sign_selection,
+    verify_selection,
 )
 from yonder.config import get_settings, reload_settings
 from yonder.countries import (
@@ -467,6 +475,24 @@ templates.env.globals["promo_offers"] = _promo_offers
 templates.env.globals["share_escape"] = _share_escape
 templates.env.globals["share_detour"] = _share_detour
 templates.env.globals["share_quest"] = _share_quest
+templates.env.globals["compose_fare_token"] = lambda query, offer, vibe="", prompt="": sign_selection(
+    {
+        "kind": "escape",
+        "query": dump_obj(query),
+        "offer": dump_obj(offer),
+        "vibe": str(vibe or "adventure"),
+        "prompt": str(prompt or "")[:280],
+    }
+)
+templates.env.globals["compose_quest_token"] = lambda idea, home_iata="", vibe="", prompt="": sign_selection(
+    {
+        "kind": "quest",
+        "idea": dump_obj(idea),
+        "home_iata": str(home_iata or ""),
+        "vibe": str(vibe or "adventure"),
+        "prompt": str(prompt or "")[:280],
+    }
+)
 _vj_boot, _vv_boot = _vibes_data()
 templates.env.globals["vibes_json"] = _vj_boot
 templates.env.globals["vibes_v"] = _vv_boot
@@ -2856,6 +2882,124 @@ async def explore_run(request: Request) -> HTMLResponse:
     finally:
         if search_id:
             clear_search_cancel(search_id)
+
+
+@app.post("/api/compose-fares")
+async def compose_fares_api(request: Request) -> JSONResponse:
+    """Build a Quest or Detour from authoritative selected fare snapshots."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            {"ok": False, "error": "Invalid composition payload."},
+            status_code=400,
+        )
+
+    selection = body.get("selection") if isinstance(body, dict) else None
+    kind = str(body.get("kind") or "").strip().lower() if isinstance(body, dict) else ""
+    if not isinstance(selection, list) or not selection or len(selection) > 3:
+        return JSONResponse(
+            {"ok": False, "error": "Select two or three fares before building."},
+            status_code=400,
+        )
+
+    try:
+        verified = [
+            verify_selection(str(item.get("token") or ""))
+            if isinstance(item, dict)
+            else verify_selection("")
+            for item in selection
+        ]
+        composed, trip_meta = compose_selected(verified, kind)
+    except FareCompositionError as exc:
+        return JSONResponse(
+            {"ok": False, "error": str(exc)},
+            status_code=400,
+        )
+    except Exception:
+        return JSONResponse(
+            {"ok": False, "error": "Those fares could not be composed safely."},
+            status_code=400,
+        )
+
+    if kind == "quest":
+        assert isinstance(composed, QuestIdea)
+        home_iata = str(trip_meta.get("origin") or "")
+        vibe = str(trip_meta.get("vibe") or "adventure")
+        panel = {
+            "ask": str(trip_meta.get("prompt") or ""),
+            "result": [composed],
+            "home_iata": home_iata,
+            "vibe": vibe,
+            "error": None,
+        }
+        html = _render_quest_partial_html(
+            request,
+            panel,
+            home_iata=home_iata,
+            vibe=vibe,
+        )
+        return JSONResponse(
+            {"ok": True, "kind": "quest", "html": html, "trip_meta": trip_meta}
+        )
+
+    assert isinstance(composed, AdventureItinerary)
+    first_leg = composed.legs[0]
+    last_leg = composed.legs[-1]
+    stops = [
+        StopoverIdea(
+            iata=str(stop.get("iata") or ""),
+            city=str(stop.get("city") or stop.get("iata") or ""),
+            stay_days=1,
+            why="Selected fare stop",
+            vibe_tags=[str(trip_meta.get("vibe") or "adventure")],
+            source="selected",
+        )
+        for stop in composed.stops
+    ]
+    adventure_request = AdventureRequest(
+        origin=first_leg.from_iata,
+        destination=last_leg.to_iata,
+        depart_date=first_leg.depart_date,
+        arrive_by=last_leg.depart_date,
+        currency=composed.currency,
+        vibe=str(trip_meta.get("vibe") or "adventure"),
+        prompt=str(trip_meta.get("prompt") or ""),
+        trip_kind="detour",
+        max_candidates=max(2, min(5, len(stops))),
+    )
+    result = AdventureResult(
+        request=adventure_request,
+        ideas=stops,
+        itineraries=[composed],
+        narrative="A Detour built from selected one-way Escape fares.",
+        pricing_provider="selected fares",
+    )
+    panel = {
+        "form": {
+            "prompt": str(trip_meta.get("prompt") or ""),
+            "origin": first_leg.from_iata,
+            "destination": last_leg.to_iata,
+            "depart": first_leg.depart_date.isoformat(),
+            "vibe": str(trip_meta.get("vibe") or "adventure"),
+        },
+        "result": result,
+        "trip_meta": trip_meta,
+        "place_books": {},
+    }
+    tpl = templates.env.get_template("_detour_results_partial.html")
+    html = tpl.render(
+        request=request,
+        detour_panel=panel,
+        error_message=None,
+        place_books={},
+        candidate_source="selected fares",
+        ai_usage_display="",
+        return_days=_compute_return_days(_session_settings(request)),
+    )
+    return JSONResponse(
+        {"ok": True, "kind": "detour", "html": html, "trip_meta": trip_meta}
+    )
 
 
 @app.post("/api/quest/plan")

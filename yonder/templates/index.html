@@ -1239,6 +1239,12 @@
       opacity: 0.92;
       border-style: dashed;
     }
+    .compose-select-btn[aria-pressed="true"] {
+      background: var(--bp-accent, var(--sky));
+      border-color: var(--bp-accent, var(--sky));
+      color: #fff;
+      box-shadow: inset 0 0 0 2px color-mix(in srgb, #fff 35%, transparent);
+    }
     .pb-loading-msg {
       margin: 0.35rem 0 0;
       font-size: 0.9rem;
@@ -1533,6 +1539,25 @@
     {% if escape_result or detour_result or has_quest %}
     {% include "_product_ad.html" %}
     {% endif %}
+
+    <section
+      id="fare-composition"
+      class="card"
+      hidden
+      aria-live="polite"
+      aria-label="Selected fares"
+      style="border-left:4px solid var(--sky);padding:0.9rem 1rem;margin-bottom:1rem"
+    >
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:0.75rem;flex-wrap:wrap">
+        <div>
+          <strong id="fare-composition-title">Build from selected fares</strong>
+          <div id="fare-composition-list" class="pills" style="margin:0.45rem 0 0"></div>
+        </div>
+        <button type="button" class="btn secondary" id="fare-composition-clear">Clear selection</button>
+      </div>
+      <p id="fare-composition-status" class="muted" role="status" style="margin:0.65rem 0"></p>
+      <button type="button" class="btn" id="fare-composition-build" hidden></button>
+    </section>
 
     {# ——— Escape results (card layout matches Detour boarding passes) ——— #}
     <div class="results-panel" id="escape-results" data-result-kind="escape"
@@ -1901,6 +1926,7 @@
       }
 
       function clearResultsBoard() {
+        clearFareComposition();
         // Drop result panels + filter from the page
         ["results-toolbar", "results-filter", "escape-results", "vibe-base-results", "detour-results", "quest-results", "escape-parsed"].forEach(
           function (id) {
@@ -3689,6 +3715,250 @@
       }
       // ── End Detour on-demand ────────────────────────────────────────────────
 
+      // ── Ordered Escape fare composition ─────────────────────────────────────
+      var FARE_COMPOSITION_KEY = "yonder_fare_composition_v1";
+      var fareSelection = [];
+
+      function loadFareComposition() {
+        try {
+          var saved = JSON.parse(localStorage.getItem(FARE_COMPOSITION_KEY) || "[]");
+          fareSelection = Array.isArray(saved) ? saved.slice(0, 3) : [];
+        } catch (e) {
+          fareSelection = [];
+        }
+      }
+
+      function saveFareComposition() {
+        try {
+          if (fareSelection.length) {
+            localStorage.setItem(FARE_COMPOSITION_KEY, JSON.stringify(fareSelection));
+          } else {
+            localStorage.removeItem(FARE_COMPOSITION_KEY);
+          }
+        } catch (e) { /* private mode: selection still works for this page */ }
+      }
+
+      function fareCompositionKey(item) {
+        if (!item) return "";
+        if (item.kind === "quest") {
+          var idea = item.idea || {};
+          return [
+            "quest", item.home_iata || "", idea.entry_iata || "",
+            idea.exit_iata || "", idea.depart_date || "", idea.outbound_date || ""
+          ].join("|");
+        }
+        var query = item.query || {};
+        return [
+          "escape", query.origin || "", query.destination || "",
+          query.depart_date || "", query.return_date || ""
+        ].join("|");
+      }
+
+      function fareCompositionLabel(item) {
+        if (item.kind === "quest") {
+          var idea = item.idea || {};
+          return "Quest " + (item.home_iata || "—") + " → " +
+            (idea.entry_iata || "—") + " … " + (idea.exit_iata || "—") +
+            " → " + (item.home_iata || "—");
+        }
+        var query = item.query || {};
+        return (query.origin || "—") + " → " + (query.destination || "—") +
+          (query.depart_date ? " · " + query.depart_date : "");
+      }
+
+      function selectedPayload(button) {
+        var card = button.closest(".boarding-pass");
+        if (!card) return null;
+        if (button.dataset.composeSelect === "quest") {
+          var qj = card.querySelector('script[id^="quest-json-"]');
+          var qt = card.querySelector(".compose-selection-token");
+          if (!qj || !qt) return null;
+          try {
+            return {
+              kind: "quest",
+              token: JSON.parse(qt.textContent),
+              idea: JSON.parse(qj.textContent),
+              home_iata: button.dataset.homeIata || "",
+              vibe: button.dataset.composeVibe || "adventure",
+              prompt: button.dataset.composePrompt || ""
+            };
+          } catch (e) { return null; }
+        }
+        var oj = card.querySelector('script[id^="escape-offer-json-"]');
+        var qy = card.querySelector('script[id^="escape-query-json-"]');
+        var token = card.querySelector(".compose-selection-token");
+        if (!oj || !qy || !token) return null;
+        try {
+          var panel = card.closest("#escape-results, #vibe-base-results");
+          return {
+            kind: "escape",
+            token: JSON.parse(token.textContent),
+            offer: JSON.parse(oj.textContent),
+            query: JSON.parse(qy.textContent),
+            vibe: (panel && panel.dataset.signalVibe) ||
+              (vibeInput && vibeInput.value) || "adventure",
+            prompt: (ta && ta.value) || ""
+          };
+        } catch (e2) { return null; }
+      }
+
+      function renderFareComposition(message) {
+        var panel = document.getElementById("fare-composition");
+        var list = document.getElementById("fare-composition-list");
+        var status = document.getElementById("fare-composition-status");
+        var build = document.getElementById("fare-composition-build");
+        if (!panel || !list || !status || !build) return;
+
+        panel.hidden = fareSelection.length === 0;
+        list.textContent = "";
+        fareSelection.forEach(function (item, index) {
+          var chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "pill";
+          chip.dataset.removeFareIndex = String(index);
+          chip.setAttribute("aria-label", "Remove selection " + (index + 1));
+          chip.textContent = (index + 1) + ". " + fareCompositionLabel(item) + " ×";
+          list.appendChild(chip);
+        });
+
+        document.querySelectorAll(".compose-select-btn").forEach(function (button) {
+          var payload = selectedPayload(button);
+          var key = fareCompositionKey(payload);
+          var index = fareSelection.findIndex(function (item) {
+            return fareCompositionKey(item) === key;
+          });
+          var selected = index >= 0;
+          button.setAttribute("aria-pressed", selected ? "true" : "false");
+          button.classList.toggle("active", selected);
+          button.textContent = selected
+            ? "✓ Selected " + (index + 1)
+            : (button.dataset.composeSelect === "quest" ? "＋ Add to Detour" : "＋ Select fare");
+        });
+
+        var questCount = fareSelection.filter(function (item) {
+          return item.kind === "quest";
+        }).length;
+        var kind = "";
+        if (fareSelection.length === 2 && questCount === 0) kind = "quest";
+        if (fareSelection.length === 3 && questCount === 0) kind = "detour";
+        if (fareSelection.length === 2 && questCount === 1) kind = "detour";
+        build.hidden = !kind;
+        build.dataset.composeKind = kind;
+        build.textContent = kind === "quest" ? "Build Quest" : "Build Detour";
+        build.disabled = false;
+
+        if (message) {
+          status.textContent = message;
+        } else if (!fareSelection.length) {
+          status.textContent = "";
+        } else if (fareSelection.length === 1 && questCount === 1) {
+          status.textContent = "Choose the one-way Escape fare that connects this Quest's entry and exit.";
+        } else if (fareSelection.length === 1) {
+          status.textContent = "Choose a return-to-home fare for a Quest, or two connecting fares for a Detour.";
+        } else if (kind === "quest") {
+          status.textContent = "The server will confirm the open-jaw route and departure order before building.";
+        } else if (kind === "detour") {
+          status.textContent = "The server will confirm route continuity, distinct stops, and departure order.";
+        } else {
+          status.textContent = "Use either three Escape fares, or one Quest plus one connecting Escape fare.";
+        }
+      }
+
+      function clearFareComposition() {
+        fareSelection = [];
+        saveFareComposition();
+        renderFareComposition();
+      }
+
+      function bootFareComposition() {
+        loadFareComposition();
+        renderFareComposition();
+        if (document.documentElement.dataset.fareCompositionBound === "1") return;
+        document.documentElement.dataset.fareCompositionBound = "1";
+
+        document.addEventListener("click", function (event) {
+          var remove = event.target.closest("[data-remove-fare-index]");
+          if (remove) {
+            fareSelection.splice(parseInt(remove.dataset.removeFareIndex || "-1", 10), 1);
+            saveFareComposition();
+            renderFareComposition();
+            return;
+          }
+          var clear = event.target.closest("#fare-composition-clear");
+          if (clear) {
+            clearFareComposition();
+            return;
+          }
+          var select = event.target.closest(".compose-select-btn");
+          if (select) {
+            var payload = selectedPayload(select);
+            if (!payload) {
+              renderFareComposition("That fare could not be selected. Refresh and try again.");
+              return;
+            }
+            var key = fareCompositionKey(payload);
+            var existing = fareSelection.findIndex(function (item) {
+              return fareCompositionKey(item) === key;
+            });
+            if (existing >= 0) {
+              fareSelection.splice(existing, 1);
+            } else {
+              var hasQuest = fareSelection.some(function (item) { return item.kind === "quest"; });
+              if (fareSelection.length >= 3 || (hasQuest && fareSelection.length >= 2) ||
+                  (payload.kind === "quest" && fareSelection.length >= 2)) {
+                renderFareComposition("Remove a selection before adding another fare.");
+                return;
+              }
+              fareSelection.push(payload);
+            }
+            saveFareComposition();
+            renderFareComposition();
+            return;
+          }
+
+          var build = event.target.closest("#fare-composition-build");
+          if (!build || !build.dataset.composeKind) return;
+          var kind = build.dataset.composeKind;
+          renderFareComposition("Checking route and dates…");
+          build.disabled = true;
+          build.textContent = kind === "quest" ? "Building Quest…" : "Building Detour…";
+          fetch("/api/compose-fares", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ kind: kind, selection: fareSelection })
+          })
+            .then(function (response) {
+              return response.json().then(function (json) {
+                if (!response.ok || !json.ok) throw new Error(json.error || "Those fares do not connect.");
+                return json;
+              });
+            })
+            .then(function (json) {
+              var target = document.getElementById(
+                json.kind === "quest" ? "quest-results" : "detour-results"
+              );
+              if (!target) throw new Error("The result panel is unavailable. Refresh and try again.");
+              target.innerHTML = json.html || "";
+              target.hidden = false;
+              clearFareComposition();
+              if (typeof applyResultFilter === "function") applyResultFilter("all");
+              if (typeof bootSaveAndShare === "function") bootSaveAndShare();
+              if (typeof bootOutboundLinks === "function") bootOutboundLinks();
+              if (typeof bootThumbVotes === "function") bootThumbVotes();
+              if (typeof bindFieldNoteToggles === "function") bindFieldNoteToggles(target);
+              if (typeof bootFieldNotes === "function") bootFieldNotes();
+              window.setTimeout(function () {
+                target.scrollIntoView({ behavior: "smooth", block: "start" });
+              }, 30);
+            })
+            .catch(function (error) {
+              renderFareComposition(error.message || "Those fares could not be composed.");
+            });
+        });
+      }
+      // ── End ordered Escape fare composition ─────────────────────────────────
+
       function boot() {
         bootForm();
         bootSaveAndShare();
@@ -3701,6 +3971,7 @@
         bootDetourCriteriaStrip();
         bootPlanQuestButton();
         bootQuestCriteriaStrip();
+        bootFareComposition();
         hydrateQuestFromStorage();
         bootQuestJobPoll();
         // Pre-fill visible origin field from hidden explore-origin (set by GPS/settings)
