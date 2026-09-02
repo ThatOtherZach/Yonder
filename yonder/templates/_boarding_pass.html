@@ -316,7 +316,7 @@
       </div>
       {% endif %}
       {% if o.google_flights_url %}
-      <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener"{% if 'aviasales.com' in o.google_flights_url %} aria-label="Aviasales ↗"{% endif %}>{{ query.origin }} ➜ {{ query.destination }} ↗</a>
+      <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener"{% if 'aviasales.com' in o.google_flights_url %} aria-label="Aviasales Flights ↗"{% endif %}>{{ query.origin }} ➜ {{ query.destination }} ↗</a>
       {% endif %}
       {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
       <a class="btn secondary" href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>

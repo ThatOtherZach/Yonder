@@ -2,7 +2,7 @@
 
 After the Google→Aviasales swap, the boarding-pass action button on shared
 trips must:
-  - carry the label "Aviasales ↗"
+  - carry the label "Aviasales Flights ↗"
   - point to aviasales.com/search/ (not google.com/travel/flights)
   - embed the affiliate marker (starts with 756039)
 
@@ -126,14 +126,17 @@ def _detour_share_with_avia_url() -> object:
 class TestEscapeCardAviasalesLink:
     """escape_card rendered in share mode carries the correct Aviasales button."""
 
-    def test_button_label_is_aviasales(self, client):
-        """Button text must be 'Aviasales ↗'."""
+    def test_button_label_is_aviasales_flights(self, client):
+        """Button accessibility label must be 'Aviasales Flights ↗'."""
         share = _escape_share_with_avia_url()
         resp = client.get(f"/t/{share.id}")
 
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
-        assert "Aviasales ↗" in resp.text, (
-            "Expected 'Aviasales ↗' button label on escape shared-trip page"
+        assert "Aviasales Flights ↗" in resp.text, (
+            "Expected 'Aviasales Flights ↗' button label on escape shared-trip page"
+        )
+        assert 'aria-label="Aviasales ↗"' not in resp.text, (
+            "Short 'Aviasales ↗' label must not return on escape shared-trip page"
         )
 
     def test_href_points_to_aviasales_search(self, client):
