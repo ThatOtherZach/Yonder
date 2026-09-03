@@ -71,7 +71,6 @@
       {% if it.get('outbound_date') %}<span><strong>Returns</strong> {{ it.get('outbound_date') | fmt_date_short }}</span>{% endif %}
     </div>
     <p class="bp-cities text-left">{{ entry_city }} <span aria-hidden="true">→</span> {{ exit_city }}</p>
-    {{ quest_social_proof(social_stats) }}
     {% if it.get('transport') %}
     <div class="quest-browse-transport">
       <span>Via {{ (it.get('transport') or [])[:2] | join(' · ') }}</span>
@@ -89,15 +88,13 @@
     {% endif %}
     {% call ticket_actions() %}
       {% if share and share.path %}<a class="btn btn-gold" href="{{ share.path }}">Open Quest ↗</a>{% else %}<a class="btn secondary" href="/?mode=quest&amp;origin={{ s.origin | urlencode if s.origin else '' }}">Plan this Quest</a>{% endif %}
-      {% if bookmarked %}<button type="button" class="btn secondary btn-ql-save" disabled>✓ Saved</button>{% else %}<button type="button" class="btn secondary btn-ql-save" data-ql-idx="{{ idx }}" data-saved-id="{{ s.id }}" data-home-iata="{{ s.origin or '' }}" data-saved-url="/saved?flash=Quest%20saved">★ Save</button>{% endif %}
+      {{ quest_social_proof(social_stats) }}
     {% endcall %}
   </div>
   <div class="bp-stub">
     <div><div class="bp-stub-label">Trip estimate</div><div class="bp-stub-price price-with-sign"><span class="price-amt">{{ s.display_price or '👀' }}</span></div></div>
     {% if share and share.qr_src %}<a class="bp-qr" href="{{ share.path }}" title="Open quest"><img src="{{ share.qr_src }}" alt="QR code — open quest" width="72" height="72" loading="lazy" decoding="async"></a>{% elif share and share.qr_svg %}<a class="bp-qr" href="{{ share.path }}" title="Open quest">{{ share.qr_svg | safe }}</a>{% else %}<div class="bp-barcode" aria-hidden="true"></div>{% endif %}
   </div>
-  <script type="application/json" id="ql-quest-json-{{ idx }}">{{ it | tojson }}</script>
-  <script type="application/json" id="ql-meta-json-{{ idx }}">{{ (s.trip_meta or {}) | tojson }}</script>
 </article>
 {% endmacro %}
 

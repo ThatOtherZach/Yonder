@@ -8,8 +8,7 @@ Covers:
   5. Share link: browse cards link to the shared trip page (not just "Plan this Quest").
   6. Sitemap includes /quests.
   7. Nav active class is applied on /quests.
-  8. Real-browser save follows the current host and preserves the browser session.
-  9. A rejected real-browser save restores the button without navigating.
+  8. Compact cards reserve their action row for Open Quest and social proof.
 """
 
 from __future__ import annotations
@@ -136,8 +135,8 @@ def test_saved_quest_has_view_trip_link(client):
     assert "Open Quest" in resp.text or "View trip" in resp.text
 
 
-def test_quest_save_target_opens_saved_page_and_bookmark_is_visible(client):
-    """Browse-card Save must open this browser's updated Saved page."""
+def test_quest_library_opens_full_page_and_bookmark_is_visible(client):
+    """Compact cards defer saving to the full Quest page."""
     quest = ensure_global_quest(
         {
             "kind": "quest",
@@ -155,11 +154,9 @@ def test_quest_save_target_opens_saved_page_and_bookmark_is_visible(client):
 
     browse = client.get("/quests?origin=YVR", follow_redirects=False)
     assert browse.status_code == 200
-    assert f'data-saved-id="{quest.id}"' in browse.text
-    assert 'data-saved-url="/saved?flash=Quest%20saved"' in browse.text
-    assert "window.location.href = savedUrl || \"/saved\"" in browse.text
-    assert "setTimeout(go, 6000)" not in browse.text
-    assert 'credentials: "same-origin"' in browse.text
+    assert 'class="btn btn-gold" href="/t/' in browse.text
+    assert "Open Quest ↗" in browse.text
+    assert "btn-ql-save" not in browse.text
 
     saved = client.post(
         "/api/saved",
@@ -183,129 +180,6 @@ def test_quest_save_target_opens_saved_page_and_bookmark_is_visible(client):
     saved_page = client.get("/saved")
     assert saved_page.status_code == 200
     assert quest.title in saved_page.text
-
-
-def test_real_browser_quest_save_posts_and_stays_on_current_host(
-    client, browser_server
-):
-    """A browse-card save follows a same-host relative Saved URL in Chromium."""
-    chromium = shutil.which("chromium")
-    if not chromium:
-        pytest.skip("Chromium is required for browser save regressions")
-
-    quest = ensure_global_quest(
-        {
-            "kind": "quest",
-            "title": "Lisbon → overland → Porto",
-            "entry_iata": "LIS",
-            "exit_iata": "OPO",
-            "entry_city": "Lisbon",
-            "exit_city": "Porto",
-            "depart_date": "2026-11-01",
-        },
-        trip_meta={"origin": "YVR", "vibe": "adventure"},
-        origin="YVR",
-    )
-
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(
-            headless=True,
-            executable_path=chromium,
-            args=["--no-sandbox"],
-        )
-        page = browser.new_page()
-        browse_url = f"{browser_server}/quests?origin=YVR"
-        page.goto(browse_url, wait_until="domcontentloaded")
-
-        button = page.locator(".btn-ql-save").first
-        assert button.is_visible()
-        with page.expect_request(
-            lambda request: request.method == "POST"
-            and request.url == f"{browser_server}/api/saved"
-        ) as save_request:
-            with page.expect_response(
-                lambda response: response.url == f"{browser_server}/api/saved"
-                and response.request.method == "POST"
-            ) as save_response:
-                with page.expect_navigation(wait_until="domcontentloaded"):
-                    button.click()
-
-        request = save_request.value
-        payload = request.post_data_json
-        assert payload["itinerary"]["title"] == quest.title
-        assert payload["trip_meta"]["saved_id"] == quest.id
-        assert save_response.value.status == 200
-        assert page.url == f"{browser_server}/saved?flash=Quest%20saved"
-        assert quest.title in page.content()
-        browser.close()
-
-    saved = client.get("/saved")
-    assert saved.status_code == 200
-    assert quest.title not in saved.text  # Chromium used its own session cookie
-
-
-def test_real_browser_rejected_quest_save_restores_button_without_navigation(
-    browser_server,
-):
-    """A failed browse-card save clears the optimistic disabled state."""
-    chromium = shutil.which("chromium")
-    if not chromium:
-        pytest.skip("Chromium is required for browser save regressions")
-
-    # The route only needs a rendered card; its response is deliberately
-    # rejected before the server's bookmark endpoint is reached.
-    ensure_global_quest(
-        {
-            "kind": "quest",
-            "title": "Lisbon → overland → Porto",
-            "entry_iata": "LIS",
-            "exit_iata": "OPO",
-            "entry_city": "Lisbon",
-            "exit_city": "Porto",
-            "depart_date": "2026-11-01",
-        },
-        trip_meta={"origin": "YVR", "vibe": "adventure"},
-        origin="YVR",
-    )
-
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(
-            headless=True,
-            executable_path=chromium,
-            args=["--no-sandbox"],
-        )
-        page = browser.new_page()
-        page.route(
-            f"{browser_server}/api/saved",
-            lambda route: route.fulfill(
-                status=503,
-                content_type="application/json",
-                body=json.dumps({"ok": False, "error": "temporarily unavailable"}),
-            ),
-        )
-        browse_url = f"{browser_server}/quests?origin=YVR"
-        page.goto(browse_url, wait_until="domcontentloaded")
-        initial_url = page.url
-        button = page.locator(".btn-ql-save").first
-        assert button.is_visible()
-
-        with page.expect_request(
-            lambda request: request.method == "POST"
-            and request.url == f"{browser_server}/api/saved"
-        ):
-            button.click()
-
-        page.wait_for_function(
-            """() => {
-                const button = document.querySelector(".btn-ql-save");
-                return button && button.textContent === "★ Save" && !button.disabled;
-            }"""
-        )
-        assert page.url == initial_url
-        assert button.inner_text() == "★ Save"
-        assert button.is_enabled()
-        assert button.get_attribute("title") == "temporarily unavailable"
-        browser.close()
 
 
 def test_quests_page_mints_session_before_first_save_and_saved_page_uses_it():
@@ -523,9 +397,11 @@ def test_browse_cards_use_compact_canonical_ticket_and_keep_save_hooks(client):
     assert 'class="bp-overland-mark" aria-label="Overland connection">overland' not in html
     assert 'class="quest-browse-details-label"' not in html
     assert "Open Quest" in html
-    assert "btn-ql-save" in html
-    assert 'id="ql-quest-json-0"' in html
-    assert 'id="ql-meta-json-0"' in html
+    assert "btn-ql-save" not in html
+    assert 'class="bp-actions"' in html
+    assert 'class="quest-social-proof"' in html
+    assert 'id="ql-quest-json-0"' not in html
+    assert 'id="ql-meta-json-0"' not in html
 
 def test_browse_card_keeps_overland_context_out_of_flight_details(client):
     """Browse gives the Quest story priority; the full page owns flight metadata."""
@@ -617,7 +493,8 @@ def test_compact_ticket_fits_real_browser_viewports(client, tmp_path, width):
         details = card.locator(".quest-browse-details")
         if details.count():
             assert details.is_visible()
-        assert card.locator(".bp-actions .btn-ql-save").is_visible()
+        assert card.locator(".bp-actions .quest-social-proof").is_visible()
+        assert card.locator(".bp-actions .btn-ql-save").count() == 0
         assert card.locator(".bp-stub").is_visible()
         timing = card.locator(".quest-browse-stats")
         assert timing.evaluate(

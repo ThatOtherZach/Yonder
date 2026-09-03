@@ -888,32 +888,53 @@ def list_quests(
     origin: str | None = None,
     limit: int = 10,
     offset: int = 0,
+    sort_by: str = "recent",
 ) -> list[SavedItinerary]:
-    """Return quest itineraries ordered newest → oldest, with optional origin filter."""
+    """Return quest itineraries with optional origin filter and social ranking."""
     limit = max(1, min(50, limit))
     offset = max(0, offset)
     origin_n = (origin or "").strip().upper() or None
+    sort_n = sort_by if sort_by in {"most_saved", "top_rated"} else "recent"
+    order_by = {
+        "recent": "s.saved_at DESC",
+        "most_saved": "COALESCE(bc.save_count, 0) DESC, s.saved_at DESC",
+        "top_rated": (
+            "CASE WHEN COALESCE(fc.vote_count, 0) > 0 "
+            "THEN fc.up_count::numeric / fc.vote_count END DESC NULLS LAST, "
+            "COALESCE(fc.vote_count, 0) DESC, "
+            "COALESCE(bc.save_count, 0) DESC, s.saved_at DESC"
+        ),
+    }[sort_n]
+    origin_clause = "AND UPPER(s.origin) = %s" if origin_n else ""
+    params: tuple = (
+        (origin_n, limit, offset) if origin_n else (limit, offset)
+    )
     with get_conn() as conn:
-        if origin_n:
-            rows = conn.execute(
-                """
-                SELECT * FROM saved_itineraries
-                WHERE kind = 'quest' AND UPPER(origin) = %s
-                ORDER BY saved_at DESC
-                LIMIT %s OFFSET %s
-                """,
-                (origin_n, limit, offset),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT * FROM saved_itineraries
-                WHERE kind = 'quest'
-                ORDER BY saved_at DESC
-                LIMIT %s OFFSET %s
-                """,
-                (limit, offset),
-            ).fetchall()
+        rows = conn.execute(
+            f"""
+            WITH bookmark_counts AS (
+                SELECT saved_id, COUNT(*) AS save_count
+                FROM quest_bookmarks
+                GROUP BY saved_id
+            ),
+            feedback_counts AS (
+                SELECT quest_saved_id,
+                       COUNT(*) FILTER (WHERE direction = 'up') AS up_count,
+                       COUNT(*) AS vote_count
+                FROM result_feedback
+                WHERE quest_saved_id IS NOT NULL
+                GROUP BY quest_saved_id
+            )
+            SELECT s.*
+            FROM saved_itineraries s
+            LEFT JOIN bookmark_counts bc ON bc.saved_id = s.id
+            LEFT JOIN feedback_counts fc ON fc.quest_saved_id = s.id
+            WHERE s.kind = 'quest' {origin_clause}
+            ORDER BY {order_by}
+            LIMIT %s OFFSET %s
+            """,
+            params,
+        ).fetchall()
     return [_row_to_saved(r) for r in rows]
 
 
@@ -1253,7 +1274,9 @@ def ensure_global_quest(
     )
 
 
-def top_quest_routes(*, limit: int = 12, origin: str | None = None) -> list[dict]:
+def top_quest_routes(
+    *, limit: int = 12, origin: str | None = None, sort_by: str = "most_saved"
+) -> list[dict]:
     """Return top saved quest routes grouped by (origin, entry city, exit city).
 
     When *origin* is given (a normalised IATA code) only routes from that
@@ -1264,42 +1287,78 @@ def top_quest_routes(*, limit: int = 12, origin: str | None = None) -> list[dict
     """
     limit = max(1, min(50, limit))
     origin_n = (origin or "").strip().upper() or None
+    sort_n = sort_by if sort_by == "top_rated" else "most_saved"
     params: list = [limit]
     origin_clause = ""
     if origin_n:
-        origin_clause = "AND UPPER(COALESCE(s.origin, '')) = %s"
+        origin_clause = "AND UPPER(COALESCE(q.origin, '')) = %s"
         params = [origin_n, limit]
 
-    # Rank = quest rows + personal bookmarks, so ★ Save feeds popularity.
+    order_by = (
+        """
+        CASE WHEN SUM(q.vote_count) > 0
+             THEN SUM(q.up_count)::numeric / SUM(q.vote_count)
+        END DESC NULLS LAST,
+        SUM(q.vote_count) DESC,
+        SUM(1 + q.save_count) DESC,
+        MAX(q.saved_at) DESC
+        """
+        if sort_n == "top_rated"
+        else "SUM(1 + q.save_count) DESC, MAX(q.saved_at) DESC"
+    )
+
+    # Aggregate once per Quest before grouping routes so bookmark and feedback
+    # joins cannot multiply each other's counts.
     sql = f"""
+        WITH bookmark_counts AS (
+            SELECT saved_id, COUNT(*) AS save_count
+            FROM quest_bookmarks
+            GROUP BY saved_id
+        ),
+        feedback_counts AS (
+            SELECT quest_saved_id,
+                   COUNT(*) FILTER (WHERE direction = 'up') AS up_count,
+                   COUNT(*) AS vote_count
+            FROM result_feedback
+            WHERE quest_saved_id IS NOT NULL
+            GROUP BY quest_saved_id
+        ),
+        q AS (
+            SELECT s.*,
+                   COALESCE(bc.save_count, 0) AS save_count,
+                   COALESCE(fc.up_count, 0) AS up_count,
+                   COALESCE(fc.vote_count, 0) AS vote_count
+            FROM saved_itineraries s
+            LEFT JOIN bookmark_counts bc ON bc.saved_id = s.id
+            LEFT JOIN feedback_counts fc ON fc.quest_saved_id = s.id
+            WHERE s.kind = 'quest'
+        )
         SELECT
-            UPPER(COALESCE(NULLIF(TRIM(s.origin), ''), '')) AS origin,
+            UPPER(COALESCE(NULLIF(TRIM(q.origin), ''), '')) AS origin,
             COALESCE(
-                NULLIF(TRIM(s.itinerary_json::json->>'entry_city'), ''),
-                NULLIF(TRIM(s.itinerary_json::json->>'entry_iata'), '')
+                NULLIF(TRIM(q.itinerary_json::json->>'entry_city'), ''),
+                NULLIF(TRIM(q.itinerary_json::json->>'entry_iata'), '')
             ) AS entry,
             COALESCE(
-                NULLIF(TRIM(s.itinerary_json::json->>'exit_city'), ''),
-                NULLIF(TRIM(s.itinerary_json::json->>'exit_iata'), '')
+                NULLIF(TRIM(q.itinerary_json::json->>'exit_city'), ''),
+                NULLIF(TRIM(q.itinerary_json::json->>'exit_iata'), '')
             ) AS exit_city,
-            MAX(s.vibe) AS vibe,
-            MAX(s.theme_accent) AS accent,
-            MAX(s.theme_label) AS vibe_label,
-            COUNT(DISTINCT s.id) + COUNT(qb.saved_id) AS save_count
-        FROM saved_itineraries s
-        LEFT JOIN quest_bookmarks qb ON qb.saved_id = s.id
-        WHERE s.kind = 'quest'
+            MAX(q.vibe) AS vibe,
+            MAX(q.theme_accent) AS accent,
+            MAX(q.theme_label) AS vibe_label
+        FROM q
+        WHERE TRUE
           {origin_clause}
           AND COALESCE(
-                NULLIF(TRIM(s.itinerary_json::json->>'entry_city'), ''),
-                NULLIF(TRIM(s.itinerary_json::json->>'entry_iata'), '')
+                NULLIF(TRIM(q.itinerary_json::json->>'entry_city'), ''),
+                NULLIF(TRIM(q.itinerary_json::json->>'entry_iata'), '')
               ) IS NOT NULL
           AND COALESCE(
-                NULLIF(TRIM(s.itinerary_json::json->>'exit_city'), ''),
-                NULLIF(TRIM(s.itinerary_json::json->>'exit_iata'), '')
+                NULLIF(TRIM(q.itinerary_json::json->>'exit_city'), ''),
+                NULLIF(TRIM(q.itinerary_json::json->>'exit_iata'), '')
               ) IS NOT NULL
         GROUP BY 1, 2, 3
-        ORDER BY COUNT(DISTINCT s.id) + COUNT(qb.saved_id) DESC, MAX(s.saved_at) DESC
+        ORDER BY {order_by}
         LIMIT %s
     """
     with get_conn() as conn:

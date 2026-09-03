@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -94,7 +96,7 @@ def test_batched_stats_count_bookmarks_and_distinguish_no_feedback_from_zero_per
     assert stats[empty.id]["vote_count"] == 0
 
 
-def test_quest_library_batches_stats_and_renders_no_feedback(monkeypatch):
+def test_quest_library_puts_stats_in_actions_without_save_control(monkeypatch):
     quest = _quest("LHR", "EDI")
     calls: list[list[str]] = []
     real = saved.quest_social_stats
@@ -112,6 +114,112 @@ def test_quest_library_batches_stats_and_renders_no_feedback(monkeypatch):
     assert "★ 0 saves" in response.text
     assert "No feedback yet" in response.text
     assert "0% positive" not in response.text
+    assert response.text.count('class="quest-social-proof"') == 1
+    actions = response.text.split('class="bp-actions"', 1)[1].split("</div>", 2)[0]
+    assert 'class="quest-social-proof"' in actions
+    assert "Open Quest" in actions
+    assert "btn-ql-save" not in response.text
+    assert "✓ Saved" not in response.text
+
+
+@pytest.mark.parametrize(
+    ("bookmarks", "votes", "save_label", "feedback_label"),
+    [
+        (1, ("up",), "★ 1 save", "100% positive</strong> (1 vote)"),
+        (2, ("down",), "★ 2 saves", "0% positive</strong> (1 vote)"),
+        (0, ("up", "down"), "★ 0 saves", "50% positive</strong> (2 votes)"),
+    ],
+)
+def test_quest_library_action_stats_cover_counts_and_feedback(
+    bookmarks, votes, save_label, feedback_label
+):
+    quest = _quest("LIS", "OPO")
+    for number in range(bookmarks):
+        assert saved.bookmark_quest(quest.id, owner_sess=f"fan-{number}")
+    for number, direction in enumerate(votes):
+        assert feedback.record_feedback(
+            direction=direction,
+            vibe="adventure",
+            dest_iata="LIS",
+            session_hash=f"voter-{number}",
+            quest_saved_id=quest.id,
+        )
+
+    response = TestClient(web.app, raise_server_exceptions=True).get(
+        "/quests?origin=YVR"
+    )
+
+    assert response.status_code == 200
+    assert save_label in response.text
+    assert feedback_label in response.text
+    assert response.text.count('class="quest-social-proof"') == 1
+    assert "btn-ql-save" not in response.text
+
+
+def test_quest_library_social_sorts_rank_cards_and_departure_board():
+    best_rated = _quest("LIS", "OPO")
+    most_saved = _quest("HAN", "BKK")
+    unrated = _quest("CDG", "AMS")
+
+    assert saved.bookmark_quest(best_rated.id, owner_sess="one")
+    for owner in ("one", "two", "three"):
+        assert saved.bookmark_quest(most_saved.id, owner_sess=owner)
+
+    assert feedback.record_feedback(
+        direction="up",
+        vibe="adventure",
+        dest_iata="LIS",
+        session_hash="lis-fan",
+        quest_saved_id=best_rated.id,
+    )
+    for session_hash, direction in (("han-fan", "up"), ("han-critic", "down")):
+        assert feedback.record_feedback(
+            direction=direction,
+            vibe="adventure",
+            dest_iata="HAN",
+            session_hash=session_hash,
+            quest_saved_id=most_saved.id,
+        )
+
+    assert [q.id for q in saved.list_quests(sort_by="most_saved")] == [
+        most_saved.id,
+        best_rated.id,
+        unrated.id,
+    ]
+    assert [q.id for q in saved.list_quests(sort_by="top_rated")] == [
+        best_rated.id,
+        most_saved.id,
+        unrated.id,
+    ]
+    assert [r["entry"] for r in saved.top_quest_routes(sort_by="top_rated")] == [
+        "LIS",
+        "HAN",
+        "CDG",
+    ]
+
+    response = TestClient(web.app, raise_server_exceptions=True).get(
+        "/quests?origin=YVR&sort=most_saved"
+    )
+    assert response.status_code == 200
+    assert '>Most Saved</a>' in response.text
+    assert 'aria-current="page">Most Saved</a>' in response.text
+    assert 'name="sort" value="most_saved"' in response.text
+    cards = response.text.split('class="quest-grid"', 1)[1]
+    assert cards.index("HAN") < cards.index("LIS") < cards.index("CDG")
+
+    top_rated = TestClient(web.app, raise_server_exceptions=True).get(
+        "/quests?origin=YVR&sort=top_rated"
+    )
+    assert top_rated.status_code == 200
+    assert 'aria-current="page">Top Rated</a>' in top_rated.text
+    board_json = top_rated.text.split(
+        '<script id="fb-data" type="application/json">', 1
+    )[1].split("</script>", 1)[0]
+    assert [route["entry"] for route in json.loads(board_json)] == [
+        "LIS",
+        "HAN",
+        "CDG",
+    ]
 
 
 def test_feedback_endpoint_accepts_only_a_real_canonical_quest_id(monkeypatch):

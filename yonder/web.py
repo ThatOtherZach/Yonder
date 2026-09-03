@@ -5227,6 +5227,7 @@ async def quests_browse_page(
     request: Request,
     page: int = 1,
     origin: str | None = None,
+    sort: str | None = None,
 ) -> HTMLResponse:
     """Public browse page for all saved Quest itineraries."""
     import uuid as _uuid
@@ -5243,6 +5244,7 @@ async def quests_browse_page(
 
     # origin param: absent or "" → show all; "JFK" → filter by that origin
     origin_n = (origin or "").strip().upper()[:4] or None
+    sort_n = sort if sort in {"most_saved", "top_rated"} else "recent"
 
     offset = (page - 1) * _QUESTS_PER_PAGE
 
@@ -5253,7 +5255,12 @@ async def quests_browse_page(
         page = total_pages
         offset = (page - 1) * _QUESTS_PER_PAGE
 
-    quests = list_quests(origin=origin_n, limit=_QUESTS_PER_PAGE, offset=offset)
+    quests = list_quests(
+        origin=origin_n,
+        limit=_QUESTS_PER_PAGE,
+        offset=offset,
+        sort_by=sort_n,
+    )
     try:
         from yonder.saved import quest_social_stats
 
@@ -5288,7 +5295,11 @@ async def quests_browse_page(
 
     board_quests: list[dict] = []
     try:
-        board_quests = top_quest_routes(limit=12, origin=origin_n)
+        board_quests = top_quest_routes(
+            limit=12,
+            origin=origin_n,
+            sort_by="top_rated" if sort_n == "top_rated" else "most_saved",
+        )
     except Exception:
         pass
 
@@ -5301,6 +5312,7 @@ async def quests_browse_page(
             "vibe_theme": None,
             "quest_cards": quest_cards,
             "origin_filter": origin_n or "",
+            "sort_filter": sort_n,
             "page": page,
             "total": total,
             "total_pages": total_pages,

@@ -188,18 +188,22 @@ def test_bookmarked_quest_appears_on_saved_page(client):
     assert "Tokyo" in resp.text
 
 
-def test_quests_page_renders_saved_state_server_side(client):
+def test_quests_page_shows_stats_instead_of_saved_state_controls(client):
     q = _seed_global_quest()
     assert bookmark_quest(q.id, owner_sess="sessE")
     client.cookies.set("yv_sess", "sessE")
     resp = client.get("/quests?origin=")
     assert resp.status_code == 200
-    assert "✓ Saved" in resp.text
+    assert "★ 1 save" in resp.text
+    assert "✓ Saved" not in resp.text
+    assert "btn-ql-save" not in resp.text
 
-    # Other sessions still see an active Save button
+    # Compact library cards do not expose saving for any session.
     client.cookies.set("yv_sess", "other")
     resp2 = client.get("/quests?origin=")
-    assert "★ Save" in resp2.text
+    assert "★ 1 save" in resp2.text
+    assert "★ Save</button>" not in resp2.text
+    assert "btn-ql-save" not in resp2.text
 
 
 def test_top_quest_routes_counts_bookmarks():
