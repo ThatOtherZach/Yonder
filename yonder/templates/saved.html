@@ -953,18 +953,35 @@
         if (!slots.length) return;
         var queue = Array.prototype.slice.call(slots);
         var i = 0;
-        function next() {
-          if (i >= queue.length) return;
-          var slot = queue[i++];
+        var timeoutMs = 20000;
+        function loadingHtml() {
+          return '<div class="pb-story-body is-loading"><span class="pb-tag">Field note</span>' +
+            '<div class="pb-fn-loading" role="status" aria-live="polite">' +
+            '<div class="pb-fn-bar-track"><div class="pb-fn-bar-fill"></div></div>' +
+            '<p class="pb-fn-status">Loading field note…</p></div></div>';
+        }
+        function retryHtml(iata, message, col) {
+          var fallback = hasColData(col) ? renderFieldNoteHtml(null, col) :
+            '<div class="pb-story-body"><span class="pb-tag">Field note</span></div>';
+          return fallback + '<div class="pb-fn-retry">' +
+            '<p class="pb-fn-status" role="status">' + escapeHtml(message) + '</p>' +
+            '<button type="button" class="pb-fn-refresh" aria-label="Refresh field note for ' +
+            escapeHtml(iata) + '">Refresh</button></div>';
+        }
+        function loadFieldNote(slot, force, done) {
+          if (slot._fieldNoteLoading) return;
           var iata = (slot.getAttribute("data-iata") || "").toUpperCase();
-          var col = colFromSlot(slot); /* read COL before innerHTML is replaced */
+          var col = colFromSlot(slot);
           if (iata.length !== 3) {
             slot.classList.remove("is-loading");
-            if (hasColData(col)) slot.innerHTML = renderFieldNoteHtml(null, col);
-            bindFieldNoteToggles(slot);
-            setTimeout(next, 0);
+            slot.innerHTML = hasColData(col) ? renderFieldNoteHtml(null, col) :
+              retryHtml(iata || "this destination", "This field note couldn’t be loaded.", col);
+            if (done) done();
             return;
           }
+          slot._fieldNoteLoading = true;
+          slot.classList.add("is-loading");
+          if (force) slot.innerHTML = loadingHtml();
           var q = new URLSearchParams({
             iata: iata,
             country: slot.getAttribute("data-country") || "",
@@ -972,27 +989,47 @@
             role: slot.getAttribute("data-role") || "stopover",
             vibe: slot.getAttribute("data-vibe") || "",
           });
+          if (force) q.set("refresh", "true");
+          var controller = new AbortController();
+          var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
           fetch("/api/place-brief?" + q.toString(), {
             credentials: "same-origin",
             headers: { Accept: "application/json" },
+            signal: controller.signal,
           })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-              slot.classList.remove("is-loading");
-              if (data && data.ok && data.brief) {
-                data.brief._vibe = (slot.getAttribute("data-vibe") || "").toLowerCase();
-                slot.innerHTML = renderFieldNoteHtml(data.brief, col);
-              } else {
-                slot.innerHTML = renderFieldNoteHtml(null, col);
-              }
+              if (!data || !data.ok || !data.brief) throw new Error("no brief");
+              data.brief._vibe = (slot.getAttribute("data-vibe") || "").toLowerCase();
+              slot.innerHTML = renderFieldNoteHtml(data.brief, col);
               bindFieldNoteToggles(slot);
             })
-            .catch(function () {
-              slot.classList.remove("is-loading");
-              if (hasColData(col)) slot.innerHTML = renderFieldNoteHtml(null, col);
+            .catch(function (err) {
+              var message = err && err.name === "AbortError"
+                ? "This field note took too long."
+                : "This field note couldn’t be loaded.";
+              slot.innerHTML = retryHtml(iata, message, col);
               bindFieldNoteToggles(slot);
             })
-            .finally(function () { setTimeout(next, 120); });
+            .finally(function () {
+              clearTimeout(timer);
+              slot._fieldNoteLoading = false;
+              slot.classList.remove("is-loading");
+              if (done) done();
+            });
+        }
+        document.addEventListener("click", function (event) {
+          var button = event.target.closest(".pb-fn-refresh");
+          if (!button) return;
+          var slot = button.closest(".field-note-slot");
+          if (!slot || slot._fieldNoteLoading) return;
+          button.disabled = true;
+          loadFieldNote(slot, true);
+        });
+        function next() {
+          if (i >= queue.length) return;
+          var slot = queue[i++];
+          loadFieldNote(slot, false, function () { setTimeout(next, 120); });
         }
         next();
       }

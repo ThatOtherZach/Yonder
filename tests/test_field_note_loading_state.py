@@ -208,18 +208,16 @@ class TestClientReplacementContract:
                 "pb-fn-loading block"
             )
 
-    def test_every_fetch_path_removes_is_loading(self):
-        """Success, error and bad-IATA paths must all strip is-loading."""
+    def test_every_fetch_path_finishes_loading_state(self):
+        """All requests share a finalizer, while bad IATA exits immediately."""
         for tpl in ("index.html", "saved.html"):
             src = _js_of(tpl)
             assert 'querySelectorAll(".field-note-slot.is-loading")' in src, (
                 f"{tpl}: bootFieldNotes loading-slot query missing"
             )
-            removals = src.count('classList.remove("is-loading")')
-            assert removals >= 3, (
-                f"{tpl}: expected is-loading removal in bad-IATA, then() and "
-                f"catch() paths (>=3), found {removals}"
-            )
+            loader = src[src.index("function bootFieldNotes()") :]
+            assert loader.count('classList.remove("is-loading")') >= 2
+            assert ".finally(function ()" in loader
 
     def test_slot_innerhtml_replaced_on_success_and_failure(self):
         """The whole slot innerHTML is replaced, discarding the loader DOM."""
@@ -229,3 +227,110 @@ class TestClientReplacementContract:
                 f"{tpl}: streamed content must replace slot.innerHTML so the "
                 "pb-fn-loading block is removed from the DOM"
             )
+
+
+class TestClientRetryContract:
+    def test_requests_are_bounded_and_timeout_becomes_retry(self):
+        for tpl in ("index.html", "saved.html"):
+            src = _js_of(tpl)
+            assert "var timeoutMs = 20000" in src
+            assert "new AbortController()" in src
+            assert "controller.abort()" in src
+            assert 'err.name === "AbortError"' in src
+            assert "This field note took too long." in src
+            assert 'class="pb-fn-refresh"' in src
+
+    def test_refresh_is_accessible_forced_and_duplicate_safe(self):
+        for tpl in ("index.html", "saved.html"):
+            src = _js_of(tpl)
+            assert 'aria-label="Refresh field note for ' in src
+            assert 'q.set("refresh", "true")' in src
+            assert "if (slot._fieldNoteLoading) return" in src
+            assert "button.disabled = true" in src
+            assert "loadFieldNote(slot, true)" in src
+
+    def test_retry_preserves_destination_metadata(self):
+        for tpl in ("index.html", "saved.html"):
+            src = _js_of(tpl)
+            loader = src[src.index("function loadFieldNote") :]
+            for attr in ("data-iata", "data-country", "data-city", "data-role", "data-vibe"):
+                assert attr in loader
+            # Only the contents are replaced, leaving metadata on the slot.
+            assert "slot.outerHTML" not in loader
+
+    def test_failure_returns_to_retry_and_success_replaces_it(self):
+        for tpl in ("index.html", "saved.html"):
+            src = _js_of(tpl)
+            loader = src[src.index("function loadFieldNote") :]
+            assert "slot.innerHTML = retryHtml(iata, message, col)" in loader
+            assert "slot.innerHTML = renderFieldNoteHtml(data.brief, col)" in loader
+            assert 'slot.classList.remove("is-loading")' in loader
+
+    def test_failure_keeps_ground_spend_fallback_with_refresh(self):
+        for tpl in ("index.html", "saved.html"):
+            src = _js_of(tpl)
+            retry = src[src.index("function retryHtml") : src.index(
+                "function loadFieldNote", src.index("function retryHtml")
+            )]
+            assert "hasColData(col)" in retry
+            assert "renderFieldNoteHtml(null, col)" in retry
+            assert "pb-fn-refresh" in retry
+
+
+def test_place_brief_endpoint_accepts_validated_refresh_flag():
+    src = Path(web_module.__file__).read_text(encoding="utf-8")
+    endpoint = src[src.index("async def api_place_brief(") : src.index(
+        "\n\n", src.index("async def api_place_brief(")
+    )]
+    assert 'refresh: bool = Query(False)' in endpoint
+
+
+async def test_forced_generation_bypasses_and_replaces_cache(monkeypatch):
+    import yonder.encyclopedia as encyclopedia
+
+    stale = {"title": "Stale Tokyo", "culture": "old"}
+    writes = []
+
+    monkeypatch.setattr(encyclopedia, "get_cached", lambda key: stale)
+    monkeypatch.setattr(
+        encyclopedia, "put_cached", lambda key, payload: writes.append((key, payload))
+    )
+    monkeypatch.setattr(encyclopedia, "_activity_links", _empty_activity_links)
+    monkeypatch.setattr(encyclopedia, "_poi_picks", lambda city: [])
+
+    class FakeGrok:
+        def __init__(self, settings):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def place_brief(self, **kwargs):
+            return {"title": "Fresh Tokyo", "culture": "new"}
+
+    import yonder.grok as grok_module
+
+    monkeypatch.setattr(grok_module, "GrokClient", FakeGrok)
+
+    class Settings:
+        def grok_ready(self):
+            return True
+
+        def model_source_label(self):
+            return "test"
+
+    brief = await encyclopedia.get_place_brief(
+        Settings(), iata="NRT", city="Tokyo", trip_vibe="adventure", force_refresh=True
+    )
+    assert brief is not None
+    assert brief.title == "Fresh Tokyo"
+    assert brief.from_cache is False
+    assert len(writes) == 2
+    assert all(payload["title"] == "Fresh Tokyo" for _, payload in writes)
+
+
+async def _empty_activity_links(*args, **kwargs):
+    return []

@@ -6951,6 +6951,7 @@ async def api_place_brief(
     role: str = Query("stopover"),
     prompt: str = Query(""),
     vibe: str = Query(""),
+    refresh: bool = Query(False),
 ) -> JSONResponse:
     """Stream-in field note for one stop (cache-first, live Grok on miss).
 
@@ -6987,6 +6988,7 @@ async def api_place_brief(
             role=(role or "stopover")[:24],
             user_prompt=(prompt or "").strip()[:400] or None,
             trip_vibe=(vibe or "").strip().lower()[:32] or None,
+            force_refresh=refresh,
         )
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)[:120]}, status_code=500)

@@ -770,6 +770,30 @@
       color: var(--sky);
       text-decoration: none;
     }
+    .pb-fn-status {
+      margin: 0.45rem 0 0;
+      color: var(--ink-soft);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    .pb-fn-retry {
+      margin-top: 0.65rem;
+      padding-top: 0.65rem;
+      border-top: 1px dashed var(--line);
+    }
+    .pb-fn-refresh {
+      margin-top: 0.65rem;
+      padding: 0.35rem 0.75rem;
+      border: 1.5px solid var(--bp-accent, var(--sky-bright));
+      border-radius: 999px;
+      background: var(--white);
+      color: var(--ink);
+      font: 700 0.78rem/1 inherit;
+      cursor: pointer;
+    }
+    .pb-fn-refresh:hover { background: var(--sky-mist, #e8f4fc); }
+    .pb-fn-refresh:focus-visible { outline: 3px solid var(--bp-accent, var(--sky-bright)); outline-offset: 2px; }
+    .pb-fn-refresh:disabled { cursor: wait; opacity: 0.65; }
     .pb-fn-promo a:hover { text-decoration: underline; }
     .pb-fn-promo .fs-promo-copy-btn {
       font-size: 0.78rem;

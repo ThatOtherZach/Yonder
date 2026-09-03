@@ -268,6 +268,7 @@ async def get_place_brief(
     role: str = "destination",
     user_prompt: str | None = None,
     trip_vibe: str | None = None,
+    force_refresh: bool = False,
 ) -> PlaceBrief | None:
     """Cache-first place brief. Returns None on miss without Grok or on hard failure.
 
@@ -284,8 +285,8 @@ async def get_place_brief(
     tone = _tone_key(user_prompt, trip_vibe)
     # Prefer tone-specific cache; fall back to generic for cold hits
     key = f"{base}|t:{tone}" if tone else base
-    hit = get_cached(key)
-    if not hit and tone:
+    hit = None if force_refresh else get_cached(key)
+    if not hit and tone and not force_refresh:
         hit = get_cached(base)
     if hit and _payload_lang_mismatch(hit, lang):
         # Stale pre-partition entry written in another language — refetch.
@@ -333,8 +334,9 @@ async def get_place_brief(
         payload = dict(payload)
         payload["model_source"] = settings.model_source_label()
         put_cached(key, payload)
-        # Also seed generic cache if empty (helps cold paths)
-        if tone and not get_cached(base):
+        # Explicit refresh replaces every compatible cache path so later
+        # cache-first callers do not receive the stale generic note.
+        if tone and (force_refresh or not get_cached(base)):
             put_cached(base, payload)
         return PlaceBrief(
             activity_links=await _activity_links(
