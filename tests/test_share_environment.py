@@ -8,6 +8,12 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.requests import Request
 
+from scripts.smoke_published_share import (
+    SmokeCheckError,
+    ShareLinks,
+    extract_share_links,
+    validate_share_links,
+)
 import yonder.web as web_module
 from yonder.saved import bookmark_quest, ensure_global_quest
 from yonder.types import SearchQuery
@@ -141,3 +147,45 @@ def test_forged_published_host_does_not_switch_preview_to_production(client, mon
     )
     assert share is not None
     assert share["url"].startswith("https://preview.example.replit.dev/t/detour/")
+
+
+def test_published_smoke_parser_requires_copy_and_qr_targets_to_match():
+    url = "https://yonder.city/t/escape/YVR-NRT-2026-10-18/abc123"
+    html = f"""
+    <button class="bp-stub-share btn-save-and-share" data-share-url="{url}">
+      ★ Save
+    </button>
+    <a class="bp-qr" href="{url}" title="{url}">
+      <img src="data:image/png;base64,ZmFrZQ==" alt="QR code" />
+    </a>
+    """
+
+    links = extract_share_links(html)
+
+    assert links.copied_link == url
+    assert links.qr_target == url
+    validate_share_links(links, "https://yonder.city")
+
+
+def test_published_smoke_parser_rejects_a_mismatched_qr_target():
+    with pytest.raises(SmokeCheckError, match="copy link and QR target differ"):
+        validate_share_links(
+            ShareLinks(
+                copied_link="https://yonder.city/t/escape/YVR-NRT/abc123",
+                qr_target="https://yonder.city/t/escape/YVR-NRT/def456",
+                qr_image_src="data:image/png;base64,ZmFrZQ==",
+            ),
+            "https://yonder.city",
+        )
+
+
+def test_published_smoke_parser_rejects_non_published_share_origin():
+    with pytest.raises(SmokeCheckError, match="published /t/ URL"):
+        validate_share_links(
+            ShareLinks(
+                copied_link="https://preview.example.replit.dev/t/escape/YVR-NRT/abc123",
+                qr_target="https://preview.example.replit.dev/t/escape/YVR-NRT/abc123",
+                qr_image_src="data:image/png;base64,ZmFrZQ==",
+            ),
+            "https://yonder.city",
+        )
