@@ -35,6 +35,15 @@ to inspect membership; each run reports the slowest tests. Extra pytest
 arguments can be placed after `--`, for example
 `python scripts/run_test_shard.py --shard 1 -- -x`.
 
+Each completed shard atomically updates the checked-in
+`.test_shard_timings.json` manifest with its wall-clock duration and measured
+per-file test runtimes. Assignment uses a recent measurement when the file
+size still matches; new, changed, malformed, or older-than-30-days entries
+fall back to the deterministic source-size estimate. The manifest is advisory
+and never changes complete file coverage. `--check` fails if any projected
+shard exceeds the 240-second safety budget (the 270-second command timeout
+minus a 30-second margin); `--list` shows the same condition as a warning.
+
 ## How to test
 
 - Focused work: `pytest -q tests/test_<area>.py`
