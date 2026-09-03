@@ -417,7 +417,13 @@
     {% set cf.base = cf.base + leg.offer.price %}
   {% endif %}
 {% endfor %}
-<article class="boarding-pass is-adventure ticket--detour" data-ticket-kind="detour" data-ticket-variant="full" data-stop-iata="{{ it.stop_iata or '' }}"{% if accent %} style="--bp-accent: {{ accent }}; border-color: color-mix(in srgb, {{ accent }} 35%, var(--line));"{% endif %}>
+<article class="boarding-pass is-adventure ticket--detour"
+  data-ticket-kind="{{ 'escape' if mode == 'saved' and s and s.kind == 'escape' else 'detour' }}"
+  data-ticket-variant="full"
+  data-stop-iata="{{ it.stop_iata or '' }}"
+  {% if mode == 'saved' and s %}data-saved-id="{{ s.id }}" data-saved-kind="{{ s.kind }}"{% endif %}
+  {% if it.legs %}data-route-summary="{% for leg in it.legs %}{{ leg.from_iata }} → {{ leg.to_iata }}{% if leg.depart_date %} · {{ leg.depart_date }}{% endif %}{% if not loop.last %} / {% endif %}{% endfor %}"{% endif %}
+  {% if accent %} style="--bp-accent: {{ accent }}; border-color: color-mix(in srgb, {{ accent }} 35%, var(--line));"{% endif %}>
   <div class="bp-main">
     {% if it.gap_label is defined and it.gap_label and mode == 'explore' %}
     <div class="bp-gap-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">✦ {{ it.gap_label }}</div>
@@ -666,6 +672,17 @@
     <script type="application/json" id="it-json-{{ idx }}">{{ it.model_dump_json() | safe }}</script>
     {% endif %}
     {% call ticket_actions() %}
+      {% if mode == 'saved' and s and s.kind == 'escape' %}
+      <button type="button"
+              class="btn secondary saved-compose-select"
+              data-saved-id="{{ s.id }}"
+              data-saved-kind="escape"
+              {% if s.is_expired %}disabled aria-disabled="true" title="Update this ticket's dates before composing"{% endif %}
+              aria-pressed="false"
+              aria-label="Select this Saved Escape for a Quest or Detour">
+        {% if s.is_expired %}Update dates to build{% else %}＋ Add to builder{% endif %}
+      </button>
+      {% endif %}
       {% if mode in ('explore', 'saved') and it.legs|length == 2 %}
       {% set _l0 = it.legs[0] %}
       {% set _l1 = it.legs[1] %}
@@ -834,7 +851,8 @@
   data-ticket-variant="full"
   data-quest-entry="{{ idea.entry_iata }}"
   data-quest-exit="{{ idea.exit_iata }}"
-  {% if mode == 'saved' and s %}data-saved-title="{{ s.title }}"{% endif %}
+  data-route-summary="{{ home_iata or '—' }} → {{ idea.entry_iata }} … {{ idea.exit_iata }} → {{ home_iata or '—' }}"
+  {% if mode == 'saved' and s %}data-saved-title="{{ s.title }}" data-saved-id="{{ s.id }}" data-saved-kind="quest"{% endif %}
   style="--bp-accent: {{ accent }}; border-color: color-mix(in srgb, {{ accent }} 35%, var(--line));"
 >
   <div class="bp-main">
@@ -1008,7 +1026,17 @@
 
     {# Booking links + saved actions #}
     {% call ticket_actions() %}
-      {% if mode == 'explore' %}
+      {% if mode == 'saved' and s %}
+      <button type="button"
+              class="btn secondary saved-compose-select"
+              data-saved-id="{{ s.id }}"
+              data-saved-kind="quest"
+              {% if s.is_expired %}disabled aria-disabled="true" title="Update this Quest's dates before composing"{% endif %}
+              aria-pressed="false"
+              aria-label="Select this Saved Quest for a compatible Detour">
+        {% if s.is_expired %}Update dates to extend{% else %}＋ Extend to Detour{% endif %}
+      </button>
+      {% elif mode == 'explore' %}
       <button type="button"
               class="btn secondary compose-select-btn"
               data-compose-select="quest"

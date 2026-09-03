@@ -74,10 +74,11 @@ def test_saved_quest_share_uses_preview_origin_and_loads_from_same_database(clie
     assert shared.status_code == 200
     assert "Osaka" in shared.text
     assert "Seoul" in shared.text
-    assert '<span class="trip-title-part">to</span>' not in shared.text
+    assert '<span class="trip-title-part">to</span>' in shared.text
+    assert '<span class="trip-title-part">overland</span>' not in shared.text
     assert shared.text.count(
         '<span class="trip-title-arrow" aria-hidden="true">→</span>'
-    ) == 1
+    ) == 2
 
 
 def test_preview_share_routes_for_escape_detour_and_quest(client):

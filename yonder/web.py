@@ -3090,6 +3090,146 @@ async def compose_fares_api(request: Request) -> JSONResponse:
     )
 
 
+@app.post("/api/compose-saved")
+async def compose_saved_api(request: Request) -> JSONResponse:
+    """Build a Quest or private Detour from this browser's Saved tickets."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            {"ok": False, "error": "Invalid composition payload."},
+            status_code=400,
+        )
+    if not isinstance(body, dict):
+        return JSONResponse(
+            {"ok": False, "error": "Invalid composition payload."},
+            status_code=400,
+        )
+
+    kind = str(body.get("kind") or "").strip().lower()
+    saved_ids = body.get("saved_ids")
+    owner = _req_sess(request)
+    if not owner:
+        return JSONResponse(
+            {"ok": False, "error": "Open Saved trips first so we can verify ownership."},
+            status_code=400,
+        )
+    if kind not in {"quest", "detour"} or not isinstance(saved_ids, list):
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "Choose Quest or Detour and select the required tickets.",
+            },
+            status_code=400,
+        )
+    allowed_counts = {2} if kind == "quest" else {2, 3}
+    if len(saved_ids) not in allowed_counts:
+        needed = "two" if kind == "quest" else "three, or a Quest plus an Escape"
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": f"Select {needed} Saved tickets before building.",
+            },
+            status_code=400,
+        )
+    normalized_ids = [str(value or "").strip() for value in saved_ids]
+    if any(not value for value in normalized_ids) or len(set(normalized_ids)) != len(
+        normalized_ids
+    ):
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "Select each Saved ticket only once, in route order.",
+            },
+            status_code=400,
+        )
+
+    try:
+        values = []
+        for saved_id in normalized_ids:
+            saved = get_saved(saved_id)
+            if saved is None:
+                raise FareCompositionError(
+                    "One of those Saved tickets is no longer available."
+                )
+            values.append(_saved_composition_value(saved, owner_sess=owner))
+        composed, trip_meta = compose_selected(values, kind)
+    except FareCompositionError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    except Exception:
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": "Those Saved tickets could not be composed safely.",
+            },
+            status_code=400,
+        )
+
+    trip_meta = {
+        **trip_meta,
+        "composition": "saved-tickets",
+        "saved_source_ids": normalized_ids,
+    }
+    if kind == "quest":
+        from yonder.saved import bookmark_quest
+
+        assert isinstance(composed, QuestIdea)
+        quest_itinerary = composed.model_dump(mode="json")
+        quest_itinerary["kind"] = "quest"
+        quest_itinerary["title"] = (
+            f"{composed.entry_city} → overland → {composed.exit_city}"
+        )
+        canonical = ensure_global_quest(
+            quest_itinerary,
+            trip_meta=trip_meta,
+            origin=str(trip_meta.get("origin") or ""),
+        )
+        if not bookmark_quest(canonical.id, owner_sess=owner):
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "Quest was built, but could not be added to Saved.",
+                },
+                status_code=400,
+            )
+        saved_id = canonical.id
+    else:
+        assert isinstance(composed, AdventureItinerary)
+        digest = hashlib.sha256(
+            json.dumps(
+                {"kind": kind, "saved_ids": normalized_ids},
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()[:24]
+        saved = save_itinerary(
+            composed.model_dump(mode="json"),
+            trip_meta=trip_meta,
+            replace_id=f"detour-{digest}",
+            owner_sess=owner,
+        )
+        saved_id = saved.id
+
+    html = _render_saved_composition_html(
+        request,
+        composed,
+        kind=kind,
+        trip_meta=trip_meta,
+        saved_id=saved_id,
+    )
+    return JSONResponse(
+        {
+            "ok": True,
+            "kind": kind,
+            "html": html,
+            "saved_id": saved_id,
+            "bookmarked": kind == "quest",
+            "private": kind == "detour",
+            "trip_meta": trip_meta,
+        }
+    )
+
+
 @app.post("/api/quest/plan")
 async def quest_plan_api(request: Request):
     """On-demand Quest planning endpoint — called by the 'Plan a Quest' button.
@@ -4520,6 +4660,156 @@ def _saved_cards(items: list) -> list[dict]:
                 it = None
         cards.append({"saved": s, "it": it, "quest_idea": quest_idea})
     return cards
+
+
+def _saved_composition_value(saved, *, owner_sess: str) -> dict:
+    """Build a composition value from a server-owned Saved row."""
+    from yonder.saved import SavedItinerary
+
+    if not isinstance(saved, SavedItinerary):
+        raise FareCompositionError("That saved trip is no longer available.")
+
+    kind = str(saved.kind or "").strip().lower()
+    if kind == "quest":
+        from yonder.saved import list_bookmarked_quests
+
+        saved = next(
+            (
+                item
+                for item in list_bookmarked_quests(owner_sess=owner_sess)
+                if item.id == saved.id
+            ),
+            None,
+        )
+        if saved is None:
+            raise FareCompositionError("Save this Quest to your library before extending it.")
+        if saved.is_expired:
+            raise FareCompositionError(
+                "This Saved Quest has expired. Update its dates before composing it."
+            )
+        idea = dict(saved.itinerary or {})
+        idea["kind"] = "quest"
+        return {
+            "kind": "quest",
+            "idea": idea,
+            "home_iata": str(saved.origin or (saved.trip_meta or {}).get("origin") or ""),
+            "vibe": str(saved.vibe or (saved.trip_meta or {}).get("vibe") or "adventure"),
+            "prompt": str(saved.trip_prompt or (saved.trip_meta or {}).get("prompt") or "")[:280],
+        }
+
+    if saved.owner_sess != owner_sess:
+        raise FareCompositionError("That saved trip belongs to another browser.")
+    if kind != "escape":
+        raise FareCompositionError("Only saved Escape tickets can be selected for a build.")
+    legs = saved.itinerary.get("legs") if isinstance(saved.itinerary, dict) else None
+    if not isinstance(legs, list) or len(legs) != 1 or not isinstance(legs[0], dict):
+        raise FareCompositionError("Only one-way Saved Escape tickets can be composed.")
+    leg = legs[0]
+    offer = leg.get("offer")
+    if not isinstance(offer, dict):
+        raise FareCompositionError("This Saved Escape is missing its authoritative fare.")
+    origin = str(leg.get("from_iata") or "").strip().upper()
+    destination = str(leg.get("to_iata") or "").strip().upper()
+    depart = leg.get("depart_date")
+    if not origin or not destination or not depart:
+        raise FareCompositionError("This Saved Escape is missing its route or departure date.")
+    if saved.is_expired:
+        raise FareCompositionError(
+            "This Saved Escape has expired. Update its dates before composing it."
+        )
+    return {
+        "kind": "escape",
+        "query": {
+            "origin": origin,
+            "destination": destination,
+            "depart_date": depart,
+            "return_date": None,
+            "adults": saved.adults,
+            "cabin": saved.cabin,
+            "currency": saved.currency,
+        },
+        "offer": offer,
+        "vibe": str(saved.vibe or (saved.trip_meta or {}).get("vibe") or "adventure"),
+        "prompt": str(saved.trip_prompt or (saved.trip_meta or {}).get("prompt") or "")[:280],
+    }
+
+
+def _render_saved_composition_html(
+    request: Request,
+    composed,
+    *,
+    kind: str,
+    trip_meta: dict,
+    saved_id: str,
+) -> str:
+    """Render the normal unified ticket after a Saved build."""
+    if kind == "quest":
+        home_iata = str(trip_meta.get("origin") or "")
+        vibe = str(trip_meta.get("vibe") or "adventure")
+        return _render_quest_partial_html(
+            request,
+            {
+                "ask": str(trip_meta.get("prompt") or ""),
+                "result": [composed],
+                "home_iata": home_iata,
+                "vibe": vibe,
+                "error": None,
+            },
+            home_iata=home_iata,
+            vibe=vibe,
+        )
+
+    first_leg = composed.legs[0]
+    last_leg = composed.legs[-1]
+    stops = [
+        StopoverIdea(
+            iata=str(stop.get("iata") or ""),
+            city=str(stop.get("city") or stop.get("iata") or ""),
+            stay_days=1,
+            why="Selected Saved ticket stop",
+            vibe_tags=[str(trip_meta.get("vibe") or "adventure")],
+            source="selected",
+        )
+        for stop in composed.stops
+    ]
+    result = AdventureResult(
+        request=AdventureRequest(
+            origin=first_leg.from_iata,
+            destination=last_leg.to_iata,
+            depart_date=first_leg.depart_date,
+            arrive_by=last_leg.depart_date,
+            currency=composed.currency,
+            vibe=str(trip_meta.get("vibe") or "adventure"),
+            prompt=str(trip_meta.get("prompt") or ""),
+            trip_kind="detour",
+            max_candidates=max(2, min(5, len(stops))),
+        ),
+        ideas=stops,
+        itineraries=[composed],
+        narrative="A Detour built from your Saved Escape tickets.",
+        pricing_provider="Saved tickets",
+    )
+    return templates.env.get_template("_detour_results_partial.html").render(
+        request=request,
+        detour_panel={
+            "form": {
+                "prompt": str(trip_meta.get("prompt") or ""),
+                "origin": first_leg.from_iata,
+                "destination": last_leg.to_iata,
+                "depart": first_leg.depart_date.isoformat(),
+                "vibe": str(trip_meta.get("vibe") or "adventure"),
+            },
+            "result": result,
+            "trip_meta": {**trip_meta, "saved_id": saved_id},
+            "place_books": {},
+        },
+        error_message=None,
+        place_books={},
+        return_days=9,
+        testing=False,
+        ai_usage_display="",
+        candidate_source="Saved tickets",
+    )
 
 
 async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:

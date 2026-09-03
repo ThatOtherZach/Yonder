@@ -196,6 +196,94 @@
       white-space: nowrap;
     }
     .smp-link a:hover { opacity: 0.85; }
+    .saved-builder {
+      position: sticky;
+      bottom: 0.75rem;
+      z-index: 20;
+      margin: 0 0 1rem;
+      padding: 0.9rem;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--sky);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--paper, #fff) 94%, transparent);
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+      backdrop-filter: blur(8px);
+    }
+    .saved-builder-head,
+    .saved-builder-actions,
+    .saved-builder-slot {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+    }
+    .saved-builder-head {
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .saved-builder-head h2 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      font-weight: 500;
+    }
+    .saved-builder-list {
+      display: grid;
+      gap: 0.45rem;
+      margin: 0.7rem 0;
+    }
+    .saved-builder-slot {
+      min-width: 0;
+      padding: 0.5rem 0.6rem;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--paper-2, #f4f1ea);
+    }
+    .saved-builder-number {
+      display: grid;
+      place-items: center;
+      flex: 0 0 1.7rem;
+      width: 1.7rem;
+      height: 1.7rem;
+      border-radius: 50%;
+      background: var(--ink);
+      color: #fff;
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+    .saved-builder-route {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+    .saved-builder-slot button {
+      min-width: 36px;
+      min-height: 36px;
+      padding: 0.25rem 0.45rem !important;
+    }
+    .saved-builder-actions {
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    .saved-compose-select[aria-pressed="true"] {
+      background: var(--ink) !important;
+      color: #fff !important;
+    }
+    #saved-composition-result {
+      scroll-margin-top: 1rem;
+      margin-bottom: 1rem;
+    }
+    @media (max-width: 560px) {
+      .saved-builder {
+        bottom: 0;
+        margin-left: -0.5rem;
+        margin-right: -0.5rem;
+        border-radius: 14px 14px 0 0;
+      }
+      .saved-builder-actions > button { flex: 1 1 100%; min-height: 44px; }
+      .saved-builder-slot { align-items: flex-start; }
+    }
 {% endblock %}
 {% block body %}
   <header class="page-head container">
@@ -213,6 +301,26 @@
     {% endif %}
 
     {% include "_product_ad.html" %}
+
+    <section
+      id="saved-composition-builder"
+      class="saved-builder"
+      hidden
+      aria-live="polite"
+      aria-label="Build a trip from Saved tickets"
+    >
+      <div class="saved-builder-head">
+        <h2 id="saved-builder-title">Build from Saved</h2>
+        <button type="button" class="btn secondary" id="saved-builder-clear">Clear</button>
+      </div>
+      <div id="saved-builder-list" class="saved-builder-list"></div>
+      <p id="saved-builder-status" class="muted" role="status" style="margin:0 0 0.65rem"></p>
+      <div class="saved-builder-actions">
+        <strong id="saved-builder-kind">Choose tickets in route order</strong>
+        <button type="button" class="btn" id="saved-builder-build" hidden></button>
+      </div>
+    </section>
+    <div id="saved-composition-result" aria-live="polite"></div>
 
     {% if not cards %}
       <div class="card empty-state">
@@ -290,6 +398,172 @@
     Vibes aren't tickets, always check live fares and providers for current rates. Culture notes are short takes, not gospel. Use the thumbs up and thumbs down to prefer or hide them as you see fit. Some links provided earn a commission, Yonder.City does not sell or provide proof of purchase &middot; Designed by <a href="https://saymservices.com" target="_blank" rel="noopener" style="color:#e8590c;text-decoration:none">Saym Services Inc.</a> of Vancouver, Canada
   </footer>
   <script>
+    /* ── Saved Quest / Detour builder ─────────────────────────────────── */
+    (function () {
+      var selection = [];
+      var tray = document.getElementById("saved-composition-builder");
+      var list = document.getElementById("saved-builder-list");
+      var status = document.getElementById("saved-builder-status");
+      var kindLabel = document.getElementById("saved-builder-kind");
+      var build = document.getElementById("saved-builder-build");
+      var result = document.getElementById("saved-composition-result");
+      if (!tray || !list || !status || !kindLabel || !build || !result) return;
+
+      function resultingKind() {
+        var quests = selection.filter(function (item) { return item.kind === "quest"; }).length;
+        if (selection.length === 2 && quests === 0) return "quest";
+        if (selection.length === 3 && quests === 0) return "detour";
+        if (selection.length === 2 && quests === 1) return "detour";
+        return "";
+      }
+
+      function move(index, direction) {
+        var target = index + direction;
+        if (target < 0 || target >= selection.length) return;
+        var item = selection[index];
+        selection[index] = selection[target];
+        selection[target] = item;
+        render();
+      }
+
+      function render(message) {
+        tray.hidden = selection.length === 0;
+        list.textContent = "";
+        selection.forEach(function (item, index) {
+          var row = document.createElement("div");
+          row.className = "saved-builder-slot";
+
+          var number = document.createElement("span");
+          number.className = "saved-builder-number";
+          number.textContent = String(index + 1);
+          row.appendChild(number);
+
+          var route = document.createElement("span");
+          route.className = "saved-builder-route";
+          route.textContent = item.route;
+          row.appendChild(route);
+
+          [
+            { label: "Move up", text: "↑", direction: -1 },
+            { label: "Move down", text: "↓", direction: 1 }
+          ].forEach(function (control) {
+            var button = document.createElement("button");
+            button.type = "button";
+            button.className = "btn secondary";
+            button.textContent = control.text;
+            button.setAttribute("aria-label", control.label + " slot " + (index + 1));
+            button.disabled = index + control.direction < 0 ||
+              index + control.direction >= selection.length;
+            button.addEventListener("click", function () { move(index, control.direction); });
+            row.appendChild(button);
+          });
+
+          var remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "btn secondary";
+          remove.textContent = "×";
+          remove.setAttribute("aria-label", "Remove slot " + (index + 1));
+          remove.addEventListener("click", function () {
+            selection.splice(index, 1);
+            render();
+          });
+          row.appendChild(remove);
+          list.appendChild(row);
+        });
+
+        document.querySelectorAll(".saved-compose-select").forEach(function (button) {
+          var index = selection.findIndex(function (item) {
+            return item.id === button.dataset.savedId;
+          });
+          var selected = index >= 0;
+          button.setAttribute("aria-pressed", selected ? "true" : "false");
+          button.textContent = selected
+            ? "✓ Slot " + (index + 1)
+            : (button.dataset.savedKind === "quest" ? "＋ Extend to Detour" : "＋ Add to builder");
+        });
+
+        var kind = resultingKind();
+        build.hidden = !kind;
+        build.dataset.kind = kind;
+        build.textContent = kind === "quest" ? "Create Quest" : "Create Detour";
+        build.disabled = false;
+        kindLabel.textContent = kind
+          ? "Result: " + (kind === "quest" ? "Quest" : "Detour")
+          : "Choose tickets in route order";
+        if (message) status.textContent = message;
+        else if (selection.length === 1 && selection[0].kind === "quest")
+          status.textContent = "Add the connecting Escape between this Quest's two flight legs.";
+        else if (selection.length === 1)
+          status.textContent = "Add a return-to-home Escape for a Quest, or two connecting Escapes for a Detour.";
+        else if (kind === "quest")
+          status.textContent = "The server will verify the open-jaw route, dates, fares, and ownership.";
+        else if (kind === "detour")
+          status.textContent = "The server will verify continuity, distinct stops, dates, fares, and ownership.";
+        else
+          status.textContent = "Use two Escapes, three Escapes, or one Quest plus one Escape.";
+      }
+
+      document.addEventListener("click", function (event) {
+        var button = event.target.closest(".saved-compose-select");
+        if (!button || button.disabled) return;
+        var existing = selection.findIndex(function (item) {
+          return item.id === button.dataset.savedId;
+        });
+        if (existing >= 0) {
+          selection.splice(existing, 1);
+          render();
+          return;
+        }
+        if (selection.length >= 3) {
+          render("Remove a slot before adding another ticket.");
+          return;
+        }
+        var card = button.closest(".boarding-pass");
+        selection.push({
+          id: button.dataset.savedId,
+          kind: button.dataset.savedKind,
+          route: (card && card.dataset.routeSummary) || "Saved ticket"
+        });
+        render();
+      });
+
+      document.getElementById("saved-builder-clear").addEventListener("click", function () {
+        selection = [];
+        render();
+      });
+
+      build.addEventListener("click", async function () {
+        var kind = resultingKind();
+        if (!kind) return;
+        build.disabled = true;
+        status.textContent = "Checking your Saved tickets…";
+        try {
+          var response = await fetch("/api/compose-saved", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              kind: kind,
+              saved_ids: selection.map(function (item) { return item.id; })
+            })
+          });
+          var data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.error || "Could not build this trip.");
+          result.innerHTML = data.html || "";
+          status.textContent = kind === "quest"
+            ? "Quest created and saved to your library."
+            : "Detour created and saved privately.";
+          result.scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (error) {
+          status.textContent = error.message || "Could not build this trip.";
+        } finally {
+          build.disabled = false;
+        }
+      });
+
+      render();
+    })();
+
     /* ── Field notes for Saved cards ─────────────────────────────────────── */
     (function () {
       function escapeHtml(s) {

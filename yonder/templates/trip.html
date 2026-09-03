@@ -279,8 +279,8 @@
     {% if '→' in (share.title or '') %}
       <h1 class="text-center trip-title-parts">
         {%- for part in share.title.split('→') -%}
-          {%- if part.strip() != 'overland' %}<span class="trip-title-part">{{ part.strip() }}</span>{% endif %}
-          {%- if not loop.last and part.strip() != 'overland' %}<span class="trip-title-arrow" aria-hidden="true">→</span>{% endif %}
+          <span class="trip-title-part">{{ 'to' if part.strip() == 'overland' else part.strip() }}</span>
+          {%- if not loop.last %}<span class="trip-title-arrow" aria-hidden="true">→</span>{% endif %}
         {%- endfor %}
       </h1>
     {% else %}
