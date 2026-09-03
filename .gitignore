@@ -13,6 +13,7 @@ build/
 .mypy_cache/
 out.json
 .last_search.json
+.test_shard_timings.json.lock
 *.json.bak
 .DS_Store
 *.db
