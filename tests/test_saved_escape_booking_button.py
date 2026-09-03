@@ -119,6 +119,17 @@ class TestSavedEscapeBookingButton:
             f"Expected 200 from GET /saved with a saved escape trip, got {resp.status_code}"
         )
 
+    def test_saved_escape_has_destination_field_note_slot(self, client):
+        """A normal Saved Escape must load a field note for its destination."""
+        _save_escape()
+
+        resp = client.get("/saved", cookies={"yv_sess": _SESS})
+
+        assert resp.status_code == 200
+        assert "field-note-slot" in resp.text
+        assert f'data-iata="{_DEST}"' in resp.text
+        assert 'data-role="destination"' in resp.text
+
     def test_booking_button_label_contains_iata_pair(self, client):
         """Booking button on /saved must show 'YVR ➜ NRT ↗' for this route."""
         _save_escape(with_url=True)

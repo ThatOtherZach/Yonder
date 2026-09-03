@@ -541,6 +541,9 @@
 
     {% set show_all_in = it.all_in_display and not cf.pending %}
     {% set has_col = it.ground_display or it.ground_compare_line or it.ground_budget_line or show_all_in %}
+    {% set is_manual_escape = mode == 'saved' and s and s.kind == 'escape' and s.trip_meta and s.trip_meta.get('manual_flight') %}
+    {% set saved_escape_iata = ((it.legs | last).to_iata if mode == 'saved' and s and s.kind == 'escape' and not is_manual_escape and it.legs else '') %}
+    {% set field_note_iata = it.stop_iata or saved_escape_iata %}
     {% if mode in ('explore', 'saved') %}
       {# ── Multi-stop / rescue: one field-note-slot per intermediate stop ── #}
       {% if it.kind in ('multi-stop', 'rescue') and it.stops %}
@@ -574,14 +577,14 @@
         </div>
         {% endfor %}
       {# ── Single-stop / stopover: original single slot ── #}
-      {% elif it.stop_iata or has_col %}
+      {% elif field_note_iata or has_col %}
         {% set has_more = (pb and (pb.culture or pb.food or pb.caution)) or has_col %}
         <div
-          class="place-book field-note-inset field-note-slot{% if it.stop_iata and not pb %} is-loading{% endif %}"
-          data-iata="{{ it.stop_iata or '' }}"
+          class="place-book field-note-inset field-note-slot{% if field_note_iata and not pb %} is-loading{% endif %}"
+          data-iata="{{ field_note_iata or '' }}"
           data-country="{{ it.theme_country or '' }}"
           data-city="{{ it.stop_city or '' }}"
-          data-role="stopover"
+          data-role="{{ 'destination' if saved_escape_iata else 'stopover' }}"
           data-vibe="{{ ((s.vibe if s else '') or det_vibe) | e }}"
           data-col-ground="{{ it.ground_display or '' }}"
           data-col-compare="{{ it.ground_compare_line or '' }}"
@@ -589,7 +592,7 @@
           data-col-budget-status="{{ it.ground_budget_status or '' }}"
           data-col-allin="{{ (it.all_in_display if show_all_in else '') or '' }}"
         >
-          <div class="pb-story-body{% if it.stop_iata and not pb %} is-loading{% endif %}">
+          <div class="pb-story-body{% if field_note_iata and not pb %} is-loading{% endif %}">
             {% if pb %}
             <span class="pb-tag">Field note</span>
             {% set pb_tagline = pb.tagline or pb.era_note or pb.vibe %}
@@ -599,8 +602,8 @@
             </div>
             {% if pb.subtitle %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
             {% set pb_acts = pb.activity_links or [] %}
-            {% set pb_airport_trains = airport_train_for(it.stop_iata) if it.stop_iata else [] %}
-            {% set pb_transfers = ground_transfer_for(it.stop_iata) if it.stop_iata else [] %}
+            {% set pb_airport_trains = airport_train_for(field_note_iata) if field_note_iata else [] %}
+            {% set pb_transfers = ground_transfer_for(field_note_iata) if field_note_iata else [] %}
             {% if pb.facts or pb_acts or pb_airport_trains or pb_transfers %}
             <div class="pb-fast-facts" aria-label="Fast facts">
               {% for f in (pb.facts or [])[:2 if pb_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
@@ -616,7 +619,7 @@
               {% for pick in pb_picks %}<a class="pb-pick" href="{{ pick.url }}" target="_blank" rel="noopener">{{ pick.emoji }} {{ pick.name }}</a>{% endfor %}
             </div>
             {% endif %}
-            {% elif it.stop_iata %}
+            {% elif field_note_iata %}
             <span class="pb-tag">Field note</span>
             <div class="pb-fn-loading">
               <div class="pb-fn-bar-track"><div class="pb-fn-bar-fill"></div></div>
@@ -627,8 +630,8 @@
             <h3 style="font-size:1.15rem">{{ it.stop_city or it.stop_iata or 'Stop' }}</h3>
             {% endif %}
           </div>
-          {% if has_more or (it.stop_iata and not pb) %}
-          <button type="button" class="pb-toggle" aria-expanded="false"{% if it.stop_iata and not pb and not has_col %} hidden{% endif %}>
+          {% if has_more or (field_note_iata and not pb) %}
+          <button type="button" class="pb-toggle" aria-expanded="false"{% if field_note_iata and not pb and not has_col %} hidden{% endif %}>
             <span class="pb-toggle-label">Culture, Food &amp; Budget</span>
             <span class="pb-chevron" aria-hidden="true">▾</span>
           </button>
