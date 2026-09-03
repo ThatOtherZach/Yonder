@@ -26,6 +26,7 @@ _ORIGIN = "YVR"
 _DEST = "NRT"
 _DEPART = (date.today() + timedelta(days=30)).isoformat()
 _AVIA_URL = f"https://www.aviasales.com/search/{_ORIGIN}{_DEST}"
+_AIRLINE_URL = "https://www.cathaypacific.com/"
 _EXPECTED_LABEL = f"{_ORIGIN} \u279c {_DEST} \u2197"  # "YVR ➜ NRT ↗"
 
 # Stable session id used by every save/GET in this module so the saved rows
@@ -75,6 +76,8 @@ def _make_offer(with_url: bool = True) -> dict:
         "price_kind": "mock",
         "display_price": "~USD 480",
         "display_price_base": "~USD 480",
+        "airlines": ["CX"],
+        "deep_link": _AIRLINE_URL,
         "google_flights_url": _AVIA_URL if with_url else None,
     }
 
@@ -171,3 +174,13 @@ class TestSavedEscapeBookingButton:
         assert reversed_label not in resp.text, (
             f"Button must not show reversed route '{reversed_label}' on /saved"
         )
+
+    def test_affiliate_link_remains_without_airline_site_link(self, client):
+        """Saved Escape keeps its affiliate CTA but hides the carrier homepage."""
+        _save_escape(with_url=True)
+        resp = client.get("/saved", cookies={"yv_sess": _SESS})
+        assert resp.status_code == 200
+        assert _AVIA_URL.replace("&", "&amp;") in resp.text
+        assert "Airline site" not in resp.text
+        assert "site ↗" not in resp.text
+        assert f'href="{_AIRLINE_URL}"' not in resp.text

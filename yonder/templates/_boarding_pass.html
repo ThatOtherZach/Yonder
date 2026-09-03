@@ -329,9 +329,6 @@
       {% if o.google_flights_url %}
       <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener"{% if 'aviasales.com' in o.google_flights_url %} aria-label="Aviasales Flights ↗"{% endif %}>{{ query.origin }} ➜ {{ query.destination }} ↗</a>
       {% endif %}
-      {% if o.deep_link and 'kayak.com' not in o.deep_link and o.deep_link != o.google_flights_url %}
-      <a class="btn secondary" href="{{ o.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(o.airlines) }} ↗</a>
-      {% endif %}
       {% for tl in train_links %}
       <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
       {% endfor %}
@@ -521,7 +518,6 @@
           {% else %}—{% endif %}
         </div>
         {{ fare_meta(leg.depart_date, ('Leg ' ~ loop.index ~ ' · ' ~ leg.from_iata ~ ' to ' ~ leg.to_iata), leg.offer.airlines|join(', ') if (leg.offer and not leg_missing) else '', leg.offer.stops_out if (leg.offer and not leg_missing) else none, leg.offer.duration_out_minutes if (leg.offer and not leg_missing and leg.offer.duration_out_minutes is defined) else none) }}
-        {% if mode == 'explore' and leg.offer and not leg_missing and leg.offer.deep_link and 'kayak.com' not in leg.offer.deep_link %}<div class="meta"><a href="{{ leg.offer.deep_link }}" target="_blank" rel="noopener">{{ airline_site_label(leg.offer.airlines) }} ↗</a></div>{% endif %}
         {{ leg_stops(leg.offer.segments_out if (leg.offer and not leg_missing) else []) }}
       </div>
       {% endfor %}

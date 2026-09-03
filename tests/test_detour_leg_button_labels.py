@@ -58,6 +58,7 @@ _RETURN_DATE = date.today() + timedelta(days=37)
 # Aviasales URLs that will appear in rendered HTML
 _URL_LEG1 = aviasales_url("YVR", "DXB", _DEPART_DATE)
 _URL_LEG2 = aviasales_url("DXB", "YVR", _RETURN_DATE)
+_AIRLINE_URL = "https://www.cathaypacific.com/"
 
 # Stable session ID used for saved-mode tests so owner_sess matches the cookie
 _SAVED_SESS = "test-detour-label-sess-01"
@@ -90,6 +91,7 @@ def _single_leg_it():
             price=900.0,
             currency="USD",
             airlines=["EK"],
+            deep_link=_AIRLINE_URL,
             stops_out=0,
             price_kind="mock",
         ),
@@ -125,6 +127,7 @@ def _two_leg_it():
             price=900.0,
             currency="USD",
             airlines=["EK"],
+            deep_link=_AIRLINE_URL,
             stops_out=0,
             price_kind="mock",
         ),
@@ -139,6 +142,7 @@ def _two_leg_it():
             price=880.0,
             currency="USD",
             airlines=["EK"],
+            deep_link=_AIRLINE_URL,
             stops_out=0,
             price_kind="mock",
         ),
@@ -190,6 +194,7 @@ def _single_leg_payload() -> dict:
                         "currency": "USD",
                         "price_kind": "mock",
                         "airlines": ["EK"],
+                        "deep_link": _AIRLINE_URL,
                         "stops_out": 0,
                     },
                 }
@@ -225,6 +230,7 @@ def _two_leg_payload() -> dict:
                         "currency": "USD",
                         "price_kind": "mock",
                         "airlines": ["EK"],
+                        "deep_link": _AIRLINE_URL,
                         "stops_out": 0,
                     },
                 },
@@ -239,6 +245,7 @@ def _two_leg_payload() -> dict:
                         "currency": "USD",
                         "price_kind": "mock",
                         "airlines": ["EK"],
+                        "deep_link": _AIRLINE_URL,
                         "stops_out": 0,
                     },
                 },
@@ -329,6 +336,17 @@ class TestDetourExploreButtonLabels:
             f"Expected Aviasales URL {escaped_url!r} in explore detour href"
         )
 
+    def test_direct_airline_link_is_not_rendered(self):
+        """Carrier homepage data must not become a traveler-facing link."""
+        html = _render_macro(
+            "{% import '_boarding_pass.html' as bp %}"
+            "{{ bp.detour_card('explore', it, 0, det_vibe='adventure', det_text='test') }}",
+            it=_single_leg_it(),
+        )
+        assert "Airline site" not in html
+        assert "site ↗" not in html
+        assert f'href="{_AIRLINE_URL}"' not in html
+
 
 # ===========================================================================
 # Suite 2 — Saved mode (GET /saved page)
@@ -367,6 +385,14 @@ class TestDetourSavedButtonLabels:
         assert "kayak.com" not in html, (
             "kayak.com must not appear on saved detour page"
         )
+
+    def test_saved_affiliate_link_remains_without_airline_link(self, client):
+        """Saved detour keeps affiliate booking while hiding the carrier homepage."""
+        html = self._html(client, _single_leg_payload())
+        assert _URL_LEG1.replace("&", "&amp;") in html
+        assert "Airline site" not in html
+        assert "site ↗" not in html
+        assert f'href="{_AIRLINE_URL}"' not in html
 
 
 # ===========================================================================
