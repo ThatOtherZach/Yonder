@@ -50,6 +50,7 @@ async def search_flights(
     force_all: bool = False,
     smart_route: bool = True,
     max_providers: int = 1,
+    return_all_offers: bool = False,
 ) -> UnifiedSearchResult:
     settings = settings or get_settings()
     target = (query.currency or settings.default_currency or "USD").upper()
@@ -226,8 +227,11 @@ async def search_flights(
                 )
             )
 
-        # One fare per destination city (Escape is a single O/D) — keep cheapest only
-        decorated = decorated[:1]
+        # Most callers need one cheapest fare. Production Explore asks for the
+        # complete result from this same provider scan so it can assign three
+        # distinct ticket roles without launching duplicate searches.
+        if not return_all_offers:
+            decorated = decorated[:1]
 
         return UnifiedSearchResult(
             query=query,

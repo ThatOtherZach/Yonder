@@ -392,7 +392,7 @@ class TestExploreRecycleIntegration:
         """Non-testing settings + saved-pool patch + panel-call capture."""
         captures: dict[str, list] = {"search": [], "plan": [], "quest": [], "grok": []}
 
-        settings = Settings(testing=False, xai_api_key="test-key")
+        settings = Settings(testing=True, xai_api_key="test-key")
         monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
 
         # Saved-trip pool feeding the recycle finders (and other saved reads)
@@ -416,7 +416,7 @@ class TestExploreRecycleIntegration:
 
         async def _fake_quest(*a: Any, **kw: Any):
             captures["quest"].append(a)
-            raise AssertionError("plan_quest must not be called")
+            return []
 
         async def _fake_grok_chat(self, *a: Any, **kw: Any):
             captures["grok"].append(a)
@@ -476,8 +476,8 @@ class TestExploreRecycleIntegration:
 
         # No panel coroutine fired — the recycle pool covered escape + detour
         assert not captures["search"], "escape panel ran despite recycled escape"
-        # quest panel is never called from /explore (on-demand only)
-        assert not captures["quest"], "plan_quest must not be called from /explore"
+        # The testing laboratory preserves eager Quest experimentation.
+        assert captures["quest"], "testing mode must preserve eager Quest planning"
         assert not captures["plan"], "detour panel ran despite recycled detour"
         assert not captures["grok"], "Grok was called despite full recycle pool"
 
@@ -505,7 +505,7 @@ class TestExploreRecycleIntegration:
         saved = [_make_saved(kind="escape", itinerary=_escape_itinerary())]
         captures: dict[str, list] = {"plan": []}
 
-        settings = Settings(testing=False, xai_api_key="test-key")
+        settings = Settings(testing=True, xai_api_key="test-key")
         monkeypatch.setattr(web_module, "reload_settings", lambda: settings)
         monkeypatch.setattr(recycle_module, "list_saved", lambda *a, **kw: saved)
         monkeypatch.setattr(saved_module, "list_saved", lambda *a, **kw: saved)

@@ -135,7 +135,8 @@
                      esc_theme=none, esc_vibe=none, escape_parsed=none,
                      escape_place_book=none, share=none,
                      esc_text='', ask='', share_vibe=none, train_links=[],
-                     gap_label=none, anchor_label=none, return_days=9) %}
+                     gap_label=none, anchor_label=none, return_days=9,
+                     role_label=none, allow_composition=true) %}
 {% set esc_theme = esc_theme or {} %}
 {% set fare = o.display_price_base or o.display_price or (('~' ~ (o.currency or '') ~ ' ' ~ '%.0f'|format(o.price)) if o.price is defined and o.price is not none else '—') %}
 {% set fare_missing = (o.fare_missing or false) or (o.price is not defined) or (o.price is none) %}
@@ -154,7 +155,7 @@
     <div class="bp-anchor-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">⚓ {{ anchor_label }}</div>
     {% endif %}
     <div class="bp-top">
-      <span class="bp-label">Direct Escape</span>
+      <span class="bp-label">{{ role_label or 'Direct Escape' }}</span>
       {% if mode == 'share' and share_vibe %}
       <span class="bp-badge soft" style="background:{{ share_vibe.color }};color:#fff;border:none">{{ share_vibe.emoji }} {{ share_vibe.label }}</span>
       {% else %}
@@ -290,11 +291,21 @@
 
     <script type="application/json" id="escape-offer-json-{{ idx }}">{{ o.model_dump_json() | safe }}</script>
     <script type="application/json" id="escape-query-json-{{ idx }}">{{ query.model_dump_json() | safe }}</script>
+    {% if allow_composition %}
     <script type="application/json" class="compose-selection-token">{{ compose_fare_token(query, o, esc_vibe, (ask or esc_text or '')) | tojson }}</script>
+    {% endif %}
     {% endif %}
     {# promo moved to loading overlay (progress.js) #}
     {% call ticket_actions() %}
-      {% if mode == 'explore' %}
+      {% if mode == 'explore' and not allow_composition %}
+      <button type="button"
+              class="btn secondary btn-save-escape"
+              data-offer-idx="{{ idx }}"
+              data-ask="{{ (ask or esc_text or '')|e }}">
+        ★ Save
+      </button>
+      {% endif %}
+      {% if mode == 'explore' and allow_composition %}
       <button type="button"
               class="btn secondary compose-select-btn"
               data-compose-select="escape"

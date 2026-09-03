@@ -1224,6 +1224,26 @@
       0%, 100% { opacity: 0.55; }
       50% { opacity: 1; }
     }
+    .escape-result-slot {
+      min-height: 6rem;
+    }
+    .escape-result-slot > h3 {
+      margin: 0.25rem 0 0.5rem;
+      font-size: 0.86rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .escape-slot-empty {
+      min-height: 5rem;
+      border-style: dashed;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .escape-result-slot[data-slot-state="searching"] .escape-slot-empty {
+      animation: pb-pulse 1.4s ease-in-out infinite;
+    }
 {% endblock %}
 {% block body %}
   {% set mode = mode or 'escape' %}
@@ -1452,11 +1472,15 @@
     {% if has_escape or has_detour or has_quest %}
     <div class="results-toolbar" id="results-toolbar" data-clear-with-results>
       <div class="results-filter mode-tabs" id="results-filter" role="tablist" aria-label="Filter results">
+        {% if explore_lab %}
         <button type="button" class="active" data-filter="all" role="tab" aria-selected="true">≡ All</button>
         <button type="button" data-filter="escape" role="tab" aria-selected="false"{% if not has_escape %} disabled{% endif %}>➜ Escape</button>
         <button type="button" data-filter="vibe-base" role="tab" aria-selected="false"{% if not (vibe_base is defined and vibe_base) %} disabled{% endif %}>{% if vibe_base is defined and vibe_base %}{{ vibe_base.vibe_emoji }} {{ vibe_base.vibe_label }}{% else %}✦ Vibe{% endif %}</button>
         <button type="button" data-filter="quest" role="tab" aria-selected="false" id="quest-filter-tab">⚑ Quest</button>
         <button type="button" data-filter="detour" role="tab" aria-selected="false"{% if not has_detour %} disabled{% endif %}>↝ Detour</button>
+        {% else %}
+        <button type="button" class="active" data-filter="escape" role="tab" aria-selected="true">➜ Escape tickets</button>
+        {% endif %}
         <button type="button" data-filter="clear" role="tab" aria-selected="false" title="Clear results and return to compose">Clear</button>
       </div>
       <div class="results-criteria" id="results-criteria" aria-label="Re-run criteria">
@@ -1469,6 +1493,7 @@
           <span class="gps-notice-icon">📍</span>
           <span class="gps-notice-text"></span>
         </span>
+        {% if explore_lab %}
         <label class="criteria-stop-label" {% if not has_detour %}title="Detour only"{% endif %}>Stop days
           <div class="criteria-stop-range">
             <div class="stop-input-group">
@@ -1484,11 +1509,12 @@
             </div>
           </div>
         </label>
+        {% endif %}
         <span class="criteria-hint">
           {% if escape_parsed %}
             <span>Routing: {{ place(escape_parsed.origin) }} → {{ place(escape_parsed.destination) }} · {{ escape_parsed.depart_date | fmt_date }}{% if escape_parsed.return_date %} · return {{ escape_parsed.return_date | fmt_date }}{% endif %} · {{ escape_parsed.currency }}{% if esc_vibe %} · {{ esc_vibe }} vibes{% endif %}</span>
           {% else %}
-            <span>Tweaks reprice · stop days apply to Detour</span>
+            <span>{% if explore_lab %}Tweaks reprice · stop days apply to Detour{% else %}Refresh to run a new live fare scan{% endif %}</span>
           {% endif %}
           {% if intent_note is defined and intent_note %}
             <span>{{ intent_note }}</span>
@@ -1508,6 +1534,7 @@
     {% include "_product_ad.html" %}
     {% endif %}
 
+    {% if explore_lab %}
     <section
       id="fare-composition"
       class="card"
@@ -1526,6 +1553,7 @@
       <p id="fare-composition-status" class="muted" role="status" style="margin:0.65rem 0"></p>
       <button type="button" class="btn" id="fare-composition-build" hidden></button>
     </section>
+    {% endif %}
 
     {# ——— Escape results (card layout matches Detour boarding passes) ——— #}
     <div class="results-panel" id="escape-results" data-result-kind="escape"
@@ -1555,7 +1583,47 @@
           {% endif %}
         </div>
         {% endif %}
-        {% if escape_result.offers %}
+        {% if not explore_lab and escape_role_slots is defined %}
+        <p class="muted escape-availability" role="status">
+          {% set ready_count = escape_role_slots|selectattr('state', 'equalto', 'ready')|list|length %}
+          {% if ready_count == 3 %}
+            Three distinct live tickets found.
+          {% elif ready_count > 0 %}
+            {{ ready_count }} of 3 ticket choices available. We do not pad results with duplicate or invented fares.
+          {% else %}
+            No valid live tickets were available. Check fares or try different dates.
+          {% endif %}
+        </p>
+        <div class="pass-stack escape-role-slots" aria-live="polite">
+          {% set esc_train_links = train_options(escape_result.query.origin, escape_result.query.destination) %}
+          {% set esc_gap_label = ep.escape_gap_label if ep is defined and ep.escape_gap_label is defined else none %}
+          {% set esc_anchor_label = ep.escape_anchor_label if ep is defined and ep.escape_anchor_label is defined else none %}
+          {% for slot in escape_role_slots %}
+          <section class="escape-result-slot" data-escape-role="{{ slot.role|lower|replace(' ', '-') }}" data-slot-state="{{ slot.state }}">
+            <h3>{{ slot.role }}</h3>
+            {% if slot.state == 'ready' and slot.offer %}
+              {% if slot.fallback %}
+              <p class="muted escape-fallback-label">Fallback from fare history or a saved route — check the live fare before booking.</p>
+              {% endif %}
+              {% set esc_theme = escape_dest_theme or {} %}
+              {% set share = share_escape(request, escape_result, slot.offer, esc_vibe) %}
+              {{ bp.escape_card('explore', slot.offer, escape_result.query, loop.index0,
+                                 esc_theme=esc_theme, esc_vibe=esc_vibe,
+                                 escape_parsed=escape_parsed, escape_place_book=escape_place_book,
+                                 share=share, esc_text=esc_text, ask=ask,
+                                 train_links=esc_train_links, gap_label=esc_gap_label,
+                                 anchor_label=esc_anchor_label, return_days=return_days,
+                                 role_label=slot.role, allow_composition=false) }}
+            {% else %}
+              <div class="card escape-slot-empty" role="status">
+                <strong>{{ slot.role }}</strong>
+                <p class="muted">Unavailable from this completed provider scan.</p>
+              </div>
+            {% endif %}
+          </section>
+          {% endfor %}
+        </div>
+        {% elif escape_result.offers %}
         <div class="pass-stack">
           {% set esc_train_links = train_options(escape_result.query.origin, escape_result.query.destination) %}
           {% set esc_gap_label = ep.escape_gap_label if ep is defined and ep.escape_gap_label is defined else none %}
@@ -1581,6 +1649,7 @@
     </div>
 
     {# ——— Vibe Base results (cheapest return to the escape destination) ——— #}
+    {% if explore_lab %}
     <div class="results-panel" id="vibe-base-results" data-result-kind="vibe-base">
     {% if vibe_base is defined and vibe_base and has_escape %}
       <div class="card" id="vibe-base-results-card">
@@ -1608,8 +1677,10 @@
       </div>
     {% endif %}
     </div>
+    {% endif %}
 
     {# ——— Quest results: eager on every search, on-demand retry ——— #}
+    {% if explore_lab %}
     <div class="results-panel" id="quest-results" data-result-kind="quest">
     {% if has_escape or has_detour or (quest_job_id is defined and quest_job_id) %}
       <div class="card" id="quest-results-card">
@@ -1660,6 +1731,7 @@
       </div>
     {% endif %}
     </div>
+    {% endif %}
 
     {# ——— Detour results (on-demand) ——— #}
     {# Pre-populate destination: prefer escape destination; fall back to form context #}
@@ -1669,6 +1741,7 @@
     {% elif dp is defined and dp and dp.form is defined and dp.form.destination %}
       {% set _det_btn_dest = (dp.form.destination or '') %}
     {% endif %}
+    {% if explore_lab %}
     <div class="results-panel" id="detour-results" data-result-kind="detour"
       data-detour-dest="{{ _det_btn_dest }}">
     {% if detour_result and detour_result.itineraries %}
@@ -1738,6 +1811,7 @@
       </div>
     {% endif %}
     </div>
+    {% endif %}
 
   </main>
   <footer class="site-foot container">
@@ -2375,6 +2449,12 @@
             subBtn.dataset.searching = "1";
             setBtnLabel("Planning…");
           }
+          {% if not explore_lab %}
+          var escapeTarget = document.getElementById("escape-results");
+          if (escapeTarget && window.YonderEscapeSlots) {
+            window.YonderEscapeSlots.mount(escapeTarget);
+          }
+          {% endif %}
           YonderProgress.submitWithProgress(form, {
             mode: "adventure",
             title: "Exploring options…",
@@ -2481,6 +2561,35 @@
           .catch(function () { clearTimeout(failsafe); go(); });
       }
 
+      function postSaveEscape(body, btn) {
+        if (btn.dataset.saved === "1") return;
+        btn.disabled = true;
+        btn.textContent = "Saving…";
+        fetch("/api/saved", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify(body),
+        })
+          .then(function (response) {
+            return response.json().then(function (json) {
+              if (!response.ok || !json.ok) {
+                throw new Error(json.error || "Could not save this ticket.");
+              }
+              return json;
+            });
+          })
+          .then(function () {
+            btn.dataset.saved = "1";
+            btn.textContent = "✓ Saved";
+            btn.disabled = true;
+          })
+          .catch(function () {
+            btn.textContent = "Try Save again";
+            btn.disabled = false;
+          });
+      }
+
       // Live fare check before Share/Save when the card has no fare yet.
       // Shows a loading state on the price area, then completes save/share
       // with the refreshed fare (or without one if the check fails).
@@ -2547,6 +2656,47 @@
         var tripMeta = attr.tripMeta || {};
         var vibeEl = document.getElementById("explore-vibe");
         var vibe = vibeEl ? vibeEl.value : "";
+
+        document.querySelectorAll(".btn-save-escape").forEach(function (b) {
+          if (b.dataset.bound === "1") return;
+          b.dataset.bound = "1";
+          b.addEventListener("click", function () {
+            var idx = b.getAttribute("data-offer-idx") || "0";
+            var oEl = document.getElementById("escape-offer-json-" + idx);
+            var qEl = document.getElementById("escape-query-json-" + idx);
+            if (!oEl || !qEl) return;
+            var offer;
+            var query;
+            try {
+              offer = JSON.parse(oEl.textContent);
+              query = JSON.parse(qEl.textContent);
+            } catch (e) {
+              return;
+            }
+            var ask = b.getAttribute("data-ask") || (ta && ta.value) || "";
+            var identity = [
+              offer.raw_id || "",
+              offer.provider || "",
+              Number(offer.price || 0).toFixed(2),
+              (offer.airlines || []).join(","),
+              String(offer.stops_out || 0),
+            ].join("|");
+            postSaveEscape({
+              kind: "escape",
+              ask: ask,
+              query: query,
+              offer: offer,
+              idempotency_key: identity,
+              trip_meta: {
+                prompt: ask,
+                trip_prompt: ask,
+                vibe: vibe,
+                origin: query.origin,
+                destination: query.destination,
+              },
+            }, b);
+          });
+        });
 
         document.querySelectorAll(".btn-save-and-share").forEach(function (b) {
           b.addEventListener("click", function () {
@@ -3927,6 +4077,41 @@
       }
       // ── End ordered Escape fare composition ─────────────────────────────────
 
+      {% if not explore_lab %}
+      window.YonderEscapeSlots = {
+        roles: ["Cheapest", "Most direct", "Best vibe match"],
+        mount: function (target) {
+          target.innerHTML =
+            '<div class="card" id="escape-results-card">' +
+            '<h2>Escape tickets</h2>' +
+            '<p class="muted" role="status">One live provider scan is running…</p>' +
+            '<div class="pass-stack escape-role-slots" aria-live="polite"></div></div>';
+          var stack = target.querySelector(".escape-role-slots");
+          this.roles.forEach(function (role) {
+            var section = document.createElement("section");
+            section.className = "escape-result-slot";
+            section.dataset.escapeRole = role.toLowerCase().replace(/ /g, "-");
+            section.dataset.slotState = "searching";
+            section.innerHTML =
+              "<h3>" + role + "</h3>" +
+              '<div class="card escape-slot-empty" role="status"><strong>' +
+              role + '</strong><p class="muted">Searching live fares…</p></div>';
+            stack.appendChild(section);
+          });
+        },
+        setState: function (role, state, html) {
+          var key = String(role || "").toLowerCase().replace(/ /g, "-");
+          var slot = document.querySelector('[data-escape-role="' + key + '"]');
+          if (!slot) return;
+          slot.dataset.slotState = state;
+          if (html != null) {
+            var body = slot.querySelector(".boarding-pass, .escape-slot-empty");
+            if (body) body.outerHTML = html;
+          }
+        },
+      };
+      {% endif %}
+
       function boot() {
         bootForm();
         bootSaveAndShare();
@@ -3935,6 +4120,7 @@
         bootThumbVotes();
         bootResultsFilter();
         bootCriteriaRefresh();
+        {% if explore_lab %}
         bootPlanDetourButton();
         bootDetourCriteriaStrip();
         bootPlanQuestButton();
@@ -3942,6 +4128,7 @@
         bootFareComposition();
         hydrateQuestFromStorage();
         bootQuestJobPoll();
+        {% endif %}
         // Pre-fill visible origin field from hidden explore-origin (set by GPS/settings)
         (function () {
           var hid = document.getElementById("explore-origin");

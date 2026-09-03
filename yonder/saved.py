@@ -623,7 +623,7 @@ def save_itinerary(
     # and they are not subject to the per-user private saved-trip cap.
     # The cap is per-owner so one busy browser can't evict another browser's trips.
     is_quest = str(itinerary.get("kind") or "").lower() == "quest"
-    if replace_id is None and dedup_id is None and not is_quest:
+    if existing is None and not is_quest:
         with get_conn() as conn:
             if owner:
                 cnt_row = conn.execute(

@@ -354,6 +354,102 @@ def _mark_missing_fares_result(result, *, forced: bool = True):
         return result
 
 
+def _escape_offer_identity(offer) -> tuple:
+    """Stable identity for keeping one physical ticket out of multiple roles."""
+    departure = None
+    segments = getattr(offer, "segments_out", None) or []
+    if segments:
+        departure = getattr(segments[0], "departure", None)
+    return (
+        str(getattr(offer, "raw_id", "") or ""),
+        str(getattr(offer, "provider", "") or ""),
+        round(float(getattr(offer, "price", 0) or 0), 2),
+        tuple(getattr(offer, "airlines", None) or []),
+        int(getattr(offer, "stops_out", 0) or 0),
+        departure.isoformat() if departure else "",
+    )
+
+
+def _select_escape_role_slots(offers: list) -> list[dict]:
+    """Assign distinct, deterministic offers to the three production roles."""
+    roles = ("Cheapest", "Most direct", "Best vibe match")
+    valid = [
+        offer
+        for offer in offers
+        if not bool(getattr(offer, "fare_missing", False))
+        and float(getattr(offer, "price", 0) or 0) > 0
+        and (getattr(offer, "price_kind", "") or "").lower() != "mock"
+    ]
+
+    cheapest = sorted(
+        valid,
+        key=lambda offer: (
+            float(offer.price),
+            int(offer.total_stops),
+            _escape_offer_identity(offer),
+        ),
+    )
+    direct = sorted(
+        valid,
+        key=lambda offer: (
+            int(offer.stops_out),
+            offer.duration_out_minutes
+            if offer.duration_out_minutes is not None
+            else 999999,
+            float(offer.price),
+            _escape_offer_identity(offer),
+        ),
+    )
+    vibe = sorted(
+        valid,
+        key=lambda offer: (
+            -(getattr(offer, "deal_score", None) or 0),
+            int(offer.total_stops),
+            offer.duration_out_minutes
+            if offer.duration_out_minutes is not None
+            else 999999,
+            float(offer.price),
+            _escape_offer_identity(offer),
+        ),
+    )
+
+    used: set[tuple] = set()
+
+    def take(ranked: list):
+        for offer in ranked:
+            identity = _escape_offer_identity(offer)
+            if identity not in used:
+                used.add(identity)
+                return offer
+        return None
+
+    selected = (take(cheapest), take(direct), take(vibe))
+    slots = [
+        {
+            "role": role,
+            "state": "ready" if offer is not None else "unavailable",
+            "offer": offer,
+        }
+        for role, offer in zip(roles, selected)
+    ]
+
+    # A history/affiliate card is an honest fallback, never a live fare. Show
+    # it once only, after the provider scan yielded no valid candidates.
+    if not valid:
+        fallback = next(
+            (offer for offer in offers if bool(getattr(offer, "fare_missing", False))),
+            None,
+        )
+        if fallback is not None:
+            slots[0] = {
+                "role": roles[0],
+                "state": "ready",
+                "offer": fallback,
+                "fallback": True,
+            }
+    return slots
+
+
 def _mark_missing_fares_adventure(result, *, forced: bool = True):
     """Same as _mark_missing_fares_result but for Detour itineraries' legs."""
     if result is None:
@@ -674,6 +770,9 @@ def _base_ctx(settings=None, *, vibe: str | None = None) -> dict:
         "providers": settings.configured_providers(),
         "grok_ready": settings.grok_ready(),
         "testing": bool(settings.testing),
+        # One explicit product gate: testing is the Explore laboratory;
+        # non-testing is the fast production Escape experience.
+        "explore_lab": bool(settings.testing),
         "countries": COUNTRIES,
         "avoid_defaults": avoid_codes,
         "avoid_tiles_defaults": settings.avoid_tile_list(),
@@ -1321,6 +1420,7 @@ async def explore_run(request: Request) -> HTMLResponse:
     from yonder.grok import _guess_home_iata
     from datetime import timedelta
 
+    _explore_started = _time.monotonic()
     settings = _session_settings(request)
     sess = _req_sess(request)
     _set_sess_cookie = not sess
@@ -1587,13 +1687,24 @@ async def explore_run(request: Request) -> HTMLResponse:
             status_code=400,
         )
 
+    explore_lab = bool(settings.testing)
     decision = decide_shape(prompt, force=force, vibe=vibe)
+    if not explore_lab and decision.shape != "escape":
+        from yonder.intent import IntentDecision as _IntentDecision
+
+        decision = _IntentDecision(
+            shape="escape",
+            confidence=decision.confidence,
+            rationale=f"production-escape:{decision.rationale}",
+            forced=True,
+        )
 
     # Confidence-gated AI fallback: when decide_shape returns a low-confidence
     # "mix" and the prompt is non-trivial (≥ 6 words), fire a cheap secondary
     # AI call to reclassify before the pricing path is chosen.
     if (
-        decision.shape == "mix"
+        explore_lab
+        and decision.shape == "mix"
         and decision.confidence <= 0.65
         and len(prompt.split()) >= 6
         and not decision.forced
@@ -1781,6 +1892,7 @@ async def explore_run(request: Request) -> HTMLResponse:
                 include_mock=mock,
                 timeout=fare_timeout,
                 max_providers=1,
+                return_all_offers=not explore_lab,
             )
             result = _mark_missing_fares_result(result)
             _route_usage.append(grok.accumulated_usage)
@@ -2276,11 +2388,12 @@ async def explore_run(request: Request) -> HTMLResponse:
     # Quest is no longer called from the main search — it runs on demand via
     # the "Plan a Quest" button and the /api/quest/plan endpoint.
 
-    # Detour recycling is now on-demand via /api/detour/plan.
-    # Only Escape recycling runs eagerly in the main search.
+    # Detour recycling is now on-demand via /api/detour/plan. The laboratory
+    # keeps legacy pre-search Escape recycling; production always scans live
+    # before any saved/recycled candidate can be considered.
     _recycled_esc: "UnifiedSearchResult | None" = None
     _recycle_off = (os.environ.get("YONDER_DISABLE_RECYCLE") or "").strip().lower() in ("1", "true", "yes")
-    if not settings.testing and not _recycle_off:
+    if explore_lab and not _recycle_off:
         try:
             from yonder.recycle import find_recycled_escape
             if not is_refresh:
@@ -2473,7 +2586,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         # when none are known, launch with an empty exclusion list rather than
         # waiting ~40-50 s for Escape's pipeline to finish.
         quest_job_id: str | None = None
-        if prompt and not (search_id and is_cancelled(search_id)):
+        if explore_lab and prompt and not (search_id and is_cancelled(search_id)):
             try:
                 from yonder import quest_jobs as _qjobs
 
@@ -2528,14 +2641,22 @@ async def explore_run(request: Request) -> HTMLResponse:
             except Exception:  # noqa: BLE001 — eager quest must never break search
                 quest_job_id = None
 
-        # ── Run only panels not covered by the recycle pool ────────────────────
-        # Each recycled panel saves one Grok call + N flight-API calls.
-        # Quest and Detour are on-demand — the main search runs Escape only.
+        # Production always reaches the fresh Escape provider scan. The
+        # laboratory keeps the saved-result shortcut for experimentation.
         _gather_tasks = []
-        if _recycled_esc is None:
+        if not explore_lab or _recycled_esc is None:
             _gather_tasks.append(_safe(_do_escape, "Escape"))
         if _gather_tasks:
             await asyncio.gather(*_gather_tasks)
+
+        if not explore_lab:
+            import logging as _perf_logging
+
+            _perf_logging.getLogger("yonder.performance").info(
+                "explore_escape_first_results_ms=%d quest_competing=false "
+                "provider_scans=1",
+                int((_time.monotonic() - _explore_started) * 1000),
+            )
 
         # ── Search cost accounting ───────────────────────────────────────────────
         import logging as _sc_log
@@ -2680,6 +2801,7 @@ async def explore_run(request: Request) -> HTMLResponse:
         # Reuses direct_price from the detour result (computed as baseline there).
         # Falls back to a Check Fares slot when direct_price is None (common).
         vibe_base: dict | None = None
+        escape_role_slots: list[dict] = []
         escape_direct_offer = None  # most-direct offer shown on the Escape card
         if has_esc:
             _esc_res = escape_override.get("result")
@@ -2700,6 +2822,8 @@ async def explore_run(request: Request) -> HTMLResponse:
                 # is the cheapest.  Most-direct = fewest outbound stops, then
                 # shortest outbound duration.
                 _all_offers = list(getattr(_esc_res, "offers", None) or [])
+                if not explore_lab:
+                    escape_role_slots = _select_escape_role_slots(_all_offers)
                 _cheap_offer = _all_offers[0] if _all_offers else None
                 _sorted_direct = sorted(
                     _all_offers,
@@ -2935,6 +3059,7 @@ async def explore_run(request: Request) -> HTMLResponse:
             ctx["detour_panel"] = {**base_det, **detour_override}
         # Eager Quest fills in via polling — expose the job id to the template.
         ctx["quest_job_id"] = quest_job_id
+        ctx["escape_role_slots"] = escape_role_slots
         if vibe_base:
             ctx["vibe_base"] = vibe_base
         if escape_direct_offer is not None:
@@ -5266,11 +5391,16 @@ async def api_save_itinerary(request: Request):
         trip_meta["prompt"] = trip_meta["trip_prompt"]
 
     itinerary = body.get("itinerary")
+    escape_save_payload: dict | None = None
     # Escape cards: { kind: "escape", query, offer, ask }
     if not itinerary and body.get("kind") == "escape" and body.get("offer") and body.get("query"):
+        escape_save_payload = {
+            "query": body["query"] if isinstance(body["query"], dict) else {},
+            "offer": body["offer"] if isinstance(body["offer"], dict) else {},
+        }
         itinerary = escape_offer_to_itinerary(
-            query=body["query"] if isinstance(body["query"], dict) else {},
-            offer=body["offer"] if isinstance(body["offer"], dict) else {},
+            query=escape_save_payload["query"],
+            offer=escape_save_payload["offer"],
             ask=str(body.get("ask") or trip_meta.get("prompt") or ""),
             vibe=trip_meta.get("vibe"),
         )
@@ -5364,8 +5494,45 @@ async def api_save_itinerary(request: Request):
                 "yv_sess", owner, httponly=True, samesite="lax", secure=_IS_HTTPS
             )
         return resp
+    escape_replace_id = None
+    if escape_save_payload is not None:
+        # The normal Saved dedupe key intentionally groups route-level
+        # duplicates. Explore's role tickets need narrower semantics: retries
+        # of one exact offer are idempotent, while distinct offers on the same
+        # route/date remain separate session-owned rows.
+        canonical_offer = escape_save_payload["offer"]
+        canonical_query = escape_save_payload["query"]
+        save_identity = {
+            "owner": owner,
+            "origin": canonical_query.get("origin"),
+            "destination": canonical_query.get("destination"),
+            "depart_date": canonical_query.get("depart_date"),
+            "return_date": canonical_query.get("return_date"),
+            "provider": canonical_offer.get("provider"),
+            "raw_id": canonical_offer.get("raw_id"),
+            "price": canonical_offer.get("price"),
+            "currency": canonical_offer.get("currency"),
+            "airlines": canonical_offer.get("airlines") or [],
+            "stops_out": canonical_offer.get("stops_out"),
+            "duration_out_minutes": canonical_offer.get("duration_out_minutes"),
+            "segments_out": canonical_offer.get("segments_out") or [],
+        }
+        escape_replace_id = "escape-" + hashlib.sha256(
+            json.dumps(
+                save_identity,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()[:32]
+        trip_meta["offer_save_key"] = escape_replace_id
     try:
-        saved = save_itinerary(itinerary, trip_meta=trip_meta, owner_sess=owner or None)
+        saved = save_itinerary(
+            itinerary,
+            trip_meta=trip_meta,
+            replace_id=escape_replace_id,
+            owner_sess=owner or None,
+        )
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
     # Funnel: Save is the strong preference label + affiliate path quality signal
