@@ -344,7 +344,7 @@
       {% set q_home = p.home_iata or '' %}
       {% set q_vibe = (p.trip_meta or {}).get('vibe') or '' %}
       {% set q_prompt = (p.trip_meta or {}).get('prompt') or '' %}
-      {{ bp.quest_card('share', idea, 0, home_iata=q_home, quest_vibe=q_vibe, quest_prompt=q_prompt, place_books=place_books) }}
+      {{ bp.quest_card('share', idea, 0, home_iata=q_home, quest_vibe=q_vibe, quest_prompt=q_prompt, place_books=place_books, share={'saved_id': quest_saved_id}, social_stats=quest_social_stats) }}
     {% else %}
       <div class="card">
         <p class="muted">Unknown share type.</p>
@@ -540,9 +540,21 @@
             vibe: container.dataset.vibe || "",
             dest_iata: container.dataset.dest || "",
             query: container.dataset.query || "",
+            quest_saved_id: container.dataset.questSavedId || "",
           }),
         }).then(function (response) {
           if (!response.ok) throw new Error("feedback request failed");
+          return response.json();
+        }).then(function (payload) {
+          var stats = payload && payload.quest_social_stats;
+          var proof = container.closest(".boarding-pass").querySelector(".quest-social-proof");
+          if (!stats || !proof) return;
+          var summary = proof.querySelector(".quest-feedback-summary");
+          proof.setAttribute("aria-label", stats.save_count + " traveler saves; " +
+            stats.positive_pct + " percent positive from " + stats.vote_count + " votes");
+          summary.classList.remove("muted");
+          summary.innerHTML = "<strong>" + stats.positive_pct + "% positive</strong> (" +
+            stats.vote_count + " vote" + (stats.vote_count === 1 ? "" : "s") + ")";
         }).catch(function () {
           upBtn.classList.remove("voted-up");
           downBtn.classList.remove("voted-down");

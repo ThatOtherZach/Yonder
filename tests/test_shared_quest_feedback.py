@@ -141,6 +141,7 @@ def test_shared_quest_votes_post_rendered_context_for_both_directions(
             "dest_iata": "HAN",
             "query": _PROMPT,
             "session_hash": captured[0]["session_hash"],
+            "quest_saved_id": None,
         },
         {
             "direction": "down",
@@ -148,6 +149,7 @@ def test_shared_quest_votes_post_rendered_context_for_both_directions(
             "dest_iata": "HAN",
             "query": _PROMPT,
             "session_hash": captured[1]["session_hash"],
+            "quest_saved_id": None,
         },
     ]
 
@@ -246,6 +248,7 @@ def test_shared_quest_feedback_works_in_a_real_browser(client):
             "vibe": "adventure",
             "dest_iata": "HAN",
             "query": _PROMPT,
+            "quest_saved_id": "",
         }
         assert up_button.is_enabled()
         assert down_button.is_enabled()
@@ -269,6 +272,7 @@ def test_shared_quest_feedback_works_in_a_real_browser(client):
             "vibe": "adventure",
             "dest_iata": "HAN",
             "query": _PROMPT,
+            "quest_saved_id": "",
         }
         assert up_button.is_disabled()
         assert down_button.is_disabled()

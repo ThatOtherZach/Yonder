@@ -161,13 +161,22 @@ CREATE TABLE IF NOT EXISTS result_feedback (
     vibe        TEXT NOT NULL DEFAULT '',
     dest_iata   TEXT NOT NULL DEFAULT '',
     query       TEXT NOT NULL DEFAULT '',
+    quest_saved_id TEXT,
     direction   TEXT NOT NULL CHECK(direction IN ('up','down')),
     created_at  DOUBLE PRECISION NOT NULL
 );
+ALTER TABLE result_feedback ADD COLUMN IF NOT EXISTS quest_saved_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_rf_vibe_dest ON result_feedback(vibe, dest_iata);
 CREATE INDEX IF NOT EXISTS idx_rf_created ON result_feedback(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rf_quest ON result_feedback(quest_saved_id)
+    WHERE quest_saved_id IS NOT NULL;
+DROP INDEX IF EXISTS ux_rf_vote;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_rf_vote
-    ON result_feedback((COALESCE(session_hash, '')), vibe, dest_iata, direction);
+    ON result_feedback((COALESCE(session_hash, '')), vibe, dest_iata, direction)
+    WHERE quest_saved_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_rf_quest_vote
+    ON result_feedback((COALESCE(session_hash, '')), quest_saved_id, direction)
+    WHERE quest_saved_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS vibe_questions (
     id              TEXT PRIMARY KEY,

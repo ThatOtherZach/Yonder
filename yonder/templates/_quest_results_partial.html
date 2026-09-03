@@ -18,12 +18,9 @@
   {% endif %}
   <div class="pass-stack">
     {% for idea in _qp.result %}
-    {% set share = share_quest(request, idea, q_home, {
-      'prompt': (_qp.ask if _qp.ask is defined else ''),
-      'trip_prompt': (_qp.ask if _qp.ask is defined else ''),
-      'vibe': q_vibe
-    }) %}
-    {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe, quest_prompt=(_qp.ask if _qp.ask is defined else ''), share=share, place_books=_place_books) }}
+    {% set share = quest_shares[loop.index0] if quest_shares is defined else none %}
+    {% set social = quest_social_stats_map.get(share.saved_id) if share and quest_social_stats_map is defined else none %}
+    {{ bp.quest_card('explore', idea, loop.index0, home_iata=q_home, quest_vibe=q_vibe, quest_prompt=(_qp.ask if _qp.ask is defined else ''), share=share, place_books=_place_books, social_stats=social) }}
     {% endfor %}
   </div>
 </div>

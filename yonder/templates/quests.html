@@ -383,7 +383,7 @@
 
     <div class="quest-grid">
       {% for card in quest_cards %}
-        {{ bp.quest_compact_card(card.saved, card.saved.itinerary, loop.index0, share=card.share, bookmarked=(card.saved.id in bookmarked_ids)) }}
+        {{ bp.quest_compact_card(card.saved, card.saved.itinerary, loop.index0, share=card.share, bookmarked=(card.saved.id in bookmarked_ids), social_stats=card.social_stats) }}
       {% endfor %}
     </div>
 

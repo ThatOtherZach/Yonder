@@ -51,7 +51,7 @@
 
 {# Browse-only: a compact, canonical Quest ticket.  It intentionally exposes
    the same top / route / legs / actions / stub anatomy as full cards. #}
-{% macro quest_compact_card(s, itinerary, idx, share=none, bookmarked=false) %}
+{% macro quest_compact_card(s, itinerary, idx, share=none, bookmarked=false, social_stats=none) %}
 {% set it = itinerary %}
 {% set accent = s.theme_accent or s.theme_primary or '#2a6fad' %}
 {% set entry = it.get('entry_iata') or '' %}
@@ -71,6 +71,7 @@
       {% if it.get('outbound_date') %}<span><strong>Returns</strong> {{ it.get('outbound_date') | fmt_date_short }}</span>{% endif %}
     </div>
     <p class="bp-cities text-left">{{ entry_city }} <span aria-hidden="true">→</span> {{ exit_city }}</p>
+    {{ quest_social_proof(social_stats) }}
     {% if it.get('transport') %}
     <div class="quest-browse-transport">
       <span>Via {{ (it.get('transport') or [])[:2] | join(' · ') }}</span>
@@ -839,7 +840,22 @@
 {% endmacro %}
 
 
-{% macro quest_card(mode, idea, idx, home_iata='', quest_vibe='', quest_prompt='', share=none, s=none, place_books=none) %}
+{% macro quest_social_proof(stats) %}
+{% if stats %}
+<div class="quest-social-proof" aria-label="{{ stats.save_count }} traveler saves; {% if stats.vote_count %}{{ stats.positive_pct }} percent positive from {{ stats.vote_count }} votes{% else %}no feedback yet{% endif %}">
+  <span class="quest-save-count">★ {{ stats.save_count }} save{{ '' if stats.save_count == 1 else 's' }}</span>
+  <span aria-hidden="true">·</span>
+  {% if stats.vote_count %}
+  <span class="quest-feedback-summary"><strong>{{ stats.positive_pct }}% positive</strong> ({{ stats.vote_count }} vote{{ '' if stats.vote_count == 1 else 's' }})</span>
+  {% else %}
+  <span class="quest-feedback-summary muted">No feedback yet</span>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{% macro quest_card(mode, idea, idx, home_iata='', quest_vibe='', quest_prompt='', share=none, s=none, place_books=none, social_stats=none) %}
 {# ── Quest: open-jaw overland adventure card ──────────────────────────────────
    idea: QuestIdea Pydantic model or dict
    home_iata: the traveler's home airport IATA
@@ -880,6 +896,7 @@
     {# Route arc: home ✈ entry ⟿ (overland) ⟿ exit ✈ home #}
     {{ ticket_route([home_iata or '—', idea.entry_iata, idea.exit_iata, home_iata or '—'], true) }}
     <p class="bp-cities text-left">{{ idea.entry_city }} → {{ idea.exit_city }}</p>
+    {{ quest_social_proof(social_stats) }}
     {% if idea.entry_vibe or idea.exit_vibe %}
     <div class="pb-fast-facts" aria-label="Destination vibes">
       {% if idea.entry_vibe %}
@@ -1139,7 +1156,8 @@
            data-quest-feedback="1"
            data-vibe="{{ quest_vibe | e }}"
            data-dest="{{ (idea.entry_iata or '') | e }}"
-           data-query="{{ quest_prompt | e }}">
+           data-query="{{ quest_prompt | e }}"
+           data-quest-saved-id="{{ share.saved_id if share else '' }}">
         <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">👍</button>
         <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">👎</button>
       </div>
@@ -1183,7 +1201,8 @@
          data-quest-feedback="1"
          data-vibe="{{ quest_vibe | e }}"
          data-dest="{{ (idea.entry_iata or '') | e }}"
-         data-query="{{ quest_prompt | e }}">
+         data-query="{{ quest_prompt | e }}"
+         data-quest-saved-id="{{ share.saved_id if share else '' }}">
       <button type="button" class="thumb-btn thumb-up" title="Good match for this vibe" aria-label="Thumbs up">👍</button>
       <button type="button" class="thumb-btn thumb-down" title="Doesn't feel right for this vibe" aria-label="Thumbs down">👎</button>
     </div>

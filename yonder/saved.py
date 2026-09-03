@@ -989,6 +989,64 @@ def bookmarked_quest_ids(*, owner_sess: str | None) -> set[str]:
     return {str(r["saved_id"]) for r in rows}
 
 
+def quest_social_stats(saved_ids: list[str] | set[str]) -> dict[str, dict[str, int | None]]:
+    """Batched bookmark and exact-Quest feedback aggregates."""
+    ids = list(dict.fromkeys(str(value).strip()[:64] for value in saved_ids if str(value).strip()))
+    if not ids:
+        return {}
+    stats: dict[str, dict[str, int | None]] = {
+        saved_id: {
+            "save_count": 0,
+            "up_count": 0,
+            "down_count": 0,
+            "vote_count": 0,
+            "positive_pct": None,
+        }
+        for saved_id in ids
+    }
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            WITH bookmark_counts AS (
+                SELECT saved_id, COUNT(*) AS save_count
+                FROM quest_bookmarks
+                WHERE saved_id = ANY(%s)
+                GROUP BY saved_id
+            ),
+            feedback_counts AS (
+                SELECT quest_saved_id,
+                       COUNT(*) FILTER (WHERE direction = 'up') AS up_count,
+                       COUNT(*) FILTER (WHERE direction = 'down') AS down_count
+                FROM result_feedback
+                WHERE quest_saved_id = ANY(%s)
+                GROUP BY quest_saved_id
+            )
+            SELECT s.id,
+                   COALESCE(bc.save_count, 0) AS save_count,
+                   COALESCE(fc.up_count, 0) AS up_count,
+                   COALESCE(fc.down_count, 0) AS down_count
+            FROM saved_itineraries s
+            LEFT JOIN bookmark_counts bc ON bc.saved_id = s.id
+            LEFT JOIN feedback_counts fc ON fc.quest_saved_id = s.id
+            WHERE s.kind = 'quest' AND s.id = ANY(%s)
+            """,
+            (ids, ids, ids),
+        ).fetchall()
+    for row in rows:
+        saved_id = str(row["id"])
+        up = int(row["up_count"] or 0)
+        down = int(row["down_count"] or 0)
+        votes = up + down
+        stats[saved_id] = {
+            "save_count": int(row["save_count"] or 0),
+            "up_count": up,
+            "down_count": down,
+            "vote_count": votes,
+            "positive_pct": round(up * 100 / votes) if votes else None,
+        }
+    return stats
+
+
 def list_bookmarked_quests(
     *, owner_sess: str | None, limit: int = 50
 ) -> list[SavedItinerary]:

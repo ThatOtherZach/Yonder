@@ -70,6 +70,7 @@ from yonder.saved import (
     get as get_saved,
     list_quests,
     list_saved,
+    quest_canonical_key,
     save_itinerary,
     top_quest_routes,
     update_quest_bookmark_override,
@@ -301,6 +302,10 @@ def _share_quest(
             canonical is None
             or (canonical.kind or "").lower() != "quest"
             or canonical.owner_sess is not None
+            or quest_canonical_key(
+                canonical.itinerary or {}, origin=canonical.origin
+            )
+            != quest_canonical_key(idea_dict, origin=home_iata)
         ):
             canonical = ensure_global_quest(
                 idea_dict,
@@ -322,6 +327,23 @@ def _share_quest(
         return share
     except Exception:
         return None
+
+
+def _quest_render_social_context(
+    request: Request,
+    ideas: list,
+    home_iata: str,
+    trip_meta: dict,
+) -> tuple[list[dict | None], dict[str, dict]]:
+    """Build canonical share identities, then load their social stats in one query."""
+    shares = [_share_quest(request, idea, home_iata, trip_meta) for idea in ideas]
+    ids = [str(share.get("saved_id") or "") for share in shares if share]
+    try:
+        from yonder.saved import quest_social_stats
+
+        return shares, quest_social_stats(ids)
+    except Exception:
+        return shares, {}
 
 
 def _dest_theme(destination: str) -> dict:
@@ -3434,6 +3456,15 @@ async def quest_plan_api(request: Request):
     ) -> str:
         """Render the quest results partial template to an HTML string."""
         tpl = templates.env.get_template("_quest_results_partial.html")
+        ideas = list((quest_panel_dict or {}).get("result") or [])
+        trip_meta = {
+            "prompt": (quest_panel_dict or {}).get("ask") or "",
+            "trip_prompt": (quest_panel_dict or {}).get("ask") or "",
+            "vibe": (quest_panel_dict or {}).get("vibe") or vibe,
+        }
+        quest_shares, quest_social_stats_map = _quest_render_social_context(
+            request, ideas, home_iata, trip_meta
+        )
         return tpl.render(
             request=request,
             quest_panel=quest_panel_dict,
@@ -3441,6 +3472,8 @@ async def quest_plan_api(request: Request):
             vibe_fallback=vibe,
             error_message=error_message,
             place_books=place_books or {},
+            quest_shares=quest_shares,
+            quest_social_stats_map=quest_social_stats_map,
         )
 
     _rl_sess = _req_sess(request)
@@ -3597,6 +3630,15 @@ def _render_quest_partial_html(
 ) -> str:
     """Render the quest results partial — shared by the eager-quest poll path."""
     tpl = templates.env.get_template("_quest_results_partial.html")
+    ideas = list((quest_panel_dict or {}).get("result") or [])
+    trip_meta = {
+        "prompt": (quest_panel_dict or {}).get("ask") or "",
+        "trip_prompt": (quest_panel_dict or {}).get("ask") or "",
+        "vibe": (quest_panel_dict or {}).get("vibe") or vibe,
+    }
+    quest_shares, quest_social_stats_map = _quest_render_social_context(
+        request, ideas, home_iata, trip_meta
+    )
     return tpl.render(
         request=request,
         quest_panel=quest_panel_dict,
@@ -3604,6 +3646,8 @@ def _render_quest_partial_html(
         vibe_fallback=vibe,
         error_message=error_message,
         place_books=place_books or {},
+        quest_shares=quest_shares,
+        quest_social_stats_map=quest_social_stats_map,
     )
 
 
@@ -5087,7 +5131,11 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
     _quest_saved_id = ""
     if share.kind == "quest":
         try:
-            from yonder.saved import bookmarked_quest_ids, find_global_quest_id
+            from yonder.saved import (
+                bookmarked_quest_ids,
+                find_global_quest_id,
+                quest_canonical_key,
+            )
 
             _candidate_id = str(
                 (p.get("trip_meta") or {}).get("saved_id") or ""
@@ -5098,6 +5146,12 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
                     candidate
                     and (candidate.kind or "").lower() == "quest"
                     and candidate.owner_sess is None
+                    and quest_canonical_key(
+                        candidate.itinerary or {}, origin=candidate.origin
+                    )
+                    == quest_canonical_key(
+                        p.get("idea") or {}, origin=p.get("home_iata")
+                    )
                 ):
                     _quest_saved_id = _candidate_id
             if not _quest_saved_id:
@@ -5117,6 +5171,14 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
         except Exception:
             _quest_saved_id = ""
             _already_bookmarked = False
+    _quest_social_stats = None
+    if _quest_saved_id:
+        try:
+            from yonder.saved import quest_social_stats
+
+            _quest_social_stats = quest_social_stats([_quest_saved_id]).get(_quest_saved_id)
+        except Exception:
+            _quest_social_stats = None
 
     return templates.TemplateResponse(
         request,
@@ -5134,6 +5196,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
             "share_vibe": share_vibe,
             "already_bookmarked": _already_bookmarked,
             "quest_saved_id": _quest_saved_id,
+            "quest_social_stats": _quest_social_stats,
             "og_image": f"{base}/static/share_bg.jpg",
         },
     )
@@ -5191,6 +5254,12 @@ async def quests_browse_page(
         offset = (page - 1) * _QUESTS_PER_PAGE
 
     quests = list_quests(origin=origin_n, limit=_QUESTS_PER_PAGE, offset=offset)
+    try:
+        from yonder.saved import quest_social_stats
+
+        social_stats = quest_social_stats([s.id for s in quests])
+    except Exception:
+        social_stats = {}
 
     # Build share packs for each quest (same stable-hash approach as /saved).
     quest_cards: list[dict] = []
@@ -5205,7 +5274,7 @@ async def quests_browse_page(
             )
         except Exception:
             share = None
-        quest_cards.append({"saved": s, "share": share})
+        quest_cards.append({"saved": s, "share": share, "social_stats": social_stats.get(s.id)})
 
     saved_count = 0
     bookmarked_ids: set[str] = set()
@@ -5278,12 +5347,22 @@ async def saved_list_page(
     except Exception:
         pass
     cards = _saved_cards(items)
+    try:
+        from yonder.saved import quest_social_stats
+
+        saved_quest_stats = quest_social_stats(
+            [s.id for s in items if (s.kind or "").lower() == "quest"]
+        )
+    except Exception:
+        saved_quest_stats = {}
     for card in cards:
         s = card.get("saved")
         it = card.get("it")
         qi = card.get("quest_idea")
         if not s:
             continue
+        if (s.kind or "").lower() == "quest":
+            card["social_stats"] = saved_quest_stats.get(s.id)
         try:
             if s.kind == "quest" and qi is not None:
                 card["share"] = _share_quest(
@@ -6553,6 +6632,40 @@ async def api_result_feedback(request: Request) -> JSONResponse:
     vibe = str(body.get("vibe") or "").strip().lower()[:40] or None
     dest = str(body.get("dest_iata") or "").strip().upper()[:3] or None
     query = str(body.get("query") or "")[:400]
+    quest_saved_id = str(body.get("quest_saved_id") or "").strip()[:64] or None
+    if quest_saved_id:
+        candidate = get_saved(quest_saved_id)
+        if (
+            candidate is None
+            or (candidate.kind or "").lower() != "quest"
+            or candidate.owner_sess is not None
+        ):
+            quest_saved_id = None
+        else:
+            # Quest aggregates are keyed only by the canonical row. Derive the
+            # descriptive context from that trusted row so request metadata
+            # cannot bypass per-session exact-Quest deduplication.
+            dest = (
+                str((candidate.itinerary or {}).get("entry_iata") or "")
+                .strip()
+                .upper()[:3]
+                or None
+            )
+            vibe = (
+                str(
+                    candidate.vibe
+                    or (candidate.trip_meta or {}).get("vibe")
+                    or ""
+                )
+                .strip()
+                .lower()[:40]
+                or None
+            )
+            query = str(
+                candidate.trip_prompt
+                or (candidate.trip_meta or {}).get("prompt")
+                or ""
+            )[:400]
 
     # Server-trusted session identity for vote dedup: prefer the yv_sess
     # cookie (same session id the /saved page uses); fall back to a hash of
@@ -6579,6 +6692,7 @@ async def api_result_feedback(request: Request) -> JSONResponse:
             dest_iata=dest,
             query=query,
             session_hash=sess,
+            quest_saved_id=quest_saved_id,
         ),
     )
     def _resp(payload: dict) -> JSONResponse:
@@ -6589,8 +6703,21 @@ async def api_result_feedback(request: Request) -> JSONResponse:
             resp.set_cookie("yv_sess", sess, httponly=True, samesite="lax", secure=_IS_HTTPS)
         return resp
 
+    def _with_quest_stats(payload: dict) -> dict:
+        if quest_saved_id:
+            from yonder.saved import quest_social_stats
+
+            payload["quest_social_stats"] = quest_social_stats([quest_saved_id]).get(
+                quest_saved_id
+            )
+        return payload
+
     if row_id == "":
-        return _resp({"ok": True, "direction": direction, "deduped": True})
+        return _resp(
+            _with_quest_stats(
+                {"ok": True, "direction": direction, "deduped": True}
+            )
+        )
 
     # Learning layer: shift attribute weights (dest_attributes /
     # vibe_attributes, source='user_behavior') alongside the flat vibe score.
@@ -6629,7 +6756,7 @@ async def api_result_feedback(request: Request) -> JSONResponse:
                 session_hash=sess,
             ),
         )
-        return _resp({"ok": True, "direction": "up"})
+        return _resp(_with_quest_stats({"ok": True, "direction": "up"}))
 
     if direction == "down":
         # Record rejection signal in the vibe affinity store (strength=0 dilutes score)
@@ -6700,9 +6827,13 @@ async def api_result_feedback(request: Request) -> JSONResponse:
 
             asyncio.create_task(_generate_answer(qid, vibe or "", query))
 
-        return _resp({"ok": True, "direction": "down", "question_id": qid or None})
+        return _resp(
+            _with_quest_stats(
+                {"ok": True, "direction": "down", "question_id": qid or None}
+            )
+        )
 
-    return _resp({"ok": True})
+    return _resp(_with_quest_stats({"ok": True}))
 
 
 @app.get("/api/vibe-suggestions")

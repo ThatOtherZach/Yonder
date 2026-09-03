@@ -46,6 +46,7 @@ def record_feedback(
     dest_iata: str | None,
     query: str | None = None,
     session_hash: str | None = None,
+    quest_saved_id: str | None = None,
 ) -> str | None:
     """Append one vote to result_feedback. Returns the row id.
 
@@ -66,8 +67,9 @@ def record_feedback(
             # NOTHING is atomic, so concurrent duplicate votes can't both land.
             cur = conn.execute(
                 """
-                INSERT INTO result_feedback (id, session_hash, vibe, dest_iata, query, direction, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO result_feedback
+                    (id, session_hash, vibe, dest_iata, query, quest_saved_id, direction, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING
                 """,
                 (
@@ -76,6 +78,7 @@ def record_feedback(
                     _norm_vibe(vibe),
                     _norm_iata(dest_iata),
                     _norm_query(query or ""),
+                    (quest_saved_id or "").strip()[:64] or None,
                     direction,
                     time.time(),
                 ),

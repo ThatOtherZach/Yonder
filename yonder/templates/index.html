@@ -2886,9 +2886,21 @@
               vibe:         vibe,
               dest_iata:    dest,
               query:        query,
+              quest_saved_id: container.dataset.questSavedId || "",
             }),
           }).then(function (response) {
             if (!response.ok) throw new Error("feedback request failed");
+            return response.json();
+          }).then(function (payload) {
+            var stats = payload && payload.quest_social_stats;
+            var proof = container.closest(".boarding-pass").querySelector(".quest-social-proof");
+            if (!stats || !proof) return;
+            var summary = proof.querySelector(".quest-feedback-summary");
+            proof.setAttribute("aria-label", stats.save_count + " traveler saves; " +
+              stats.positive_pct + " percent positive from " + stats.vote_count + " votes");
+            summary.classList.remove("muted");
+            summary.innerHTML = "<strong>" + stats.positive_pct + "% positive</strong> (" +
+              stats.vote_count + " vote" + (stats.vote_count === 1 ? "" : "s") + ")";
           }).catch(function () {
             // Quest cards are streamed/generated results, so let a traveler
             // retry if the feedback request did not make it to the server.
