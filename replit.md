@@ -10,6 +10,31 @@ Manually: `python -m uvicorn yonder.web:app --host 0.0.0.0 --port 5000`
 
 Open the preview pane to see the UI.
 
+
+## Tests
+
+For a quick focused check, run pytest against the affected file or test:
+
+`python -m pytest tests/test_example.py -q`
+
+The complete suite is split into six deterministic, non-overlapping file
+shards so no command exceeds Replit's five-minute shell limit:
+
+```sh
+python scripts/run_test_shard.py --check
+python scripts/run_test_shard.py --shard 1
+python scripts/run_test_shard.py --shard 2
+python scripts/run_test_shard.py --shard 3
+python scripts/run_test_shard.py --shard 4
+python scripts/run_test_shard.py --shard 5
+python scripts/run_test_shard.py --shard 6
+```
+
+The six shard commands may run independently or concurrently. Use `--list`
+to inspect membership; each run reports the slowest tests. Extra pytest
+arguments can be placed after `--`, for example
+`python scripts/run_test_shard.py --shard 1 -- -x`.
+
 ## How to test
 
 - Focused work: `pytest -q tests/test_<area>.py`
