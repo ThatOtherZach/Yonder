@@ -1,11 +1,14 @@
 """Regression tests: legacy saved/shared trips without a model_source label
 render without artifacts (no empty "via" line, no template errors).
 
+Saved cards may show their local model label. Shared cards intentionally omit
+it so internal provider details do not leak into public payloads.
+
 Covers:
   - /saved with a legacy row (no model_source) — no "via " text in HTML
   - /saved with a labeled row — "via <label>" text present
   - /t/{share_id} shared trip with a legacy itinerary — no "via " text
-  - /t/{share_id} shared trip with a labeled itinerary — "via <label>" present
+  - /t/{share_id} shared trip with a labeled itinerary — label remains hidden
   - Refresh flow preserves an existing model_source label (not dropped on update)
 """
 
@@ -152,8 +155,8 @@ def test_shared_trip_legacy_itinerary_no_via_text(client):
     )
 
 
-def test_shared_trip_labeled_itinerary_shows_via(client):
-    """Shared trip page renders a labeled itinerary with 'via Grok (Server)'."""
+def test_shared_trip_labeled_itinerary_hides_via(client):
+    """Shared trip pages do not expose internal model-source labels."""
     itin = _labeled_itinerary()
     share = share_module.create_share(
         kind="detour",
@@ -167,7 +170,7 @@ def test_shared_trip_labeled_itinerary_shows_via(client):
     resp = client.get(f"/t/{share.id}")
     assert resp.status_code == 200
     html = resp.text
-    assert "via Grok (Server)" in html
+    assert "via Grok (Server)" not in html
 
 
 def test_shared_trip_pretty_url_legacy_no_via(client):

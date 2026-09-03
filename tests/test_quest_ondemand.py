@@ -318,8 +318,9 @@ class TestMainSearchNoQuestAICall:
         assert "quest-results" in resp.text
         # Eager Quest: a background job placeholder polls for results
         assert "data-quest-job" in resp.text
-        # No quest boarding passes — the initial render never blocks on Quest
-        assert "is-quest" not in resp.text
+        # No rendered quest boarding pass — the initial render never blocks on
+        # Quest. The shared stylesheet legitimately contains `.is-quest`.
+        assert '<article class="boarding-pass is-adventure is-quest' not in resp.text
 
 
 class TestQuestRetryAndSaveButtons:

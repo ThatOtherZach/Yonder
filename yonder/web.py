@@ -4195,6 +4195,7 @@ async def adventure_run(request: Request) -> HTMLResponse:
                 error="Describe your trip (cities + vibe).",
                 detour_override={"form": _adventure_form_defaults(settings)},
             ),
+            status_code=400,
         )
 
     if not _rate_limit.check_daily_budget(mock=_rl_mock):
@@ -4529,7 +4530,10 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
         return templates.TemplateResponse(
             request,
             "404.html",
-            _error_ctx(),
+            {
+                **_error_ctx(),
+                **_base_ctx(settings),
+            },
             status_code=404,
         )
     base = _share_base_url(request)

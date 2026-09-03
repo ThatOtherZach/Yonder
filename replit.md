@@ -10,6 +10,19 @@ Manually: `python -m uvicorn yonder.web:app --host 0.0.0.0 --port 5000`
 
 Open the preview pane to see the UI.
 
+## How to test
+
+- Focused work: `pytest -q tests/test_<area>.py`
+- Verify deterministic full-suite coverage: `python scripts/test_shards.py check`
+- Verify collected test equivalence: `python scripts/test_shards.py verify-collection`
+- Run one bounded shard: `python scripts/test_shards.py run 1` (valid shard numbers: 1–6)
+- Run the complete suite concurrently: `python scripts/test_shards.py all`
+
+The shard runner automatically discovers every top-level `tests/test_*.py` file,
+assigns each file to exactly one stable shard, reports the 20 slowest tests per
+shard, and exits non-zero for test failures, collection failures, or a
+270-second shard timeout.
+
 ## Stack
 
 - **Backend**: Python 3.11, FastAPI, Uvicorn

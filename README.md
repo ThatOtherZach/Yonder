@@ -221,6 +221,26 @@ TESTING=true
 
 Shows **Test Data** checkboxes on Escape/Detour so you can demo without live keys.
 
+For a focused change, run the relevant file directly:
+
+```bash
+pytest -q tests/test_<area>.py
+```
+
+The complete suite is split into six deterministic, automatically discovered
+file-level shards so no single command exceeds the environment limit:
+
+```bash
+python scripts/test_shards.py check
+python scripts/test_shards.py verify-collection
+python scripts/test_shards.py run 1  # valid shard numbers: 1-6
+python scripts/test_shards.py all    # all six concurrently
+```
+
+Each test file belongs to exactly one shard. The runner reports slow-test
+timings and exits non-zero when a shard fails, is interrupted, or exceeds its
+270-second timeout.
+
 ## CLI
 
 ```powershell

@@ -1,7 +1,7 @@
-"""Regression tests: og:image meta tag is always an https:// URL.
+"""Regression tests: og:image meta tags use an environment-safe https URL.
 
-Every page type must render:
-    <meta property="og:image" content="https://yonder.city/static/share_bg.jpg" />
+General pages use the production image. Share pages use the same environment
+origin as their share record so Preview records never point at production.
 
 A missing tag or an http:// URL would break social previews on Twitter/X, Slack,
 and iMessage.  These tests catch a route that forgets to call _base_ctx() or
@@ -24,8 +24,9 @@ from fastapi.testclient import TestClient
 import yonder.share as share_module
 import yonder.web as web_module
 
-# The canonical og:image value every page must emit.
+# Canonical general-page image and deterministic Preview share image.
 _EXPECTED_OG_IMAGE = "https://yonder.city/static/share_bg.jpg"
+_EXPECTED_PREVIEW_OG_IMAGE = "https://preview.example.replit.dev/static/share_bg.jpg"
 
 # Regex to extract content="…" from the og:image meta tag.
 _OG_IMAGE_RE = re.compile(
@@ -44,6 +45,9 @@ def _isolated(pg_schema, monkeypatch):
     """Throwaway PG schema + no live API keys for every test in this module."""
     monkeypatch.delenv("MOCK", raising=False)
     monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("REPLIT_DEPLOYMENT", raising=False)
+    monkeypatch.setenv("REPLIT_DEV_DOMAIN", "preview.example.replit.dev")
+    monkeypatch.setattr(web_module, "_IS_HTTPS", False)
     yield
 
 
@@ -63,14 +67,18 @@ def _extract_og_image(html: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _assert_og_image(html: str, page: str) -> str:
-    """Assert og:image is present and starts with https://yonder.city; return value."""
+def _assert_og_image(
+    html: str,
+    page: str,
+    expected: str = _EXPECTED_OG_IMAGE,
+) -> str:
+    """Assert og:image is present and equals the expected HTTPS URL."""
     og = _extract_og_image(html)
     assert og is not None, (
         f"og:image meta tag is missing on {page!r}"
     )
-    assert og == _EXPECTED_OG_IMAGE, (
-        f"og:image on {page!r}: expected {_EXPECTED_OG_IMAGE!r}, got {og!r}"
+    assert og == expected, (
+        f"og:image on {page!r}: expected {expected!r}, got {og!r}"
     )
     assert og.startswith("https://"), (
         f"og:image on {page!r} must use https://, got {og!r}"
@@ -181,11 +189,15 @@ class TestSharedTripOgImage:
             f"og:image meta tag is missing from shared trip page '/t/{share.id}'"
         )
 
-    def test_og_image_is_https_yonder_city(self, client):
+    def test_og_image_uses_preview_share_origin(self, client):
         share = _make_escape_share()
         resp = client.get(f"/t/{share.id}")
         assert resp.status_code == 200
-        _assert_og_image(resp.text, f"/t/{share.id}")
+        _assert_og_image(
+            resp.text,
+            f"/t/{share.id}",
+            expected=_EXPECTED_PREVIEW_OG_IMAGE,
+        )
 
     def test_og_image_not_http(self, client):
         share = _make_escape_share()
@@ -202,7 +214,11 @@ class TestSharedTripOgImage:
         share = _make_escape_share()
         resp = client.get(f"/t/escape/YVR-NRT/{share.id}")
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}"
-        _assert_og_image(resp.text, f"/t/escape/YVR-NRT/{share.id}")
+        _assert_og_image(
+            resp.text,
+            f"/t/escape/YVR-NRT/{share.id}",
+            expected=_EXPECTED_PREVIEW_OG_IMAGE,
+        )
 
 
 # ---------------------------------------------------------------------------
