@@ -121,7 +121,7 @@
     /* ── Mid-list promo card ─── */
     .saved-mid-promo {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       gap: 1rem;
       background: var(--paper-2, #f4f1ea);
       border: 1.5px dashed var(--line);
@@ -182,11 +182,14 @@
       color: var(--muted);
     }
     .smp-link {
-      flex-shrink: 0;
+      margin-top: 0.6rem;
     }
     .smp-link a {
-      display: inline-block;
-      padding: 0.45rem 0.9rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0.5rem 1.1rem;
       border-radius: 999px;
       background: var(--ink);
       color: #fff;
@@ -196,6 +199,20 @@
       white-space: nowrap;
     }
     .smp-link a:hover { opacity: 0.85; }
+    @media (max-width: 560px) {
+      .saved-mid-promo {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+        padding: 0.9rem 1rem;
+      }
+      .smp-emoji { font-size: 1.6rem; }
+      .smp-body { width: 100%; }
+      .smp-link a {
+        width: 100%;
+        min-height: 44px;
+      }
+    }
     .saved-builder {
       position: sticky;
       bottom: 0.75rem;
@@ -844,8 +861,8 @@
           '<p class="smp-headline">' + ad.headline + '</p>' +
           '<p class="smp-copy">' + ad.copy + '</p>' +
           codeHtml +
-        '</div>' +
-        '<div class="smp-link"><a href="' + ad.href + '" target="_blank" rel="noopener' + (ad.sponsored ? ' sponsored' : '') + '">' + ad.cta + '</a></div>';
+          '<div class="smp-link"><a href="' + ad.href + '" target="_blank" rel="noopener' + (ad.sponsored ? ' sponsored' : '') + '">' + ad.cta + '</a></div>' +
+        '</div>';
       // Copy-to-clipboard for code button
       var btn = slot.querySelector(".smp-code");
       if (btn) {
