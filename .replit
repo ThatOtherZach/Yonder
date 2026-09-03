@@ -39,30 +39,6 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "test-shard-1"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "test-shard-2"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "test-shard-3"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "test-shard-4"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "test-shard-5"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "test-shard-6"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
