@@ -1,525 +1,525 @@
 {
   "files": {
     "tests/test_activities.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 0.922,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 0.837,
       "source_size": 7504
     },
     "tests/test_activity_health.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 0.141,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 0.223,
       "source_size": 12234
     },
     "tests/test_ad_pipeline.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 113.207,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 128.41,
       "source_size": 48834
     },
     "tests/test_adventure_recent_decay.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 0.016,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 0.013,
       "source_size": 5366
     },
     "tests/test_adventure_vibe_pipeline.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 2.871,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 3.918,
       "source_size": 24098
     },
     "tests/test_anchored_planning.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 2.285,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 1.837,
       "source_size": 18723
     },
     "tests/test_aviasales_links.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
+      "recorded_at": "2026-09-03T23:13:41Z",
       "seconds": 0.004,
       "source_size": 3361
     },
     "tests/test_avoid_saturation.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 0.227,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 0.303,
       "source_size": 9207
     },
     "tests/test_boarding_pass_no_flight.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
-      "seconds": 0.214,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 0.017,
       "source_size": 9259
     },
     "tests/test_boarding_pass_structure.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 21.33,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 95.311,
       "source_size": 31211
     },
     "tests/test_byom_url_guard.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 0.009,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 0.007,
       "source_size": 2691
     },
     "tests/test_currency_autosuggest.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 0.842,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 0.853,
       "source_size": 4332
     },
     "tests/test_db_error_500_page.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 0.056,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 0.048,
       "source_size": 2993
     },
     "tests/test_db_reconnect.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 15.03,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 17.861,
       "source_size": 16468
     },
     "tests/test_detour_candidates.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
-      "seconds": 1.49,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 1.701,
       "source_size": 8100
     },
     "tests/test_detour_leg_button_labels.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 48.991,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 58.488,
       "source_size": 23849
     },
     "tests/test_detour_ondemand.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 2.516,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 3.701,
       "source_size": 42116
     },
     "tests/test_detour_one_result_fallback.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 0.063,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 0.051,
       "source_size": 9971
     },
     "tests/test_detour_route_fallback.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
-      "seconds": 0.501,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 0.805,
       "source_size": 7179
     },
     "tests/test_domestic_boost_scaling.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 0.005,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 0.006,
       "source_size": 6848
     },
     "tests/test_encyclopedia_cache_retention.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 7.737,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 9.942,
       "source_size": 1443
     },
     "tests/test_escape_card_booking_button_label.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 22.0,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 25.325,
       "source_size": 12640
     },
     "tests/test_escape_latency_defaults.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 0.079,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 0.111,
       "source_size": 4173
     },
     "tests/test_escape_quest_recycle.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 0.682,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 0.62,
       "source_size": 21220
     },
     "tests/test_escape_rt_booking_path.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 0.019,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 0.015,
       "source_size": 10222
     },
     "tests/test_explore_origin_pinning.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 6.197,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 9.528,
       "source_size": 42096
     },
     "tests/test_fare_button_provider_labels.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 0.002,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 0.001,
       "source_size": 879
     },
     "tests/test_fare_composition.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 0.319,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 0.337,
       "source_size": 12269
     },
     "tests/test_feedback_pipeline.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 86.466,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 94.332,
       "source_size": 35524
     },
     "tests/test_field_note_loading_state.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 0.168,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 0.01,
       "source_size": 8186
     },
     "tests/test_ground_cost_strings.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
+      "recorded_at": "2026-09-03T23:13:37Z",
       "seconds": 0.004,
       "source_size": 4009
     },
     "tests/test_intent_phrases.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 0.049,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 0.025,
       "source_size": 6847
     },
     "tests/test_intent_routing.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 0.345,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 0.361,
       "source_size": 13905
     },
     "tests/test_intent_signal_loop.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 27.869,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 32.187,
       "source_size": 9332
     },
     "tests/test_knowledge.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 36.966,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 41.793,
       "source_size": 18242
     },
     "tests/test_knowledge_confidence_decay.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
-      "seconds": 4.701,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 5.029,
       "source_size": 5787
     },
     "tests/test_knowledge_provenance_e2e.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 7.554,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 12.859,
       "source_size": 12271
     },
     "tests/test_last_search_session_scope.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 1.174,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 1.178,
       "source_size": 4569
     },
     "tests/test_legacy_adventure_post.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
-      "seconds": 9.424,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 9.445,
       "source_size": 6429
     },
     "tests/test_legacy_model_source_display.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
-      "seconds": 22.515,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 23.969,
       "source_size": 9944
     },
     "tests/test_mock_fare_history_isolation.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 12.544,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 14.33,
       "source_size": 5419
     },
     "tests/test_model_source.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 14.108,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 13.207,
       "source_size": 5926
     },
     "tests/test_multi_stop_field_notes.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 0.193,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 0.03,
       "source_size": 18395
     },
     "tests/test_multi_stop_pipeline.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 3.317,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 3.592,
       "source_size": 40572
     },
     "tests/test_og_image_https.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 24.251,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 29.183,
       "source_size": 8887
     },
     "tests/test_parse_cache.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 0.055,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 0.044,
       "source_size": 8680
     },
     "tests/test_poi.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 3.917,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 4.537,
       "source_size": 22112
     },
     "tests/test_price_leg_fare_cache.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 1.644,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 9.316,
       "source_size": 3657
     },
     "tests/test_production_explore.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 0.677,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 0.643,
       "source_size": 8173
     },
     "tests/test_prompt_seeding.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 3.35,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 18.845,
       "source_size": 8118
     },
     "tests/test_provider_diagnostics_visibility.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 0.248,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 0.315,
       "source_size": 9614
     },
     "tests/test_proximity_intent.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 0.013,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 0.016,
       "source_size": 17720
     },
     "tests/test_quest_bookmarks.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 42.53,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 45.137,
       "source_size": 12885
     },
     "tests/test_quest_detour_feed.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 0.117,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 0.199,
       "source_size": 5669
     },
     "tests/test_quest_eager.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 60.195,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 62.776,
       "source_size": 32628
     },
     "tests/test_quest_flow.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 0.151,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 0.171,
       "source_size": 8821
     },
     "tests/test_quest_ondemand.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 0.856,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 0.57,
       "source_size": 17418
     },
     "tests/test_quest_persistence.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 0.724,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 0.811,
       "source_size": 15266
     },
     "tests/test_quest_refresh_hydration.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
-      "seconds": 0.193,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 0.176,
       "source_size": 12563
     },
     "tests/test_quest_social_stats.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 26.338,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 25.522,
       "source_size": 11822
     },
     "tests/test_quest_tab_switch.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 0.273,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 0.344,
       "source_size": 12188
     },
     "tests/test_quests_browse.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 54.324,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 55.048,
       "source_size": 21390
     },
     "tests/test_quota_alert.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 0.634,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 0.436,
       "source_size": 15892
     },
     "tests/test_rate_limit.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 0.012,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 0.008,
       "source_size": 16917
     },
     "tests/test_rate_limit_integration.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 3.129,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 0.843,
       "source_size": 15224
     },
     "tests/test_refresh_airports.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 0.012,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 0.01,
       "source_size": 9679
     },
     "tests/test_repeat_search_route_knowledge.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 0.56,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 1.067,
       "source_size": 10316
     },
     "tests/test_reply_language.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 6.974,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 6.934,
       "source_size": 3856
     },
     "tests/test_result_feedback_dedup.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 18.568,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 24.372,
       "source_size": 4586
     },
     "tests/test_retired_region_collapse.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 0.084,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 0.161,
       "source_size": 6243
     },
     "tests/test_return_days_prefill.py": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 0.288,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 0.276,
       "source_size": 16329
     },
     "tests/test_saved_composition.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 20.81,
-      "source_size": 9122
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 22.649,
+      "source_size": 9924
     },
     "tests/test_saved_escape_booking_button.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 22.997,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 25.071,
       "source_size": 7693
     },
     "tests/test_saved_manual_flight.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
-      "seconds": 39.405,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 23.186,
       "source_size": 12552
     },
     "tests/test_saved_per_browser.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 54.19,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 56.784,
       "source_size": 19987
     },
     "tests/test_saved_reschedule.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 8.071,
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 19.817,
       "source_size": 17016
     },
     "tests/test_search_fallback_url.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
+      "recorded_at": "2026-09-03T23:13:59Z",
       "seconds": 0.008,
       "source_size": 7779
     },
     "tests/test_search_toggle_pipeline.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 6.614,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 7.604,
       "source_size": 23295
     },
     "tests/test_session_pref_isolation.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 1.039,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 0.507,
       "source_size": 8009
     },
     "tests/test_settings_home_base_roundtrip.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 0.073,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 0.07,
       "source_size": 5071
     },
     "tests/test_share_environment.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 20.053,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 20.601,
       "source_size": 6720
     },
     "tests/test_shared_quest_feedback.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 13.071,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 14.03,
       "source_size": 11592
     },
     "tests/test_shared_trip_404.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 14.644,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 18.592,
       "source_size": 4479
     },
     "tests/test_shared_trip_activity_pills.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
-      "seconds": 6.353,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 15.563,
       "source_size": 7880
     },
     "tests/test_shared_trip_aviasales_links.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 5.707,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 6.602,
       "source_size": 11703
     },
     "tests/test_shared_trip_quest_layovers.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 16.804,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 16.92,
       "source_size": 6653
     },
     "tests/test_signal_endpoints.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 43.874,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 46.331,
       "source_size": 11311
     },
     "tests/test_stop_off_two_leg_pipeline.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 1.24,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 1.767,
       "source_size": 10058
     },
     "tests/test_stopover_phrasing_and_pinning.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 0.231,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 0.209,
       "source_size": 13058
     },
     "tests/test_test_shard_runner.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
-      "seconds": 0.02,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 0.021,
       "source_size": 6184
     },
     "tests/test_test_shards.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 0.009,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 0.006,
       "source_size": 2405
     },
     "tests/test_tiles_km2_xp.py": {
-      "recorded_at": "2026-09-03T21:54:51Z",
-      "seconds": 0.016,
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 0.017,
       "source_size": 10388
     },
     "tests/test_train_routing.py": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 0.008,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 0.007,
       "source_size": 7548
     },
     "tests/test_translate_adventure_comfort_rank.py": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 0.656,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 0.525,
       "source_size": 7406
     },
     "tests/test_translate_adventure_passport_filter.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 0.624,
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 0.435,
       "source_size": 17811
     },
     "tests/test_travel_map_large_roundtrip.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 0.598,
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 0.999,
       "source_size": 3274
     },
     "tests/test_unified_plan.py": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 0.232,
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 0.349,
       "source_size": 8833
     },
     "tests/test_vibe_signals.py": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 55.213,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 84.755,
       "source_size": 13768
     },
     "tests/test_vibe_slider.py": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 0.05,
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 0.038,
       "source_size": 2971
     }
   },
   "shards": {
     "1": {
-      "recorded_at": "2026-09-03T21:54:45Z",
-      "seconds": 192.443
+      "recorded_at": "2026-09-03T23:13:41Z",
+      "seconds": 214.329
     },
     "2": {
-      "recorded_at": "2026-09-03T21:55:37Z",
-      "seconds": 51.743
+      "recorded_at": "2026-09-03T23:13:59Z",
+      "seconds": 219.733
     },
     "3": {
-      "recorded_at": "2026-09-03T21:54:46Z",
-      "seconds": 203.475
+      "recorded_at": "2026-09-03T23:14:11Z",
+      "seconds": 244.033
     },
     "4": {
-      "recorded_at": "2026-09-03T21:55:09Z",
-      "seconds": 226.102
+      "recorded_at": "2026-09-03T23:13:47Z",
+      "seconds": 219.987
     },
     "5": {
-      "recorded_at": "2026-09-03T21:54:36Z",
-      "seconds": 192.758
+      "recorded_at": "2026-09-03T23:13:14Z",
+      "seconds": 187.116
     },
     "6": {
-      "recorded_at": "2026-09-03T21:54:23Z",
-      "seconds": 180.253
+      "recorded_at": "2026-09-03T23:13:37Z",
+      "seconds": 209.986
     }
   },
   "version": 1

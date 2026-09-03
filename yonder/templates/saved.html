@@ -397,6 +397,17 @@
       font-size: 0.82rem;
       font-weight: 700;
     }
+    .saved-builder-route .bp-overland-mark {
+      display: inline-flex;
+      margin: 0 0.18rem;
+      color: var(--bp-accent, var(--brass));
+      font-size: 0.9rem;
+      vertical-align: -0.14em;
+    }
+    .saved-builder-route .bp-overland-mark svg {
+      width: 1.1em;
+      height: 1.1em;
+    }
     .saved-builder-slot button {
       min-width: 36px;
       min-height: 36px;
@@ -616,6 +627,35 @@
         render();
       }
 
+      function appendOverlandMark(route) {
+        var mark = document.createElement("span");
+        mark.className = "bp-plane bp-overland-mark";
+        mark.setAttribute("role", "img");
+        mark.setAttribute("aria-label", "Overland connection");
+        mark.innerHTML = {{ bp.overland_icon() | tojson }};
+        route.appendChild(mark);
+      }
+
+      function renderBuilderRoute(route, item) {
+        if (
+          item.kind !== "quest" ||
+          !item.routeHome ||
+          !item.routeEntry ||
+          !item.routeExit
+        ) {
+          route.textContent = item.route;
+          return;
+        }
+        if (item.routeAccent) route.style.setProperty("--bp-accent", item.routeAccent);
+        route.appendChild(document.createTextNode(
+          item.routeHome + " → " + item.routeEntry + " "
+        ));
+        appendOverlandMark(route);
+        route.appendChild(document.createTextNode(
+          " " + item.routeExit + " → " + item.routeHome
+        ));
+      }
+
       function render(message) {
         tray.hidden = selection.length === 0;
         list.textContent = "";
@@ -630,7 +670,7 @@
 
           var route = document.createElement("span");
           route.className = "saved-builder-route";
-          route.textContent = item.route;
+          renderBuilderRoute(route, item);
           row.appendChild(route);
 
           [
@@ -712,7 +752,11 @@
         selection.push({
           id: button.dataset.savedId,
           kind: button.dataset.savedKind,
-          route: (card && card.dataset.routeSummary) || "Saved ticket"
+          route: (card && card.dataset.routeSummary) || "Saved ticket",
+          routeHome: card && card.dataset.routeHome,
+          routeEntry: card && card.dataset.questEntry,
+          routeExit: card && card.dataset.questExit,
+          routeAccent: card && card.dataset.routeAccent
         });
         render();
       });

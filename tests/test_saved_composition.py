@@ -247,3 +247,20 @@ def test_saved_page_renders_accessible_builder_controls(client):
     assert "Choose tickets in route order" in response.text
     assert "Move up" in response.text
     assert 'fetch("/api/compose-saved"' in response.text
+
+
+def test_saved_builder_renders_quest_overland_icon_without_ellipsis(client):
+    owner = "saved-compose-overland-icon"
+    _save_escape(owner, "YVR", "LIS", "2099-10-01")
+    client.cookies.set("yv_sess", owner)
+
+    response = client.get("/saved")
+
+    assert response.status_code == 200
+    assert 'mark.setAttribute("aria-label", "Overland connection")' in response.text
+    assert 'item.routeHome + " → " + item.routeEntry + " "' in response.text
+    assert '" " + item.routeExit + " → " + item.routeHome' in response.text
+    assert "renderBuilderRoute(route, item)" in response.text
+    assert "route.textContent = item.route" in response.text
+    assert "routeEntry: card && card.dataset.questEntry" in response.text
+    assert "routeExit: card && card.dataset.questExit" in response.text
