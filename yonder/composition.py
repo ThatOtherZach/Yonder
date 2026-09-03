@@ -38,6 +38,8 @@ class SelectedFare(BaseModel):
     offer: FlightOffer
     vibe: str = "adventure"
     prompt: str = ""
+    manual_flight: bool = False
+    vibe_airport: str | None = None
 
 
 class SelectedQuest(BaseModel):
@@ -178,6 +180,8 @@ def _leg(fare: SelectedFare) -> PricedLeg:
         from_iata=query.origin,
         to_iata=query.destination,
         depart_date=query.depart_date,
+        adults=query.adults,
+        cabin=query.cabin,
         offer=offer,
         google_flights_url=offer.google_flights_url or offer.booking_url,
         booking_url=offer.booking_url or offer.google_flights_url,
@@ -270,7 +274,19 @@ def compose_quest(values: list[Any]) -> tuple[QuestIdea, dict[str, Any]]:
         theme_primary=theme["color"],
         theme_accent=theme["deep"],
         theme_label=theme["label"],
+        entry_vibe=first.vibe or "adventure",
+        exit_vibe=second.vibe or "adventure",
     )
+    destination_vibes = [
+        {
+            "iata": first.query.destination,
+            "vibe": first.vibe or "adventure",
+        },
+        {
+            "iata": second.query.origin,
+            "vibe": second.vibe or "adventure",
+        },
+    ]
     meta = {
         "vibe": vibe,
         "prompt": first.prompt or "",
@@ -279,6 +295,8 @@ def compose_quest(values: list[Any]) -> tuple[QuestIdea, dict[str, Any]]:
         "destination": first.query.destination,
         "currency": idea.currency,
         "composition": "selected-fares",
+        "destination_vibes": destination_vibes,
+        "manual_flight": any(fare.manual_flight for fare in fares),
     }
     return idea, meta
 
@@ -299,10 +317,12 @@ def _quest_fares(value: Any) -> tuple[SelectedFare, SelectedFare, str, str]:
                 origin=inbound.from_iata,
                 destination=inbound.to_iata,
                 depart_date=_date(inbound.depart_date, "The Quest inbound leg"),
+                adults=inbound.adults,
+                cabin=inbound.cabin,
                 currency=idea.currency,
             ),
             offer=inbound.offer,
-            vibe=selected.vibe,
+            vibe=idea.entry_vibe or selected.vibe,
             prompt=selected.prompt,
         )
         second = SelectedFare(
@@ -310,6 +330,8 @@ def _quest_fares(value: Any) -> tuple[SelectedFare, SelectedFare, str, str]:
                 origin=outbound.from_iata,
                 destination=outbound.to_iata,
                 depart_date=_date(outbound.depart_date, "The Quest outbound leg"),
+                adults=outbound.adults,
+                cabin=outbound.cabin,
                 currency=idea.currency,
             ).model_copy(
                 update={
@@ -320,7 +342,7 @@ def _quest_fares(value: Any) -> tuple[SelectedFare, SelectedFare, str, str]:
                 }
             ),
             offer=outbound.offer,
-            vibe=selected.vibe,
+            vibe=idea.exit_vibe or selected.vibe,
             prompt=selected.prompt,
         )
         first = normalize_fare(first)
@@ -436,8 +458,9 @@ def compose_detour(values: list[Any]) -> tuple[AdventureItinerary, dict[str, Any
                 "iata": code,
                 "city": city_for_iata(code) or code,
                 "stay_days": None,
+                "vibe": fares[index].vibe or "adventure",
             }
-            for code in stops
+            for index, code in enumerate(stops)
         ],
     )
     meta = {
@@ -448,6 +471,14 @@ def compose_detour(values: list[Any]) -> tuple[AdventureItinerary, dict[str, Any
         "destination": fares[-1].query.destination,
         "currency": currency,
         "composition": "selected-fares",
+        "destination_vibes": [
+            {
+                "iata": fare.query.destination,
+                "vibe": fare.vibe or "adventure",
+            }
+            for fare in fares[:-1]
+        ],
+        "manual_flight": any(fare.manual_flight for fare in fares),
     }
     return it, meta
 

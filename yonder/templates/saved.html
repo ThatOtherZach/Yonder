@@ -226,6 +226,126 @@
       box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
       backdrop-filter: blur(8px);
     }
+    .manual-flight {
+      margin: 0 0 1rem;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--paper-2, #f4f1ea);
+    }
+    .manual-flight summary {
+      cursor: pointer;
+      padding: 0.9rem 1rem;
+      font-weight: 800;
+      color: var(--ink);
+    }
+    .manual-flight summary::marker { color: var(--sky); }
+    .manual-flight-form {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.75rem;
+      padding: 0 1rem 1rem;
+    }
+    .manual-flight-form label {
+      display: grid;
+      gap: 0.3rem;
+      min-width: 0;
+      color: var(--ink-soft);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .manual-flight-form input,
+    .manual-flight-form select {
+      width: 100%;
+      min-height: 44px;
+      padding: 0.55rem 0.65rem;
+      border: 1px solid var(--line);
+      border-radius: 0.6rem;
+      background: var(--white);
+      color: var(--ink);
+      font: inherit;
+    }
+    .manual-flight-form .manual-flight-submit {
+      grid-column: span 1;
+      align-self: end;
+      min-height: 44px;
+    }
+    .manual-flight-vibe {
+      grid-column: span 2;
+      min-width: 0;
+    }
+    .manual-flight-vibe .vibe-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      padding: 0;
+    }
+    .manual-flight-vibe .vibe-hue {
+      position: relative;
+      height: 16px;
+      border: 1px solid rgba(20, 28, 40, 0.1);
+      border-radius: 999px;
+      cursor: pointer;
+      touch-action: none;
+      background: linear-gradient(
+        90deg,
+        #f00 0%,
+        #ff0 17%,
+        #0f0 33%,
+        #0ff 50%,
+        #00f 67%,
+        #f0f 83%,
+        #f00 100%
+      );
+      box-shadow: inset 0 1px 2px rgba(20, 28, 40, 0.08);
+    }
+    .manual-flight-vibe .vibe-hue-cursor {
+      position: absolute;
+      top: 50%;
+      width: 20px;
+      height: 20px;
+      margin: -10px 0 0 -10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      line-height: 1;
+      pointer-events: none;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+    }
+    .manual-flight-vibe button.vibe-name-row {
+      appearance: none;
+      -webkit-appearance: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 44px;
+      padding: 0.4rem 0.85rem;
+      border: 2px solid transparent;
+      border-radius: 999px;
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      cursor: default;
+      box-shadow: 0 2px 10px color-mix(in srgb, var(--vibe-now, var(--sky-bright)) 35%, transparent);
+    }
+    .manual-flight-vibe .vibe-name {
+      min-width: 0;
+      font-family: var(--font-display);
+      font-size: 1rem;
+      line-height: 1.15;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+    }
+    .manual-flight-vibe .vibe-hue:focus-visible {
+      outline: 2px solid var(--sky-bright);
+      outline-offset: 2px;
+    }
+    .manual-flight-hint {
+      grid-column: 1 / -1;
+      margin: -0.1rem 0 0;
+      font-size: 0.76rem;
+      color: var(--muted);
+    }
     .saved-builder-head,
     .saved-builder-actions,
     .saved-builder-slot {
@@ -292,6 +412,8 @@
       margin-bottom: 1rem;
     }
     @media (max-width: 560px) {
+      .manual-flight-form { grid-template-columns: 1fr 1fr; }
+      .manual-flight-form .manual-flight-submit { grid-column: 1 / -1; }
       .saved-builder {
         bottom: 0;
         margin-left: -0.5rem;
@@ -318,6 +440,54 @@
     {% endif %}
 
     {% include "_product_ad.html" %}
+
+    <details class="manual-flight" id="manual-flight">
+      <summary>Add Flight</summary>
+      <form class="manual-flight-form" method="post" action="/saved/manual-flight">
+        <label>
+          From
+          <input name="origin" inputmode="text" autocomplete="off" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" placeholder="YVR" aria-label="Departure airport code" required>
+        </label>
+        <label>
+          To
+          <input name="destination" inputmode="text" autocomplete="off" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" placeholder="LIS" aria-label="Arrival airport code" required>
+        </label>
+        <label>
+          Departure date
+          <input name="departure_date" type="date" min="{{ tomorrow_iso }}" required>
+        </label>
+        <label>
+          Travelers
+          <input name="travelers" type="number" min="1" max="9" value="1" required>
+        </label>
+        <label>
+          Cabin
+          <select name="cabin" required>
+            <option value="economy">Economy</option>
+            <option value="premium_economy">Premium economy</option>
+            <option value="business">Business</option>
+            <option value="first">First</option>
+          </select>
+        </label>
+        <label class="manual-flight-vibe manual-flight-vibe-label">
+          Destination vibe
+          <input type="hidden" id="manual-flight-vibe" name="vibe" value="adventure">
+          <div
+            class="manual-flight-vibe"
+            data-vibe-slider
+            data-input-id="manual-flight-vibe"
+            data-initial="adventure"
+            data-lock-vibe="1"
+            data-submit-type="button"
+            data-label-prefix=""
+            data-apply-page-theme="0"
+            aria-label="Choose a destination vibe"
+          ></div>
+        </label>
+        <button class="btn manual-flight-submit" type="submit">Save</button>
+        <p class="manual-flight-hint">Any fare shown is the cheapest one-way result for that route and date.</p>
+      </form>
+    </details>
 
     <section
       id="saved-composition-builder"
@@ -753,6 +923,7 @@
             country: slot.getAttribute("data-country") || "",
             city: slot.getAttribute("data-city") || "",
             role: slot.getAttribute("data-role") || "stopover",
+            vibe: slot.getAttribute("data-vibe") || "",
           });
           fetch("/api/place-brief?" + q.toString(), {
             credentials: "same-origin",

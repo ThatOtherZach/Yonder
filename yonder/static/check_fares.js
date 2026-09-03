@@ -207,6 +207,7 @@
         depart: d.cfDepart,
         return_date: d.cfReturn || null,
         adults: parseInt(d.cfAdults || "1", 10) || 1,
+        cabin: d.cfCabin || "economy",
         currency: d.cfCurrency || "",
       }),
     })

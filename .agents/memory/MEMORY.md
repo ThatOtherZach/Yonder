@@ -26,3 +26,4 @@
 - [Share environment affinity](share-environment-affinity.md) — share URLs must target the same environment/database where the share record was created.
 - [Trip reschedule ordering](trip-reschedule-ordering.md) — persist shifted dates before fare calls, and clear old-date fare/link snapshots before repricing.
 - [Saved composition snapshots](saved-composition-snapshots.md) — composing a bookmarked Quest must load the browser's override, while public canonical identity stays separate.
+- [Fare retry parameters](fare-retry-parameters.md) — Check Fares retries must preserve each leg's cabin and traveler count through Saved composition.

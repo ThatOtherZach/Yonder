@@ -160,6 +160,8 @@ class PricedLeg(BaseModel):
     from_iata: str
     to_iata: str
     depart_date: date
+    adults: int = Field(default=1, ge=1, le=9)
+    cabin: CabinClass = CabinClass.ECONOMY
     offer: FlightOffer | None = None
     error: str | None = None
     google_flights_url: str | None = None
@@ -261,6 +263,10 @@ class QuestIdea(BaseModel):
     theme_primary: str = "#e6b450"
     theme_accent: str = "#f0c96a"
     theme_label: str = "Quest"
+    # Optional per-destination vibes retained when a Quest is assembled from
+    # individually saved one-way tickets.
+    entry_vibe: str | None = None
+    exit_vibe: str | None = None
     # Gap awareness: set when this result fills a saved-trip gap
     gap_label: str | None = None
     # Anchored planning: set when this result connects into a saved leg

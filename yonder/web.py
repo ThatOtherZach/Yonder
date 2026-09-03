@@ -5,7 +5,7 @@ import hashlib
 import httpx
 import os
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
@@ -72,6 +72,7 @@ from yonder.saved import (
     list_saved,
     save_itinerary,
     top_quest_routes,
+    update_quest_bookmark_override,
     update_from_itinerary,
 )
 from yonder.settings_store import MANAGED_KEYS, settings_view, write_env
@@ -79,7 +80,7 @@ from yonder.themes import theme_css_vars, theme_for_iata
 from yonder.types import CabinClass, SearchQuery
 from yonder.share import create_share, dump_obj, get_share, qr_png_data_uri, qr_svg_for_url
 from yonder.trains import train_options, airport_train_for, ground_transfer_for
-from yonder.vibe_theme import VIBE_EMOJI, resolve_vibe, vibe_theme
+from yonder.vibe_theme import VIBE_EMOJI, VIBE_PALETTE, resolve_vibe, vibe_theme
 from yonder import rate_limit as _rate_limit
 
 _VIBES_PATH = Path(__file__).parent / "vibes.json"
@@ -3317,6 +3318,21 @@ async def compose_saved_api(request: Request) -> JSONResponse:
                 },
                 status_code=400,
             )
+        # Canonical Quest identity deliberately excludes vibe decoration. Keep
+        # this browser's selected destination vibes on its bookmark so a later
+        # matching public Quest cannot replace them after Saved reloads.
+        if not update_quest_bookmark_override(
+            canonical.id,
+            quest_itinerary,
+            owner_sess=owner,
+        ):
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "Quest was built, but its destination vibes could not be saved.",
+                },
+                status_code=400,
+            )
         saved_id = canonical.id
     else:
         assert isinstance(composed, AdventureItinerary)
@@ -4856,6 +4872,8 @@ def _saved_composition_value(saved, *, owner_sess: str) -> dict:
         "offer": offer,
         "vibe": str(saved.vibe or (saved.trip_meta or {}).get("vibe") or "adventure"),
         "prompt": str(saved.trip_prompt or (saved.trip_meta or {}).get("prompt") or "")[:280],
+        "manual_flight": bool((saved.trip_meta or {}).get("manual_flight")),
+        "vibe_airport": str((saved.trip_meta or {}).get("vibe_airport") or "") or None,
     }
 
 
@@ -5017,6 +5035,18 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
                 place_books[dest.upper()] = brief
     elif share.kind == "detour":
         it = p.get("itinerary") or {}
+        detour_vibes = {
+            str(stop.get("iata") or "").upper(): str(stop.get("vibe") or "")
+            for stop in (it.get("stops") or [])
+            if isinstance(stop, dict)
+        }
+        detour_vibes.update(
+            {
+                str(item.get("iata") or "").upper(): str(item.get("vibe") or "")
+                for item in ((p.get("trip_meta") or {}).get("destination_vibes") or [])
+                if isinstance(item, dict)
+            }
+        )
         for iata in filter(None, [it.get("stop_iata"), *[
             leg.get("to_iata") for leg in (it.get("legs") or [])
         ]]):
@@ -5026,7 +5056,7 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
                 if brief:
                     brief = dict(brief)
                     brief["activity_links"] = await activity_links_for(
-                        settings, iata=code, vibe=_vibe_id
+                        settings, iata=code, vibe=detour_vibes.get(code) or _vibe_id
                     )
                     brief["poi_picks"] = _share_poi_picks(code)
                     place_books[code] = brief
@@ -5034,12 +5064,17 @@ async def _render_shared_trip(request: Request, share_id: str) -> HTMLResponse:
         idea = p.get("idea") or {}
         for iata in filter(None, [idea.get("entry_iata"), idea.get("exit_iata")]):
             code = iata.upper()
+            code_vibe = (
+                idea.get("entry_vibe")
+                if code == str(idea.get("entry_iata") or "").upper()
+                else idea.get("exit_vibe")
+            ) or _vibe_id
             if code not in place_books:
                 brief = get_any_cached_for_iata(code, lang=_share_lang)
                 if brief:
                     brief = dict(brief)
                     brief["activity_links"] = await activity_links_for(
-                        settings, iata=code, vibe=_vibe_id
+                        settings, iata=code, vibe=code_vibe
                     )
                     brief["poi_picks"] = _share_poi_picks(code)
                     place_books[code] = brief
@@ -5281,23 +5316,32 @@ async def saved_list_page(
         try:
             from yonder.encyclopedia import briefs_for_stops
 
-            _sq_stops: list[tuple[str | None, str | None, str | None]] = []
             _sq_seen: set[str] = set()
-            for _iata, _city in [
-                (getattr(qi, "entry_iata", None), getattr(qi, "entry_city", None)),
-                (getattr(qi, "exit_iata", None), getattr(qi, "exit_city", None)),
+            card["place_books"] = {}
+            for _iata, _city, _vibe in [
+                (
+                    getattr(qi, "entry_iata", None),
+                    getattr(qi, "entry_city", None),
+                    getattr(qi, "entry_vibe", None),
+                ),
+                (
+                    getattr(qi, "exit_iata", None),
+                    getattr(qi, "exit_city", None),
+                    getattr(qi, "exit_vibe", None),
+                ),
             ]:
                 _code = (_iata or "").upper()
                 if _code and _code not in _sq_seen:
                     _sq_seen.add(_code)
-                    _sq_stops.append((_code, None, _city))
-            card["place_books"] = await briefs_for_stops(
-                settings,
-                _sq_stops,
-                max_n=0,
-                cache_only=True,
-                trip_vibe=(s.vibe if s else None),
-            )
+                    card["place_books"].update(
+                        await briefs_for_stops(
+                            settings,
+                            [(_code, None, _city)],
+                            max_n=0,
+                            cache_only=True,
+                            trip_vibe=_vibe or (s.vibe if s else None),
+                        )
+                    )
         except Exception:
             card["place_books"] = {}
 
@@ -5343,6 +5387,7 @@ async def saved_list_page(
             "error": err,
             "save_limit": SAVE_LIMIT,
             "today_iso": date.today().isoformat(),
+            "tomorrow_iso": (date.today() + timedelta(days=1)).isoformat(),
         },
     )
     if need_cookie:
@@ -5352,6 +5397,231 @@ async def saved_list_page(
 
 # (session, dest) pairs already given a tier-2 review signal this process
 _REVIEWED_SEEN: set[tuple[str, str]] = set()
+
+
+@app.post("/saved/manual-flight")
+@app.post("/api/saved/manual-flight")
+async def saved_manual_flight(request: Request):
+    """Fare-check and save exactly one private, manually entered one-way flight."""
+    content_type = (request.headers.get("content-type") or "").lower()
+    wants_json = "application/json" in content_type
+    try:
+        raw = await request.json() if wants_json else dict(await request.form())
+    except Exception:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+
+    def error_response(message: str, status_code: int = 400):
+        if wants_json:
+            return JSONResponse({"ok": False, "error": message}, status_code=status_code)
+        return RedirectResponse(
+            url="/saved?err=" + quote(message),
+            status_code=303,
+        )
+
+    origin = str(raw.get("origin") or raw.get("departure_airport") or "").strip().upper()
+    destination = str(
+        raw.get("destination") or raw.get("arrival_airport") or ""
+    ).strip().upper()
+    depart_raw = str(raw.get("depart") or raw.get("departure_date") or "").strip()
+    vibe_raw = str(raw.get("vibe") or "").strip().lower()
+    cabin_raw = str(raw.get("cabin") or "economy").strip().lower()
+
+    if len(origin) != 3 or not origin.isalpha():
+        return error_response("Departure needs a three-letter airport code.")
+    if len(destination) != 3 or not destination.isalpha():
+        return error_response("Arrival needs a three-letter airport code.")
+    if origin == destination:
+        return error_response("Departure and arrival airports must be different.")
+    try:
+        depart_date = date.fromisoformat(depart_raw)
+    except ValueError:
+        return error_response("Choose a valid future departure date.")
+    if depart_date <= date.today():
+        return error_response("Choose a future departure date.")
+    try:
+        adults = int(raw.get("travelers") or raw.get("adults") or 1)
+    except (TypeError, ValueError):
+        return error_response("Travelers must be a number from 1 to 9.")
+    if adults < 1 or adults > 9:
+        return error_response("Travelers must be a number from 1 to 9.")
+    try:
+        cabin = CabinClass(cabin_raw)
+    except ValueError:
+        return error_response("Choose a valid cabin.")
+
+    valid_vibes = {vibe_id for vibe_id, _, _ in VIBE_PALETTE}
+    if vibe_raw not in valid_vibes:
+        return error_response("Choose one vibe for this flight.")
+    vibe = resolve_vibe(vibe_raw)["id"]
+
+    settings = _session_settings(request)
+    currency = str(settings.default_currency or "USD").strip().upper()
+    if len(currency) != 3 or not currency.isalpha():
+        currency = "USD"
+
+    owner = _req_sess(request)
+    need_cookie = not owner
+    if need_cookie:
+        import uuid as _uuid_manual
+
+        owner = _uuid_manual.uuid4().hex[:32]
+
+    identity = {
+        "owner": owner,
+        "origin": origin,
+        "destination": destination,
+        "departure_date": depart_date.isoformat(),
+        "adults": adults,
+        "cabin": cabin.value,
+        "vibe": vibe,
+    }
+    saved_id = "manual-" + hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:32]
+    existing = get_saved(saved_id)
+    if existing is not None and existing.owner_sess == owner:
+        if wants_json:
+            response = JSONResponse(
+                {
+                    "ok": True,
+                    "id": existing.id,
+                    "saved_id": existing.id,
+                    "fare_missing": existing.total_price is None,
+                    "display_price": existing.display_price,
+                }
+            )
+        else:
+            response = RedirectResponse(
+                url="/saved?flash=" + quote("Flight is already in Saved."),
+                status_code=303,
+            )
+        if need_cookie:
+            response.set_cookie(
+                "yv_sess",
+                owner,
+                httponly=True,
+                samesite="lax",
+                secure=_IS_HTTPS,
+            )
+        return response
+
+    no_live_providers = not bool(settings.configured_providers())
+    rate = await _rate_limit.check_fare(request, owner, mock=no_live_providers)
+    if not rate.allowed:
+        response = error_response(
+            "You're checking fares too quickly — give it a moment.",
+            status_code=429,
+        )
+        response.headers["Retry-After"] = str(rate.retry_after)
+        return response
+    if not _rate_limit.check_daily_budget(mock=no_live_providers, cost=0.5):
+        return error_response(
+            "Fare check capacity reached for today — try again tomorrow.",
+            status_code=429,
+        )
+
+    query = SearchQuery(
+        origin=origin,
+        destination=destination,
+        depart_date=depart_date,
+        return_date=None,
+        adults=adults,
+        cabin=cabin,
+        currency=currency,
+        max_results=5,
+        nonstop_only=False,
+    )
+    offer = None
+    try:
+        result = await search_flights(
+            query,
+            settings=settings,
+            include_mock=False,
+            timeout=20.0,
+            max_providers=2,
+        )
+        candidates = [
+            candidate
+            for candidate in (result.offers or [])
+            if (candidate.price_kind or "") != "mock"
+        ]
+        live = [candidate for candidate in candidates if not candidate.fare_missing]
+        offer = min(live, key=lambda candidate: candidate.price) if live else (
+            candidates[0] if candidates else None
+        )
+    except Exception:
+        offer = None
+    if offer is None:
+        from yonder.engine import _build_fallback_offer
+
+        offer = _build_fallback_offer(query, currency, results=[])
+
+    if not offer.fare_missing:
+        try:
+            from yonder.fare_estimates import upsert_estimate
+
+            upsert_estimate(origin, destination, offer.price, offer.currency or currency)
+        except Exception:
+            pass
+
+    from yonder.saved import escape_offer_to_itinerary
+
+    offer_payload = offer.model_dump(mode="json")
+    itinerary = escape_offer_to_itinerary(
+        query=query.model_dump(mode="json"),
+        offer=offer_payload,
+        ask="Manually added flight",
+        vibe=vibe,
+    )
+    if offer.fare_missing:
+        itinerary["total_price"] = None
+        itinerary["display_price"] = None
+        itinerary["display_price_base"] = None
+
+    home_iata = str(settings.resolve_home_iata() or "").strip().upper()
+    vibe_airport = origin if destination == home_iata else destination
+    saved = save_itinerary(
+        itinerary,
+        trip_meta={
+            "origin": origin,
+            "destination": destination,
+            "adults": adults,
+            "cabin": cabin.value,
+            "currency": currency,
+            "vibe": vibe,
+            "manual_flight": True,
+            "vibe_airport": vibe_airport,
+        },
+        replace_id=saved_id,
+        owner_sess=owner,
+    )
+
+    if wants_json:
+        response = JSONResponse(
+            {
+                "ok": True,
+                "id": saved.id,
+                "saved_id": saved.id,
+                "fare_missing": bool(offer.fare_missing),
+                "display_price": saved.display_price,
+            }
+        )
+    else:
+        response = RedirectResponse(
+            url="/saved?flash=" + quote("Flight added to Saved."),
+            status_code=303,
+        )
+    if need_cookie:
+        response.set_cookie(
+            "yv_sess",
+            owner,
+            httponly=True,
+            samesite="lax",
+            secure=_IS_HTTPS,
+        )
+    return response
 
 
 @app.post("/api/saved")

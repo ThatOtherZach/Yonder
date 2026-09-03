@@ -462,6 +462,13 @@
     opts = opts || {};
     var inputId = opts.inputId || host.getAttribute("data-input-id") || "vibe-input";
     var initialId = opts.initial || host.getAttribute("data-initial") || "";
+    var submitType =
+      opts.submitType ||
+      (host.getAttribute("data-submit-type") === "button" ? "button" : "submit");
+    var labelPrefix = host.hasAttribute("data-label-prefix")
+      ? host.getAttribute("data-label-prefix")
+      : "Find ";
+    var applyGlobalTheme = host.getAttribute("data-apply-page-theme") !== "0";
 
     var hidden = document.getElementById(inputId);
     if (!hidden) {
@@ -492,7 +499,7 @@
       '  <div class="vibe-hue" role="slider" aria-label="Trip vibe" tabindex="0" aria-valuemin="0" aria-valuemax="100">' +
       '    <div class="vibe-hue-cursor" aria-hidden="true">' + globeEmoji + "</div>" +
       "  </div>" +
-      '  <button type="submit" class="vibe-name-row btn-vibe-go"' +
+      '  <button type="' + submitType + '" class="vibe-name-row btn-vibe-go"' +
       (opts.submitId || host.getAttribute("data-submit-id")
         ? ' id="' + (opts.submitId || host.getAttribute("data-submit-id")) + '"'
         : "") +
@@ -585,7 +592,7 @@
         nameOut.style.color = contrastInk(show);
         // Do not interrupt an empty/loading label while the slider syncs.
         if (!nameRow.classList.contains("is-busy")) {
-          var label = "Find " + vibe.label;
+          var label = (labelPrefix + vibe.label).trim();
           nameOut.textContent = label;
           nameRow.setAttribute("aria-label", label);
         }
@@ -594,7 +601,11 @@
       hueEl.setAttribute("aria-valuetext", vibe.label);
       hidden.value = vibe.id;
       hidden.disabled = false;
-      applyPageTheme(show);
+      if (applyGlobalTheme) {
+        applyPageTheme(show);
+      } else {
+        host.style.setProperty("--vibe-now", show);
+      }
       paintGoButtons(show, vibe.emoji);
       applyMap(show);
       try {

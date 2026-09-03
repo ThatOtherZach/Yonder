@@ -441,7 +441,7 @@
     {% endif %}
     <div class="bp-top">
       {% if mode == 'saved' %}
-      <span class="bp-label">{% if s.kind == 'escape' %}Direct Escape{% elif s.kind == 'getaway' %}Getaway{% else %}Detour{% endif %}</span>
+      <span class="bp-label">{% if s and s.trip_meta and s.trip_meta.get('manual_flight') %}Your flight{% elif s.kind == 'escape' %}Direct Escape{% elif s.kind == 'getaway' %}Getaway{% else %}Detour{% endif %}</span>
       <span class="bp-badge soft"{% if s.theme_primary %} style="background:{{ s.theme_primary }};color:#fff;border:none"{% endif %}>{% if s.vibe %}{{ s.vibe | vibe_emoji }} {% endif %}{{ it.theme_label or s.theme_label or it.kind or 'Trip' }}</span>
       {% elif mode == 'share' %}
       <span class="bp-label">{{ (it.kind or 'detour') | title }}</span>
@@ -506,7 +506,8 @@
                   data-cf-origin="{{ leg.from_iata }}"
                   data-cf-dest="{{ leg.to_iata }}"
                   data-cf-depart="{{ leg.depart_date }}"
-                  data-cf-adults="{{ (s.adults if s and s.adults else none) or 1 }}"
+                  data-cf-adults="{{ leg.adults or (s.adults if s and s.adults else none) or 1 }}"
+                  data-cf-cabin="{{ leg.cabin.value if leg.cabin and leg.cabin.value is defined else (leg.cabin or (s.cabin if s and s.cabin else 'economy')) }}"
                   data-cf-currency="{{ it.currency or (s.currency if s else '') or '' }}">
               <button type="button" class="btn-check-fares">Check Fares</button>
               <span class="cf-error" hidden></span>
@@ -550,7 +551,7 @@
           data-country="{{ (_ms.country if _ms is mapping else _ms.country) or '' }}"
           data-city="{{ (_ms.city if _ms is mapping else _ms.city) or '' }}"
           data-role="stopover"
-          data-vibe="{{ ((s.vibe if s else '') or det_vibe) | e }}"
+          data-vibe="{{ ((_ms.vibe if _ms is mapping else _ms.vibe) or (s.vibe if s else '') or det_vibe) | e }}"
           data-col-ground=""
           data-col-compare=""
           data-col-budget=""
@@ -879,6 +880,18 @@
     {# Route arc: home ✈ entry ⟿ (overland) ⟿ exit ✈ home #}
     {{ ticket_route([home_iata or '—', idea.entry_iata, idea.exit_iata, home_iata or '—'], true) }}
     <p class="bp-cities text-left">{{ idea.entry_city }} → {{ idea.exit_city }}</p>
+    {% if idea.entry_vibe or idea.exit_vibe %}
+    <div class="pb-fast-facts" aria-label="Destination vibes">
+      {% if idea.entry_vibe %}
+      {% set entry_vibe = resolve_vibe(idea.entry_vibe) %}
+      <span class="pb-fact">{{ entry_vibe.emoji }} {{ idea.entry_city }} · {{ entry_vibe.label }}</span>
+      {% endif %}
+      {% if idea.exit_vibe %}
+      {% set exit_vibe = resolve_vibe(idea.exit_vibe) %}
+      <span class="pb-fact">{{ exit_vibe.emoji }} {{ idea.exit_city }} · {{ exit_vibe.label }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
 
     {# Two priced legs #}
     <div class="bp-legs">
@@ -893,7 +906,8 @@
                   data-cf-dest="{{ idea.entry_iata }}"
                   data-cf-depart="{{ idea.depart_date or '' }}"
                   data-cf-return=""
-                  data-cf-adults="1"
+                  data-cf-adults="{{ ib_leg.adults if ib_leg and ib_leg.adults else 1 }}"
+                  data-cf-cabin="{{ ib_leg.cabin.value if ib_leg and ib_leg.cabin and ib_leg.cabin.value is defined else (ib_leg.cabin if ib_leg and ib_leg.cabin else 'economy') }}"
                   data-cf-currency="{{ idea.currency or '' }}">
               <button type="button" class="btn-check-fares">Check Fares</button>
               <span class="cf-error" hidden></span>
@@ -919,7 +933,8 @@
                   data-cf-dest="{{ home_iata }}"
                   data-cf-depart="{{ idea.outbound_date or '' }}"
                   data-cf-return=""
-                  data-cf-adults="1"
+                  data-cf-adults="{{ ob_leg.adults if ob_leg and ob_leg.adults else 1 }}"
+                  data-cf-cabin="{{ ob_leg.cabin.value if ob_leg and ob_leg.cabin and ob_leg.cabin.value is defined else (ob_leg.cabin if ob_leg and ob_leg.cabin else 'economy') }}"
                   data-cf-currency="{{ idea.currency or '' }}">
               <button type="button" class="btn-check-fares">Check Fares</button>
               <span class="cf-error" hidden></span>
@@ -959,6 +974,7 @@
     {% if fn_iata %}
     {% set fn_code = fn_iata | upper %}
     {% set pb = place_books.get(fn_code) if place_books else none %}
+    {% set fn_vibe = idea.entry_vibe if fn_code == (idea.entry_iata | upper) else idea.exit_vibe %}
     {% set pb_airport_trains = airport_train_for(fn_iata) %}
     {% set pb_transfers = ground_transfer_for(fn_iata) %}
     {% set has_more = (pb and (pb.culture or pb.food or pb.caution)) %}
@@ -967,6 +983,7 @@
       data-iata="{{ fn_code }}"
       data-city="{{ fn_city or '' }}"
       data-role="quest"
+      data-vibe="{{ (fn_vibe or quest_vibe or '') | e }}"
     >
       <div class="pb-story-body{% if not pb %} is-loading{% endif %}">
         {% if pb %}
