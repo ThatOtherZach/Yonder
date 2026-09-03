@@ -538,8 +538,7 @@
 
     {% set show_all_in = it.all_in_display and not cf.pending %}
     {% set has_col = it.ground_display or it.ground_compare_line or it.ground_budget_line or show_all_in %}
-    {% set is_manual_escape = mode == 'saved' and s and s.kind == 'escape' and s.trip_meta and s.trip_meta.get('manual_flight') %}
-    {% set saved_escape_iata = ((it.legs | last).to_iata if mode == 'saved' and s and s.kind == 'escape' and not is_manual_escape and it.legs else '') %}
+    {% set saved_escape_iata = ((it.legs | last).to_iata if mode == 'saved' and s and s.kind == 'escape' and it.legs else '') %}
     {% set field_note_iata = it.stop_iata or saved_escape_iata %}
     {% if mode in ('explore', 'saved') %}
       {# ── Multi-stop / rescue: one field-note-slot per intermediate stop ── #}

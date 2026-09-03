@@ -10,10 +10,6 @@ from typing import Any
 from yonder.config import Settings
 from yonder.db import get_conn
 
-# ~45 days
-TTL_SEC = 45 * 24 * 3600
-
-
 def cache_key(
     iata: str | None = None,
     country: str | None = None,
@@ -53,8 +49,6 @@ def get_cached(key: str) -> dict[str, Any] | None:
             (key,),
         ).fetchone()
     if not row:
-        return None
-    if time.time() - float(row["fetched_at"]) > TTL_SEC:
         return None
     try:
         data = json.loads(row["payload_json"])
@@ -96,8 +90,6 @@ def get_any_cached_for_iata(iata: str, lang: str | None = None) -> dict[str, Any
             params,
         ).fetchone()
     if not row:
-        return None
-    if time.time() - float(row["fetched_at"]) > TTL_SEC:
         return None
     try:
         data = json.loads(row["payload_json"])

@@ -163,7 +163,9 @@ def test_manual_flight_fare_missing_is_saved_with_check_fares(client, monkeypatc
         re.DOTALL,
     )
     assert manual_card is not None
-    assert "field-note-slot" not in manual_card.group(0)
+    assert "field-note-slot" in manual_card.group(0)
+    assert 'data-iata="LIS"' in manual_card.group(0)
+    assert 'data-role="destination"' in manual_card.group(0)
     assert 'data-cf-cabin="business"' in manual_card.group(0)
     check_fares_js = (
         Path(__file__).parents[1] / "yonder" / "static" / "check_fares.js"
