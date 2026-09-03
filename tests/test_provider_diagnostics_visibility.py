@@ -152,7 +152,8 @@ def test_escape_diagnostics_hidden_in_live_mode_but_fare_card_remains():
     assert "internal diagnostic failure" not in html
     assert _USAGE not in html
     assert 'id="escape-results-card"' in html
-    assert "Direct Escape" in html
+    assert "Escape" in html
+    assert "Direct Escape" not in html
     assert "YVR" in html and "NRT" in html
     assert "US$500" in html
 

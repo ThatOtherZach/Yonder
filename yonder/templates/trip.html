@@ -407,6 +407,7 @@
         {% set _tagline = pb.tagline or pb.era_note or pb.vibe %}
         {% set pb_acts = pb.activity_links or [] %}
         {% set pb_airport_trains = airport_train_for(code) %}
+        {% set pb_transfers = ground_transfer_for(code) %}
         <div class="fn-panel{% if not loop.first %} is-hidden{% endif %}"
              id="fn-panel-{{ loop.index0 }}"
              role="tabpanel"
@@ -414,17 +415,18 @@
           <div class="place-book field-note-inset"
                style="{% if share_vibe and share.kind == 'escape' %}--bp-accent: {{ share_vibe.color }};{% elif _it.theme_primary %}--bp-accent: {{ _it.theme_primary }};{% endif %}">
             <div class="pb-story-body">
-              <span class="pb-tag">Field note{% if fn_iatas.list | length > 1 %} · {{ code }}{% endif %}</span>
+              <span class="pb-tag">Field note{% if share.kind == 'escape' %} · {{ city_for_iata(code) or code }}{% elif fn_iatas.list | length > 1 %} · {{ code }}{% endif %}</span>
               <div class="pb-title-line">
                 <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
                 {% if _tagline %}<p class="pb-closer">{{ _tagline }}</p>{% endif %}
               </div>
               {% if pb.subtitle and _tagline %}<p class="pb-sub">{{ pb.subtitle }}</p>{% endif %}
-              {% if pb.facts or pb_acts or pb_airport_trains %}
+              {% if pb.facts or pb_acts or pb_airport_trains or pb_transfers %}
               <div class="pb-fast-facts" aria-label="Fast facts">
                 {% for f in (pb.facts or [])[:2 if pb_acts else none] %}<span class="pb-fact">{{ f }}</span>{% endfor %}
                 {% for l in pb_acts %}<a class="pb-fact pb-fact-link" href="{{ l.url }}" target="_blank" rel="noopener sponsored">{{ l.emoji }} {{ l.title }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
                 {% for t in pb_airport_trains %}<a class="pb-fact pb-fact-link" href="{{ t.url }}" target="_blank" rel="noopener">{{ t.emoji }} {{ t.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
+                {% for tr in pb_transfers %}<a class="pb-fact pb-fact-link" href="{{ tr.url }}" target="_blank" rel="noopener sponsored">{{ tr.emoji }} {{ tr.name }} <span class="pb-fact-ext" aria-hidden="true">↗</span></a>{% endfor %}
               </div>
               {% endif %}
               {% set pb_picks = (pb.poi_picks or [])[:4] %}

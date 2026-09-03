@@ -1562,7 +1562,7 @@
       data-signal-vibe="{{ (ep.get('trip_meta') or {}).get('vibe', '') if ep else '' }}">
     {% if escape_result and escape_result.offers %}
       <div class="card" id="escape-results-card">
-        <h2>Direct Escape{% if escape_result.offers and escape_result.offers|length != 1 %}s{% endif %}</h2>
+        <h2>Escape{% if escape_result.offers and escape_result.offers|length != 1 %}s{% endif %}</h2>
         <p class="sub">
           {{ route_short(escape_result.query.origin, escape_result.query.destination) }}
           {% if escape_dest_theme %}
@@ -3001,11 +3001,53 @@
         return h;
       }
 
-      function renderFieldNoteHtml(brief, col) {
+      /* "Field note · <City>" — falls back to the airport code, then bare. */
+      function fieldNoteTagHtml(brief, slot) {
+        var city =
+          (brief && brief.city) ||
+          (slot && slot.getAttribute("data-city")) ||
+          "";
+        var code =
+          (brief && brief.iata) ||
+          (slot && slot.getAttribute("data-iata")) ||
+          "";
+        var label = String(city || code || "").trim();
+        return (
+          '<span class="pb-tag">Field note' +
+          (label ? " \u00b7 " + escapeHtml(label) : "") +
+          "</span>"
+        );
+      }
+
+      /* Airport-rail + ground-transfer pills — same set the Quest card renders. */
+      function transitPillsHtml(trains, transfers) {
+        var out = "";
+        (trains || []).forEach(function (t) {
+          if (!t || !t.url) return;
+          out +=
+            '<a class="pb-fact pb-fact-link" href="' +
+            escapeHtml(String(t.url)) +
+            '" target="_blank" rel="noopener">' +
+            escapeHtml((t.emoji ? t.emoji + " " : "") + (t.name || "")) +
+            ' <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
+        });
+        (transfers || []).forEach(function (tr) {
+          if (!tr || !tr.url) return;
+          out +=
+            '<a class="pb-fact pb-fact-link" href="' +
+            escapeHtml(String(tr.url)) +
+            '" target="_blank" rel="noopener sponsored">' +
+            escapeHtml((tr.emoji ? tr.emoji + " " : "") + (tr.name || "")) +
+            ' <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
+        });
+        return out;
+      }
+
+      function renderFieldNoteHtml(brief, col, slot) {
         var h = "";
         h += '<div class="pb-story-body">';
         if (brief) {
-          h += '<span class="pb-tag">Field note</span>';
+          h += fieldNoteTagHtml(brief, slot);
           h +=
             "<h3" +
             (brief._compact ? ' style="font-size:1.15rem"' : "") +
@@ -3016,10 +3058,12 @@
             h += '<p class="pb-sub">' + escapeHtml(brief.subtitle) + "</p>";
           var facts = brief.facts || [];
           var acts = brief.activity_links || [];
+          var trains = brief.airport_trains || [];
+          var transfers = brief.ground_transfers || [];
           if (acts.length) facts = facts.slice(0, 2);
           var _riskyVibes = ['adventure','chaos','wild','gecko','wildwest','gritty'];
           var _showInsurance = brief._vibe && _riskyVibes.indexOf(String(brief._vibe).toLowerCase()) !== -1;
-          if (facts.length || acts.length || _showInsurance) {
+          if (facts.length || acts.length || trains.length || transfers.length || _showInsurance) {
             h += '<div class="pb-fast-facts" aria-label="Fast facts">';
             facts.forEach(function (f) {
               if (f) h += '<span class="pb-fact">' + escapeHtml(String(f)) + "</span>";
@@ -3033,6 +3077,7 @@
                 escapeHtml(((l.emoji ? l.emoji + " " : "") + (l.title || ""))) +
                 ' <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
             });
+            h += transitPillsHtml(trains, transfers);
             if (_showInsurance) {
               h += '<a class="pb-fact pb-fact-link" href="https://tp.media/r?marker=756039.YonderInsurance&amp;trs=557178&amp;p=4129&amp;u=https%3A%2F%2Fcompensair.com&amp;campaign_id=86" target="_blank" rel="noopener sponsored">\uD83D\uDEE1\uFE0F Flight compensation <span class="pb-fact-ext" aria-hidden="true">↗</span></a>';
             }
@@ -3086,7 +3131,7 @@
         if (detailInner) {
           h +=
             '<button type="button" class="pb-toggle" aria-expanded="false">' +
-            '<span class="pb-toggle-label">More · culture, food &amp; budget</span>' +
+            '<span class="pb-toggle-label">Culture, Food &amp; Budget</span>' +
             '<span class="pb-chevron" aria-hidden="true">▾</span></button>';
           h +=
             '<div class="pb-details" hidden><div class="pb-grid pb-mesh-grid">' +
@@ -3145,7 +3190,7 @@
               slot.classList.remove("is-expanded");
               btn.setAttribute("aria-expanded", "false");
               var lab2 = btn.querySelector(".pb-toggle-label");
-              if (lab2) lab2.textContent = "More · culture, food & budget";
+              if (lab2) lab2.textContent = "Culture, Food & Budget";
             }
           });
         });
@@ -3166,15 +3211,15 @@
         var queue = Array.prototype.slice.call(slots);
         var i = 0;
         var timeoutMs = 20000;
-        function loadingHtml() {
-          return '<div class="pb-story-body is-loading"><span class="pb-tag">Field note</span>' +
+        function loadingHtml(slot) {
+          return '<div class="pb-story-body is-loading">' + fieldNoteTagHtml(null, slot) +
             '<div class="pb-fn-loading" role="status" aria-live="polite">' +
             '<div class="pb-fn-bar-track"><div class="pb-fn-bar-fill"></div></div>' +
             '<p class="pb-fn-status">Loading field note…</p></div></div>';
         }
-        function retryHtml(iata, message, col) {
-          var fallback = hasColData(col) ? renderFieldNoteHtml(null, col) :
-            '<div class="pb-story-body"><span class="pb-tag">Field note</span></div>';
+        function retryHtml(iata, message, col, slot) {
+          var fallback = hasColData(col) ? renderFieldNoteHtml(null, col, slot) :
+            '<div class="pb-story-body">' + fieldNoteTagHtml(null, slot) + "</div>";
           return fallback + '<div class="pb-fn-retry">' +
             '<p class="pb-fn-status" role="status">' + escapeHtml(message) + '</p>' +
             '<button type="button" class="pb-fn-refresh" aria-label="Refresh field note for ' +
@@ -3186,14 +3231,14 @@
           var col = colFromSlot(slot);
           if (iata.length !== 3) {
             slot.classList.remove("is-loading");
-            slot.innerHTML = hasColData(col) ? renderFieldNoteHtml(null, col) :
-              retryHtml(iata || "this destination", "This field note couldn’t be loaded.", col);
+            slot.innerHTML = hasColData(col) ? renderFieldNoteHtml(null, col, slot) :
+              retryHtml(iata || "this destination", "This field note couldn’t be loaded.", col, slot);
             if (done) done();
             return;
           }
           slot._fieldNoteLoading = true;
           slot.classList.add("is-loading");
-          if (force) slot.innerHTML = loadingHtml();
+          if (force) slot.innerHTML = loadingHtml(slot);
           var meta = {};
           try {
             var adv = document.getElementById("adv-results");
@@ -3222,14 +3267,14 @@
               if (!data || !data.ok || !data.brief) throw new Error("no brief");
               data.brief._compact = slot.getAttribute("data-role") !== "destination";
               data.brief._vibe = toneVibe;
-              slot.innerHTML = renderFieldNoteHtml(data.brief, col);
+              slot.innerHTML = renderFieldNoteHtml(data.brief, col, slot);
               bindFieldNoteToggles(slot);
             })
             .catch(function (err) {
               var message = err && err.name === "AbortError"
                 ? "This field note took too long."
                 : "This field note couldn’t be loaded.";
-              slot.innerHTML = retryHtml(iata, message, col);
+              slot.innerHTML = retryHtml(iata, message, col, slot);
               bindFieldNoteToggles(slot);
             })
             .finally(function () {

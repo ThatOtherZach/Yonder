@@ -262,8 +262,8 @@ class TestClientRetryContract:
         for tpl in ("index.html", "saved.html"):
             src = _js_of(tpl)
             loader = src[src.index("function loadFieldNote") :]
-            assert "slot.innerHTML = retryHtml(iata, message, col)" in loader
-            assert "slot.innerHTML = renderFieldNoteHtml(data.brief, col)" in loader
+            assert "slot.innerHTML = retryHtml(iata, message, col, slot)" in loader
+            assert "slot.innerHTML = renderFieldNoteHtml(data.brief, col, slot)" in loader
             assert 'slot.classList.remove("is-loading")' in loader
 
     def test_failure_keeps_ground_spend_fallback_with_refresh(self):
@@ -273,7 +273,7 @@ class TestClientRetryContract:
                 "function loadFieldNote", src.index("function retryHtml")
             )]
             assert "hasColData(col)" in retry
-            assert "renderFieldNoteHtml(null, col)" in retry
+            assert "renderFieldNoteHtml(null, col, slot)" in retry
             assert "pb-fn-refresh" in retry
 
 

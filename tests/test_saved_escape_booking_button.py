@@ -2,7 +2,7 @@
 
 Escape trips are stored via ``escape_offer_to_itinerary`` + ``save_itinerary``
 and rendered on /saved using the ``detour_card`` macro (not ``escape_card``).
-The booking button in ``detour_card`` reads ``leg.from_iata ➜ leg.to_iata ↗``
+The booking button in ``detour_card`` reads ``Book leg.from_iata → leg.to_iata ↗``
 from the first leg's data.  This test confirms that the label survives the
 full round-trip: build → save → reload → GET /saved → HTML.
 """
@@ -27,7 +27,7 @@ _DEST = "NRT"
 _DEPART = (date.today() + timedelta(days=30)).isoformat()
 _AVIA_URL = f"https://www.aviasales.com/search/{_ORIGIN}{_DEST}"
 _AIRLINE_URL = "https://www.cathaypacific.com/"
-_EXPECTED_LABEL = f"{_ORIGIN} \u279c {_DEST} \u2197"  # "YVR ➜ NRT ↗"
+_EXPECTED_LABEL = f"Book {_ORIGIN} \u2192 {_DEST} \u2197"  # "Book YVR → NRT ↗"
 
 # Stable session id used by every save/GET in this module so the saved rows
 # are visible when the test client hits /saved with this cookie.
@@ -131,7 +131,7 @@ class TestSavedEscapeBookingButton:
         assert 'data-role="destination"' in resp.text
 
     def test_booking_button_label_contains_iata_pair(self, client):
-        """Booking button on /saved must show 'YVR ➜ NRT ↗' for this route."""
+        """Booking button on /saved must show 'Book YVR → NRT ↗' for this route."""
         _save_escape(with_url=True)
         resp = client.get("/saved", cookies={"yv_sess": _SESS})
         assert resp.status_code == 200
@@ -177,11 +177,11 @@ class TestSavedEscapeBookingButton:
         )
 
     def test_booking_button_label_does_not_show_reversed_route(self, client):
-        """The button must not display the reversed route (NRT ➜ YVR ↗)."""
+        """The button must not display the reversed route (Book NRT → YVR ↗)."""
         _save_escape(with_url=True)
         resp = client.get("/saved", cookies={"yv_sess": _SESS})
         assert resp.status_code == 200
-        reversed_label = f"{_DEST} \u279c {_ORIGIN} \u2197"
+        reversed_label = f"Book {_DEST} \u2192 {_ORIGIN} \u2197"
         assert reversed_label not in resp.text, (
             f"Button must not show reversed route '{reversed_label}' on /saved"
         )

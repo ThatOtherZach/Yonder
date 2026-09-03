@@ -40,6 +40,7 @@ from yonder.config import get_settings, reload_settings
 from yonder.countries import (
     COUNTRIES,
     COUNTRY_PRIMARY_IATA,
+    city_for_iata,
     country_for_currency,
     country_label,
     format_place,
@@ -623,6 +624,7 @@ templates.env.globals["airline_name"] = airline_display_name
 templates.env.globals["train_options"] = train_options
 templates.env.globals["airport_train_for"] = airport_train_for
 templates.env.globals["ground_transfer_for"] = ground_transfer_for
+templates.env.globals["city_for_iata"] = city_for_iata
 def _promo_offers() -> dict | None:
     """CODE_PROMO / LINK_PROMO from the environment (or .env) — None when unset."""
     import os
@@ -6994,7 +6996,13 @@ async def api_place_brief(
         return JSONResponse({"ok": False, "error": str(exc)[:120]}, status_code=500)
     if not brief:
         return JSONResponse({"ok": False, "error": "no brief", "iata": code})
-    return JSONResponse({"ok": True, "iata": code, "brief": brief.to_dict()})
+    payload = brief.to_dict()
+    # Transit pills so a client-hydrated field note matches the server-rendered
+    # Quest note (airport rail links + ground-transfer partners).
+    payload["airport_trains"] = airport_train_for(code)
+    payload["ground_transfers"] = ground_transfer_for(code)
+    payload["city"] = (city or "").strip() or city_for_iata(code) or ""
+    return JSONResponse({"ok": True, "iata": code, "brief": payload})
 
 
 @app.get("/api/nearest-airport")

@@ -1,7 +1,7 @@
 """Regression: Escape card booking button label shows correct IATA route.
 
 The button rendered by the escape_card macro in ``_boarding_pass.html`` (the
-``o.google_flights_url`` anchor) must show ``"ORIGIN ➜ DEST ↗"`` using the
+``o.google_flights_url`` anchor) must show ``"Book ORIGIN → DEST ↗"`` using the
 query's IATA codes — not a generic label.
 
 This file exercises two distinct contexts where the ``query`` object differs:
@@ -40,7 +40,7 @@ from yonder.links import aviasales_url
 _DEPART = (date.today() + timedelta(days=30)).isoformat()
 _ORIGIN = "YVR"
 _DEST = "NRT"
-_EXPECTED_LABEL = f"{_ORIGIN} \u279c {_DEST} \u2197"  # "YVR ➜ NRT ↗"
+_EXPECTED_LABEL = f"Book {_ORIGIN} \u2192 {_DEST} \u2197"  # "Book YVR → NRT ↗"
 
 # A real Aviasales search URL to embed in the offer so the button is rendered.
 _AVIA_URL = aviasales_url(_ORIGIN, _DEST, date.today() + timedelta(days=30))
@@ -140,7 +140,7 @@ class TestExploreFlowButtonLabel:
     """Escape card rendered via the macro with a Pydantic query object."""
 
     def test_button_label_shows_iata_pair(self):
-        """Button label must be 'ORIGIN ➜ DEST ↗' using the Pydantic query codes."""
+        """Button label must be 'Book ORIGIN → DEST ↗' using the Pydantic query codes."""
         offer = _minimal_flight_offer(with_avia_url=True)
         query = _minimal_pydantic_query()
         html = _render_macro(
@@ -181,8 +181,8 @@ class TestExploreFlowButtonLabel:
             o=offer,
             query=query,
         )
-        assert "LHR \u279c SYD \u2197" in html, (
-            "Expected 'LHR ➜ SYD ↗' as button label for LHR→SYD escape card"
+        assert "Book LHR \u2192 SYD \u2197" in html, (
+            "Expected 'Book LHR → SYD ↗' as button label for LHR→SYD escape card"
         )
 
     def test_no_button_when_url_absent(self):
@@ -215,7 +215,7 @@ class TestDictQueryButtonLabel:
     """
 
     def test_button_label_with_dict_query(self):
-        """Dict query must produce the same 'ORIGIN ➜ DEST ↗' label."""
+        """Dict query must produce the same 'Book ORIGIN → DEST ↗' label."""
         offer = _minimal_flight_offer(with_avia_url=True)
         query_dict = _minimal_dict_query()
         html = _render_macro(
@@ -302,7 +302,7 @@ class TestSharedTripHttpButtonLabel:
         )
 
     def test_shared_page_button_label_is_iata_route(self, client):
-        """Booking button on the shared trip page must show 'ORIGIN ➜ DEST ↗'."""
+        """Booking button on the shared trip page must show 'Book ORIGIN → DEST ↗'."""
         share = self._create_escape_share()
         resp = client.get(f"/t/{share.id}")
         assert resp.status_code == 200
@@ -335,6 +335,6 @@ class TestSharedTripHttpButtonLabel:
         resp = client.get(f"/t/{share.id}")
         assert resp.status_code == 200
         # Button must not show a reversed or wrong route.
-        assert f"{_DEST} \u279c {_ORIGIN} \u2197" not in resp.text, (
-            f"Button label must not show the reversed route '{_DEST} ➜ {_ORIGIN} ↗'"
+        assert f"Book {_DEST} \u2192 {_ORIGIN} \u2197" not in resp.text, (
+            f"Button label must not show the reversed route 'Book {_DEST} → {_ORIGIN} ↗'"
         )

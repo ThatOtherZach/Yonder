@@ -157,7 +157,7 @@
     <div class="bp-anchor-label" style="background:color-mix(in srgb,var(--bp-accent,#e6b450) 14%,var(--paper-2,#f4f1ea));border-left:3px solid var(--bp-accent,#e6b450);padding:0.28rem 0.65rem;font-size:0.8rem;font-weight:650;margin-bottom:0.5rem;border-radius:0 0.3rem 0.3rem 0">⚓ {{ anchor_label }}</div>
     {% endif %}
     <div class="bp-top">
-      <span class="bp-label">{{ role_label or 'Direct Escape' }}</span>
+      <span class="bp-label">{{ role_label or 'Escape' }}</span>
       {% if mode == 'share' and share_vibe %}
       <span class="bp-badge soft" style="background:{{ share_vibe.color }};color:#fff;border:none">{{ share_vibe.emoji }} {{ share_vibe.label }}</span>
       {% else %}
@@ -203,12 +203,13 @@
     {% set esc_show_all_in = o.all_in_display and not fare_missing %}
     {% set esc_has_col = o.ground_display or o.ground_compare_line or o.ground_budget_line or esc_show_all_in %}
     {% set esc_has_more = (escape_place_book and (escape_place_book.culture or escape_place_book.food or escape_place_book.caution)) or esc_has_col %}
+    {% set esc_city = city_for_iata(query.destination) or '' %}
     <div
       class="place-book field-note-inset field-note-slot{% if not escape_place_book %} is-loading{% endif %}"
       id="escape-field-note-{{ idx }}"
       data-iata="{{ query.destination }}"
       data-country="{{ esc_theme.country or '' }}"
-      data-city=""
+      data-city="{{ esc_city }}"
       data-role="destination"
       data-vibe="{{ esc_vibe | e }}"
       data-col-ground="{{ o.ground_display or '' }}"
@@ -219,7 +220,7 @@
     >
       <div class="pb-story-body{% if not escape_place_book %} is-loading{% endif %}">
         {% if escape_place_book %}
-        <span class="pb-tag">Field note</span>
+        <span class="pb-tag">Field note · {{ esc_city or query.destination }}</span>
         {% set _esc_tagline_src = escape_place_book.tagline or escape_place_book.era_note or escape_place_book.vibe %}
         {% set pb_tagline = _esc_tagline_src or escape_place_book.subtitle %}
         <div class="pb-title-line">
@@ -246,7 +247,7 @@
         </div>
         {% endif %}
         {% else %}
-        <span class="pb-tag">Field note</span>
+        <span class="pb-tag">Field note · {{ esc_city or query.destination }}</span>
         <div class="pb-fn-loading">
           <div class="pb-fn-bar-track"><div class="pb-fn-bar-fill"></div></div>
           <div class="pb-fn-promo"></div>
@@ -329,7 +330,7 @@
       </div>
       {% endif %}
       {% if o.google_flights_url %}
-      <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener"{% if 'aviasales.com' in o.google_flights_url %} aria-label="Aviasales Flights ↗"{% endif %}>{{ query.origin }} ➜ {{ query.destination }} ↗</a>
+      <a class="btn secondary" href="{{ o.google_flights_url }}" target="_blank" rel="noopener"{% if 'aviasales.com' in o.google_flights_url %} aria-label="Aviasales Flights ↗"{% endif %}>Book {{ query.origin }} → {{ query.destination }} ↗</a>
       {% endif %}
       {% for tl in train_links %}
       <a class="btn secondary" href="{{ tl.url }}" target="_blank" rel="noopener">{{ tl.emoji }} {{ tl.operator }} ↗</a>
@@ -419,6 +420,10 @@
                      s=none, share_vibe=none, fallback_title='', train_links=[],
                      return_days=9) %}
 {% set accent = ((s.theme_primary if s else none) or it.theme_primary) %}
+{# Saved Escape cards render through this macro; they follow the Quest card's
+   anatomy (metadata after the field note, "Book A → B ↗" flight buttons).
+   Detour/getaway cards keep their existing wording and ordering. #}
+{% set is_saved_escape = (mode == 'saved' and s and s.kind == 'escape') %}
 {% set cf = namespace(pending=false, base=0.0) %}
 {% for leg in (it.legs or []) %}
   {% if (not leg.offer) or (leg.offer.fare_missing or false) %}
@@ -443,7 +448,7 @@
     {% endif %}
     <div class="bp-top">
       {% if mode == 'saved' %}
-      <span class="bp-label">{% if s and s.trip_meta and s.trip_meta.get('manual_flight') %}Your flight{% elif s.kind == 'escape' %}Direct Escape{% elif s.kind == 'getaway' %}Getaway{% else %}Detour{% endif %}</span>
+      <span class="bp-label">{% if s and s.trip_meta and s.trip_meta.get('manual_flight') %}Your flight{% elif s.kind == 'escape' %}Escape{% elif s.kind == 'getaway' %}Getaway{% else %}Detour{% endif %}</span>
       <span class="bp-badge soft"{% if s.theme_primary %} style="background:{{ s.theme_primary }};color:#fff;border:none"{% endif %}>{% if s.vibe %}{{ s.vibe | vibe_emoji }} {% endif %}{{ it.theme_label or s.theme_label or it.kind or 'Trip' }}</span>
       {% elif mode == 'share' %}
       <span class="bp-label">{{ (it.kind or 'detour') | title }}</span>
@@ -467,7 +472,8 @@
     {% if it.stay_days and not it.rescue %}<p class="bp-stop-days">{{ it.stay_days }} Day Stop</p>{% endif %}
     {% if it.why and not it.rescue %}<p class="bp-why">{{ it.why }}</p>{% endif %}
 
-    {% if mode == 'saved' %}
+    {# Escape cards place this metadata after the field note (Quest order) — see below. #}
+    {% if mode == 'saved' and not is_saved_escape %}
     <div class="bp-fields" style="margin-bottom:0.65rem">
       <div class="bp-field">
         <span class="k">Fares age</span>
@@ -542,8 +548,9 @@
 
     {% set show_all_in = it.all_in_display and not cf.pending %}
     {% set has_col = it.ground_display or it.ground_compare_line or it.ground_budget_line or show_all_in %}
-    {% set saved_escape_iata = ((it.legs | last).to_iata if mode == 'saved' and s and s.kind == 'escape' and it.legs else '') %}
+    {% set saved_escape_iata = ((it.legs | last).to_iata if is_saved_escape and it.legs else '') %}
     {% set field_note_iata = it.stop_iata or saved_escape_iata %}
+    {% set saved_escape_city = (city_for_iata(saved_escape_iata) or '') if saved_escape_iata else '' %}
     {% if mode in ('explore', 'saved') %}
       {# ── Multi-stop / rescue: one field-note-slot per intermediate stop ── #}
       {% if it.kind in ('multi-stop', 'rescue') and it.stops %}
@@ -583,7 +590,7 @@
           class="place-book field-note-inset field-note-slot{% if field_note_iata and not pb %} is-loading{% endif %}"
           data-iata="{{ field_note_iata or '' }}"
           data-country="{{ it.theme_country or '' }}"
-          data-city="{{ it.stop_city or '' }}"
+          data-city="{{ it.stop_city or saved_escape_city or '' }}"
           data-role="{{ 'destination' if saved_escape_iata else 'stopover' }}"
           data-vibe="{{ ((s.vibe if s else '') or det_vibe) | e }}"
           data-col-ground="{{ it.ground_display or '' }}"
@@ -594,7 +601,7 @@
         >
           <div class="pb-story-body{% if field_note_iata and not pb %} is-loading{% endif %}">
             {% if pb %}
-            <span class="pb-tag">Field note</span>
+            <span class="pb-tag">Field note{% if is_saved_escape %} · {{ saved_escape_city or field_note_iata }}{% endif %}</span>
             {% set pb_tagline = pb.tagline or pb.era_note or pb.vibe %}
             <div class="pb-title-line">
               <h3 style="font-size:1.15rem">{{ pb.title }}</h3>
@@ -620,7 +627,7 @@
             </div>
             {% endif %}
             {% elif field_note_iata %}
-            <span class="pb-tag">Field note</span>
+            <span class="pb-tag">Field note{% if is_saved_escape %} · {{ saved_escape_city or field_note_iata }}{% endif %}</span>
             <div class="pb-fn-loading">
               <div class="pb-fn-bar-track"><div class="pb-fn-bar-fill"></div></div>
               <div class="pb-fn-promo"></div>
@@ -679,6 +686,29 @@
       {% endif %}
     </div>
     {% endif %}
+    {# Saved-mode metadata for Escape cards — after the field note, before the
+       action row, exactly where a Saved Quest shows it. #}
+    {% if is_saved_escape %}
+    <div class="bp-fields" style="margin-bottom:0.65rem">
+      <div class="bp-field">
+        <span class="k">Fares age</span>
+        <span class="v">{{ s.price_stale_label }}</span>
+      </div>
+      <div class="bp-field">
+        <span class="k">Saved</span>
+        <span class="v" style="font-size:0.82rem">{{ s.saved_at_iso }}</span>
+      </div>
+      {% if it.vibe_tags %}
+      <div class="bp-field">
+        <span class="k">Vibe</span>
+        <span class="v">{{ it.vibe_tags[:2]|join(', ')|title }}</span>
+      </div>
+      {% endif %}
+    </div>
+    {% if s.model_source %}
+    <p class="bp-note" style="font-size:0.78rem;margin:0.15rem 0 0.5rem;color:var(--muted)">via {{ s.model_source }}</p>
+    {% endif %}
+    {% endif %}
     {# promo moved to loading overlay (progress.js) #}
     {% if mode == 'explore' %}
     <script type="application/json" id="it-json-{{ idx }}">{{ it.model_dump_json() | safe }}</script>
@@ -720,7 +750,7 @@
         {%- set _leg_url = 'https://www.aviasales.com/search/' ~ leg.from_iata ~ _leg_ddmm ~ leg.to_iata ~ '1?marker=756039.Zza75700ced74b488c8090948-756039&sub_id=YonderFlights' -%}
       {%- endif -%}
       {% if _leg_url %}
-      <a class="btn secondary" href="{{ _leg_url }}" target="_blank" rel="noopener">{{ leg.from_iata }} ➜ {{ leg.to_iata }} ↗</a>
+      <a class="btn secondary" href="{{ _leg_url }}" target="_blank" rel="noopener">{% if is_saved_escape %}Book {{ leg.from_iata }} → {{ leg.to_iata }} ↗{% else %}{{ leg.from_iata }} ➜ {{ leg.to_iata }} ↗{% endif %}</a>
       {% endif %}
       {% endfor %}
       {% for tl in train_links %}
