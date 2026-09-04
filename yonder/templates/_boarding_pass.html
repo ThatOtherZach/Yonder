@@ -106,6 +106,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="1.1em" height="1.1em" fill="currentColor" aria-hidden="true"><path d="M13.49 5.48c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 0 2 2 2zm-3.6 13.9 1-4.4 2.1 2v6h2v-7.5l-2.1-2 .6-3c1.3 1.5 3.3 2.5 5.5 2.5v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1l-5.2 2.2v4.7h2v-3.4l1.8-.7-1.6 8.1-4.9-1-.4 2 7 1.4z"/></svg>
 {%- endmacro %}
 
+{# Shared "Ground Spend" strip. Every card type renders its ground/budget/all-in
+   numbers through this macro so Escape, Detour and Quest cannot drift apart. #}
+{% macro budget_strip(ground_display=none, ground_compare_line=none,
+                      ground_budget_line=none, ground_budget_status=none,
+                      all_in_display=none, inset=false) %}
+<div class="bp-budget-strip"{% if inset %} style="margin-top:0.75rem"{% endif %}>
+  <div class="bps-left">
+    <span class="bps-label">Daily Spend</span>
+    {% if ground_display %}<span class="bps-ground">{{ ground_display }}</span>{% endif %}
+    {% if ground_compare_line %}<span class="bps-compare">{{ ground_compare_line }}</span>{% endif %}
+    {% if ground_budget_line %}<span class="bps-budget-status{% if ground_budget_status == 'under' %} delta-good{% elif ground_budget_status == 'over' %} delta-bad{% endif %}">{{ ground_budget_line }}</span>{% endif %}
+  </div>
+  {% if all_in_display %}
+  <div class="bps-total">
+    <span class="bps-total-amt">{{ all_in_display }}</span>
+    <span class="bps-total-label">all-in est.</span>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
 {% macro ticket_route(codes, overland=false) %}
 <div class="bp-route">
   {% for code in codes if code %}
@@ -198,10 +219,10 @@
       </div>
     </div>
 
-    {% if mode == 'explore' %}
-    {# Field note — same collapsible pattern as Detour #}
     {% set esc_show_all_in = o.all_in_display and not fare_missing %}
     {% set esc_has_col = o.ground_display or o.ground_compare_line or o.ground_budget_line or esc_show_all_in %}
+    {% if mode == 'explore' %}
+    {# Field note — same collapsible pattern as Detour #}
     {% set esc_has_more = (escape_place_book and (escape_place_book.culture or escape_place_book.food or escape_place_book.caution)) or esc_has_col %}
     {% set esc_city = city_for_iata(query.destination) or '' %}
     <div
@@ -266,28 +287,12 @@
             {% if escape_place_book.food %}<div class="pb-block"><h4>Food</h4><p>{{ escape_place_book.food }}</p></div>{% endif %}
             {% if escape_place_book.caution %}<div class="pb-block"><h4>Heads-up</h4><p>{{ escape_place_book.caution }}</p></div>{% endif %}
           {% endif %}
-          {% if esc_has_col %}
-          {% if o.ground_display or o.ground_compare_line %}
-          <div class="pb-block pb-col">
-            <h4>Daily Spend</h4>
-            {% if o.ground_display %}<p>{{ o.ground_display }}</p>{% endif %}
-            {% if o.ground_compare_line %}<p class="muted" style="margin-top:0.25rem">{{ o.ground_compare_line }}</p>{% endif %}
-          </div>
-          {% endif %}
-          {% if o.ground_budget_line %}
-          <div class="pb-block pb-col{% if o.ground_budget_status == 'under' %} col-under{% elif o.ground_budget_status == 'over' %} col-over{% endif %}">
-            <h4>Your budget</h4>
-            <p>{{ o.ground_budget_line }}</p>
-          </div>
-          {% endif %}
-          {% if esc_show_all_in %}
-          <div class="pb-block pb-col pb-col-allin">
-            <h4>Trip Estimate</h4>
-            <p><strong>{{ o.all_in_display }}</strong></p>
-          </div>
-          {% endif %}
-          {% endif %}
         </div>
+        {% if esc_has_col %}
+        {{ budget_strip(o.ground_display, o.ground_compare_line,
+                        o.ground_budget_line, o.ground_budget_status,
+                        o.all_in_display if esc_show_all_in else none, true) }}
+        {% endif %}
       </div>
       {% endif %}
     </div>
@@ -297,6 +302,10 @@
     {% if allow_composition %}
     <script type="application/json" class="compose-selection-token">{{ compose_fare_token(query, o, esc_vibe, (ask or esc_text or '')) | tojson }}</script>
     {% endif %}
+    {% elif esc_has_col %}
+    {{ budget_strip(o.ground_display, o.ground_compare_line,
+                    o.ground_budget_line, o.ground_budget_status,
+                    o.all_in_display if esc_show_all_in else none) }}
     {% endif %}
     {# promo moved to loading overlay (progress.js) #}
     {% call ticket_actions() %}
@@ -651,40 +660,18 @@
               {% endif %}
             </div>
             {% if has_col %}
-            <div class="bp-budget-strip" style="margin-top:0.75rem">
-              <div class="bps-left">
-                <span class="bps-label">Daily Spend</span>
-                {% if it.ground_display %}<span class="bps-ground">{{ it.ground_display }}</span>{% endif %}
-                {% if it.ground_compare_line %}<span class="bps-compare">{{ it.ground_compare_line }}</span>{% endif %}
-                {% if it.ground_budget_line %}<span class="bps-budget-status{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}">{{ it.ground_budget_line }}</span>{% endif %}
-              </div>
-              {% if show_all_in %}
-              <div class="bps-total">
-                <span class="bps-total-amt">{{ it.all_in_display }}</span>
-                <span class="bps-total-label">all-in est.</span>
-              </div>
-              {% endif %}
-            </div>
+            {{ budget_strip(it.ground_display, it.ground_compare_line,
+                            it.ground_budget_line, it.ground_budget_status,
+                            it.all_in_display if show_all_in else none, true) }}
             {% endif %}
           </div>
           {% endif %}
         </div>
       {% endif %}
     {% elif has_col %}
-    <div class="bp-budget-strip">
-      <div class="bps-left">
-        <span class="bps-label">Daily Spend</span>
-        {% if it.ground_display %}<span class="bps-ground">{{ it.ground_display }}</span>{% endif %}
-        {% if it.ground_compare_line %}<span class="bps-compare">{{ it.ground_compare_line }}</span>{% endif %}
-        {% if it.ground_budget_line %}<span class="bps-budget-status{% if it.ground_budget_status == 'under' %} delta-good{% elif it.ground_budget_status == 'over' %} delta-bad{% endif %}">{{ it.ground_budget_line }}</span>{% endif %}
-      </div>
-      {% if show_all_in %}
-      <div class="bps-total">
-        <span class="bps-total-amt">{{ it.all_in_display }}</span>
-        <span class="bps-total-label">all-in est.</span>
-      </div>
-      {% endif %}
-    </div>
+    {{ budget_strip(it.ground_display, it.ground_compare_line,
+                    it.ground_budget_line, it.ground_budget_status,
+                    it.all_in_display if show_all_in else none) }}
     {% endif %}
     {# Saved-mode metadata for Escape cards — after the field note, before the
        action row, exactly where a Saved Quest shows it. #}
