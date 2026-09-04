@@ -481,6 +481,35 @@
     {% if it.stay_days and not it.rescue %}<p class="bp-stop-days">{{ it.stay_days }} Day Stop</p>{% endif %}
     {% if it.why and not it.rescue %}<p class="bp-why">{{ it.why }}</p>{% endif %}
 
+    {# Escape cards place this metadata after the field note (Quest order) — see below. #}
+    {% if mode == 'saved' and not is_saved_escape %}
+    <div class="bp-fields" style="margin-bottom:0.65rem">
+      <div class="bp-field">
+        <span class="k">Fares age</span>
+        <span class="v">{{ s.price_stale_label }}</span>
+      </div>
+      <div class="bp-field">
+        <span class="k">Saved</span>
+        <span class="v" style="font-size:0.82rem">{{ s.saved_at_iso }}</span>
+      </div>
+      {% if it.stay_days %}
+      <div class="bp-field">
+        <span class="k">Stop</span>
+        <span class="v">{{ it.stay_days }} Days</span>
+      </div>
+      {% endif %}
+      {% if it.vibe_tags %}
+      <div class="bp-field">
+        <span class="k">Vibe</span>
+        <span class="v">{{ it.vibe_tags[:2]|join(', ')|title }}</span>
+      </div>
+      {% endif %}
+    </div>
+    {% if s and s.model_source %}
+    <p class="bp-note" style="font-size:0.78rem;margin:0.15rem 0 0.5rem;color:var(--muted)">via {{ s.model_source }}</p>
+    {% endif %}
+    {% endif %}
+
     {% if it.legs and not (it.no_flight_hub_url or it.no_flight_adj_url) %}
     <div class="bp-legs">
       {% for leg in it.legs %}
@@ -643,34 +672,6 @@
     {{ budget_strip(it.ground_display, it.ground_compare_line,
                     it.ground_budget_line, it.ground_budget_status,
                     it.all_in_display if show_all_in else none) }}
-    {% endif %}
-    {# Saved Detour metadata follows field-note and ground-spend content. #}
-    {% if mode == 'saved' and not is_saved_escape %}
-    <div class="bp-fields" style="margin-bottom:0.65rem">
-      <div class="bp-field">
-        <span class="k">Fares age</span>
-        <span class="v">{{ s.price_stale_label }}</span>
-      </div>
-      <div class="bp-field">
-        <span class="k">Saved</span>
-        <span class="v" style="font-size:0.82rem">{{ s.saved_at_iso }}</span>
-      </div>
-      {% if it.stay_days %}
-      <div class="bp-field">
-        <span class="k">Stop</span>
-        <span class="v">{{ it.stay_days }} Days</span>
-      </div>
-      {% endif %}
-      {% if it.vibe_tags %}
-      <div class="bp-field">
-        <span class="k">Vibe</span>
-        <span class="v">{{ it.vibe_tags[:2]|join(', ')|title }}</span>
-      </div>
-      {% endif %}
-    </div>
-    {% if s and s.model_source %}
-    <p class="bp-note" style="font-size:0.78rem;margin:0.15rem 0 0.5rem;color:var(--muted)">via {{ s.model_source }}</p>
-    {% endif %}
     {% endif %}
     {# Saved-mode metadata for Escape cards — after the field note, before the
        action row, exactly where a Saved Quest shows it. #}
