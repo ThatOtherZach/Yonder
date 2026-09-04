@@ -23,6 +23,8 @@ from yonder.adventure import (
     AdventureRequest,
     QuestIdea,
     StopoverIdea,
+    attach_detour_ground,
+    attach_quest_ground,
     corridor_candidates,
     detect_trip_gaps,
     plan_adventure,
@@ -645,6 +647,40 @@ def _promo_offers() -> dict | None:
     return {"code": code or None, "link": link or None}
 
 
+def _has_mock_fare(item: Any) -> bool:
+    """True when any fare under ``item`` is an internal mock skeleton.
+
+    Mock fares are demo scaffolding and must never reach a user as a price, so
+    every all-in total is gated on this.  Walks itineraries, Quest ideas, legs
+    and bare offers, and tolerates the plain dicts that come back out of the
+    Saved and Share tables (legacy rows predate fare_missing normalization).
+    """
+
+    def get(obj: Any, key: str) -> Any:
+        if isinstance(obj, dict):
+            return obj.get(key)
+        return getattr(obj, key, None)
+
+    def offer_is_mock(offer: Any) -> bool:
+        if offer is None:
+            return False
+        return str(get(offer, "price_kind") or "").strip().lower() == "mock"
+
+    if item is None:
+        return False
+    if offer_is_mock(item):
+        return True
+    for leg_key in ("legs", "inbound_leg", "outbound_leg", "offer"):
+        value = get(item, leg_key)
+        if value is None:
+            continue
+        for entry in value if isinstance(value, (list, tuple)) else [value]:
+            if offer_is_mock(entry) or offer_is_mock(get(entry, "offer")):
+                return True
+    return False
+
+
+templates.env.globals["has_mock_fare"] = _has_mock_fare
 templates.env.globals["promo_offers"] = _promo_offers
 templates.env.globals["share_escape"] = _share_escape
 templates.env.globals["share_detour"] = _share_detour
@@ -1987,6 +2023,39 @@ async def explore_run(request: Request) -> HTMLResponse:
                     place_book = brief.to_dict()
         except Exception:
             place_book = None
+        # Ground Spend for the destination — same block a Detour card shows.
+        # Cache/static only (live_grok=False): Escape is latency-sensitive.
+        try:
+            if result and getattr(result, "offers", None):
+                from yonder.daily_costs import ground_fields_for_stops
+                from yonder.money import format_approx
+
+                if query.return_date:
+                    _esc_stay = max(1, (query.return_date - query.depart_date).days)
+                else:
+                    _esc_stay = _compute_return_days(settings)
+                _esc_ground = await _await_search_work(
+                    ground_fields_for_stops(
+                        settings,
+                        origin_iata=query.origin,
+                        stops=[(query.destination, None, _esc_stay)],
+                        currency=currency,
+                        vibe=vibe,
+                    )
+                )
+                if _esc_ground:
+                    _esc_ground.pop("ground_rank_delta", None)
+                    _esc_total = _esc_ground.get("ground_total")
+                    for _o in result.offers:
+                        for _k, _v in _esc_ground.items():
+                            setattr(_o, _k, _v)
+                        if _esc_total is not None and not _o.fare_missing:
+                            _o.all_in_display = format_approx(
+                                float(_o.price) + float(_esc_total),
+                                (_o.currency or currency).upper(),
+                            )
+        except Exception:
+            pass  # ground costs are decoration — never fail a search over them
         escape_override = {
             "ask": prompt,
             "form": form,
@@ -3164,6 +3233,10 @@ async def compose_fares_api(request: Request) -> JSONResponse:
         assert isinstance(composed, QuestIdea)
         home_iata = str(trip_meta.get("origin") or "")
         vibe = str(trip_meta.get("vibe") or "adventure")
+        # A composed Quest gets the same Ground Spend block as a planned one.
+        composed = await attach_quest_ground(
+            composed, _session_settings(request), home_iata=home_iata, vibe=vibe
+        )
         panel = {
             "ask": str(trip_meta.get("prompt") or ""),
             "result": [composed],
@@ -3182,6 +3255,13 @@ async def compose_fares_api(request: Request) -> JSONResponse:
         )
 
     assert isinstance(composed, AdventureItinerary)
+    # A composed Detour gets the same Ground Spend block as a planned one.
+    composed = await attach_detour_ground(
+        composed,
+        _session_settings(request),
+        home_iata=str(trip_meta.get("origin") or ""),
+        vibe=str(trip_meta.get("vibe") or "adventure"),
+    )
     first_leg = composed.legs[0]
     last_leg = composed.legs[-1]
     stops = [
@@ -3324,6 +3404,13 @@ async def compose_saved_api(request: Request) -> JSONResponse:
         from yonder.saved import bookmark_quest
 
         assert isinstance(composed, QuestIdea)
+        # Attach Ground Spend before the dump so it persists into Saved.
+        composed = await attach_quest_ground(
+            composed,
+            _session_settings(request),
+            home_iata=str(trip_meta.get("origin") or ""),
+            vibe=str(trip_meta.get("vibe") or "adventure"),
+        )
         quest_itinerary = composed.model_dump(mode="json")
         quest_itinerary["kind"] = "quest"
         quest_itinerary["title"] = (
@@ -3360,6 +3447,13 @@ async def compose_saved_api(request: Request) -> JSONResponse:
         saved_id = canonical.id
     else:
         assert isinstance(composed, AdventureItinerary)
+        # Attach Ground Spend before the dump so it persists into Saved.
+        composed = await attach_detour_ground(
+            composed,
+            _session_settings(request),
+            home_iata=str(trip_meta.get("origin") or ""),
+            vibe=str(trip_meta.get("vibe") or "adventure"),
+        )
         digest = hashlib.sha256(
             json.dumps(
                 {"kind": kind, "saved_ids": normalized_ids},

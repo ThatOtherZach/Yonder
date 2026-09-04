@@ -1436,11 +1436,29 @@ def escape_offer_to_itinerary(
         "offer": offer,
         "google_flights_url": offer.get("google_flights_url"),
     }
+    # Saved Escapes render through detour_card, which reads the ground block
+    # off the itinerary rather than the offer — project it up or the Ground
+    # Spend strip vanishes the moment an Escape is saved.
+    ground = {
+        key: offer.get(key)
+        for key in (
+            "ground_daily_stop",
+            "ground_daily_origin",
+            "ground_total",
+            "ground_display",
+            "ground_compare_line",
+            "ground_budget_status",
+            "ground_budget_line",
+            "all_in_display",
+        )
+        if offer.get(key) is not None
+    }
     return {
         "kind": "escape",
         "title": title,
         "currency": currency,
         "total_price": price,
+        **ground,
         "display_price": offer.get("display_price"),
         "display_price_base": offer.get("display_price_base"),
         "price_glyph": offer.get("price_glyph"),

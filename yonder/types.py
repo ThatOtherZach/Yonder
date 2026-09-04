@@ -72,6 +72,16 @@ class FlightOffer(BaseModel):
     price_tone: str | None = None  # good | bad | neutral
     deal_score: int | None = None
     deal_label: str | None = None  # great | good | ok | high | new
+    # Ground cost at the destination — same shape AdventureItinerary carries, so
+    # the Escape card renders the identical Ground Spend strip as a Detour.
+    ground_daily_stop: float | None = None
+    ground_daily_origin: float | None = None
+    ground_total: float | None = None
+    ground_display: str | None = None  # e.g. +~C$720 (~C$90 per Day for 8 Days)
+    ground_compare_line: str | None = None
+    ground_budget_status: str | None = None  # under | within | over
+    ground_budget_line: str | None = None
+    all_in_display: str | None = None  # fare + ground
     fetched_at: datetime = Field(default_factory=datetime.utcnow)
 
     @property

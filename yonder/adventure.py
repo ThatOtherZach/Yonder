@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import date, timedelta
+from collections.abc import Iterable
 from typing import Any
 
 import httpx
@@ -267,6 +268,17 @@ class QuestIdea(BaseModel):
     # individually saved one-way tickets.
     entry_vibe: str | None = None
     exit_vibe: str | None = None
+    # Ground cost across the overland stretch (entry + exit cities combined) —
+    # same shape AdventureItinerary carries so the Quest card renders the
+    # identical Ground Spend strip.
+    ground_daily_stop: float | None = None
+    ground_daily_origin: float | None = None
+    ground_total: float | None = None
+    ground_display: str | None = None
+    ground_compare_line: str | None = None
+    ground_budget_status: str | None = None  # under | within | over
+    ground_budget_line: str | None = None
+    all_in_display: str | None = None  # both fares + ground
     # Gap awareness: set when this result fills a saved-trip gap
     gap_label: str | None = None
     # Anchored planning: set when this result connects into a saved leg
@@ -2620,4 +2632,136 @@ async def plan_quest(
                 # where the "last tried" was always the first candidate.
                 chosen = _ordered_priced[-1] if _ordered_priced else None
             results = [chosen]
-    return results
+    return [
+        await attach_quest_ground(idea, settings, home_iata=home_iata, vibe=vibe)
+        for idea in results
+        if idea is not None
+    ]
+
+
+def _real_fares(legs: Iterable[Any]) -> bool:
+    """True when every leg carries a fare we may show a price for."""
+    seen = False
+    for leg in legs:
+        offer = getattr(leg, "offer", None) if leg is not None else None
+        if offer is None:
+            return False
+        seen = True
+        if offer.fare_missing or offer.price is None:
+            return False
+        if str(offer.price_kind or "").strip().lower() in {"mock", "sandbox"}:
+            return False
+    return seen
+
+
+async def attach_detour_ground(
+    it: AdventureItinerary,
+    settings: Settings,
+    *,
+    home_iata: str,
+    vibe: str,
+) -> AdventureItinerary:
+    """Fill a composed Detour's Ground Spend block from its intermediate stops.
+
+    Planned Detours get theirs during planning; ones built from selected fares
+    are assembled straight from legs, so their nights are derived here from the
+    gaps between consecutive departures.
+    """
+    from yonder.daily_costs import ground_fields_for_stops
+    from yonder.money import format_approx
+
+    try:
+        if it.ground_display or not it.legs or len(it.legs) < 2:
+            return it
+        stops: list[tuple[str, str | None, int]] = []
+        for current, following in zip(it.legs, it.legs[1:]):
+            code = (current.to_iata or "").upper()
+            if not code or code == (home_iata or "").upper():
+                continue
+            nights = 1
+            if current.depart_date and following.depart_date:
+                nights = max(1, (following.depart_date - current.depart_date).days)
+            stops.append((code, city_for_iata(code) or code, nights))
+        if not stops:
+            return it
+        fields = await ground_fields_for_stops(
+            settings,
+            origin_iata=home_iata or (it.legs[0].from_iata or ""),
+            stops=stops,
+            currency=it.currency,
+            vibe=vibe,
+        )
+        if not fields:
+            return it
+        fields.pop("ground_rank_delta", None)
+        ground_total = fields.get("ground_total")
+        if (
+            it.total_price is not None
+            and ground_total is not None
+            and _real_fares(it.legs)
+        ):
+            fields["all_in_display"] = format_approx(
+                float(it.total_price) + float(ground_total), it.currency
+            )
+        return it.model_copy(update=fields)
+    except Exception:  # noqa: BLE001 — ground costs never break composition
+        return it
+
+
+async def attach_quest_ground(
+    idea: QuestIdea,
+    settings: Settings,
+    *,
+    home_iata: str,
+    vibe: str,
+) -> QuestIdea:
+    """Fill a Quest's Ground Spend block from its entry and exit cities.
+
+    The overland days are split across the two cities and added up, so the
+    strip covers the whole trip rather than quoting one city's rate for both.
+    """
+    from yonder.daily_costs import ground_fields_for_stops
+    from yonder.money import format_approx
+
+    try:
+        days = 1
+        if idea.depart_date and idea.outbound_date:
+            days = max(1, (idea.outbound_date - idea.depart_date).days)
+        two_cities = bool(
+            idea.entry_iata
+            and idea.exit_iata
+            and idea.exit_iata.upper() != idea.entry_iata.upper()
+        )
+        stops: list[tuple[str, str | None, int]] = []
+        if two_cities and days >= 2:
+            # Split the overland days across both cities — the halves must add
+            # back up to `days` exactly, or the strip charges for a day the
+            # traveller never spends.
+            entry_days = (days + 1) // 2
+            stops.append((idea.entry_iata, idea.entry_city, entry_days))
+            stops.append((idea.exit_iata, idea.exit_city, days - entry_days))
+        elif idea.entry_iata:
+            # One city, or a single overland day that cannot be halved.
+            stops.append((idea.entry_iata, idea.entry_city, days))
+        fields = await ground_fields_for_stops(
+            settings,
+            origin_iata=home_iata,
+            stops=stops,
+            currency=idea.currency,
+            vibe=vibe,
+        )
+        if not fields:
+            return idea
+        fields.pop("ground_rank_delta", None)
+        ground_total = fields.get("ground_total")
+        if (
+            idea.total_price is not None
+            and ground_total is not None
+            and _real_fares([idea.inbound_leg, idea.outbound_leg])
+        ):
+            fields["all_in_display"] = format_approx(
+                float(idea.total_price) + float(ground_total), idea.currency
+            )
+        return idea.model_copy(update=fields)
+    except Exception:  # noqa: BLE001 — ground costs never break Quest planning
+        return idea

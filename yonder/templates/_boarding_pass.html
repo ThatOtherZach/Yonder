@@ -219,7 +219,7 @@
       </div>
     </div>
 
-    {% set esc_show_all_in = o.all_in_display and not fare_missing %}
+    {% set esc_show_all_in = o.all_in_display and not fare_missing and not has_mock_fare(o) %}
     {% set esc_has_col = o.ground_display or o.ground_compare_line or o.ground_budget_line or esc_show_all_in %}
     {% if mode == 'explore' %}
     {# Field note — same collapsible pattern as Detour #}
@@ -555,7 +555,7 @@
     </div>
     {% endif %}
 
-    {% set show_all_in = it.all_in_display and not cf.pending %}
+    {% set show_all_in = it.all_in_display and not cf.pending and not has_mock_fare(it) %}
     {% set has_col = it.ground_display or it.ground_compare_line or it.ground_budget_line or show_all_in %}
     {% set saved_escape_iata = ((it.legs | last).to_iata if is_saved_escape and it.legs else '') %}
     {% set field_note_iata = it.stop_iata or saved_escape_iata %}
@@ -711,6 +711,10 @@
               aria-label="Select this Saved Escape for a Quest or Detour">
         {% if s.is_expired %}Update dates to build{% else %}＋ Add to builder{% endif %}
       </button>
+      {% elif mode in ('explore', 'saved') %}
+      {# A Detour already flies home again, so there is no open end for the
+         builder to attach to. Say so instead of showing a dead button. #}
+      <span class="bp-loop-note" role="note">↺ Already a full loop — nothing left to add</span>
       {% endif %}
       {% if mode in ('explore', 'saved') and it.legs|length == 2 %}
       {% set _l0 = it.legs[0] %}
@@ -1068,6 +1072,15 @@
     </div>
     {% endif %}
     {% endfor %}
+    {% endif %}
+
+    {# Ground Spend — combined across the entry and exit cities, so it sits
+       after both field notes rather than inside either one. #}
+    {% set q_show_all_in = idea.all_in_display and not (idea.inbound_fare_missing or idea.outbound_fare_missing) and not has_mock_fare(idea) %}
+    {% if idea.ground_display or idea.ground_compare_line or idea.ground_budget_line or q_show_all_in %}
+    {{ budget_strip(idea.ground_display, idea.ground_compare_line,
+                    idea.ground_budget_line, idea.ground_budget_status,
+                    idea.all_in_display if q_show_all_in else none) }}
     {% endif %}
 
     {# Saved-mode metadata #}

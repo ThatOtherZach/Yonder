@@ -808,6 +808,127 @@ async def estimate_batch_for_stops(
     }
 
 
+def fields_from_compare(cmp: DailyCostCompare, *, stay_days: int) -> dict[str, Any]:
+    """The ``ground_*`` field block for one priced stop.
+
+    Escape offers, Detour itineraries and Quest ideas all render the same
+    Ground Spend strip, so they all fill it from this one shape.
+    """
+    stay = max(1, int(stay_days or 1))
+    return {
+        "ground_daily_stop": cmp.daily_stop,
+        "ground_daily_origin": cmp.daily_origin,
+        "ground_total": cmp.ground_total,
+        "ground_display": (
+            f"+{cmp.display_ground} "
+            f"({cmp.display_daily_stop} per Day for {stay} Days)"
+        ),
+        "ground_compare_line": cmp.ground_compare_line,
+        "ground_budget_status": cmp.budget_status,
+        "ground_budget_line": cmp.budget_line or None,
+        "ground_rank_delta": float(cmp.rank_delta or 0.0),
+    }
+
+
+def _combine_ground_fields(
+    parts: list[tuple[str, int, DailyCostCompare]],
+    *,
+    currency: str,
+) -> dict[str, Any]:
+    """Merge per-city ground costs into one combined Ground Spend block.
+
+    A Quest sleeps in two different cities, so its strip has to add both
+    stretches up rather than quote one of them and pretend it covers the trip.
+    """
+    if not parts:
+        return {}
+    if len(parts) == 1:
+        label, stay, cmp = parts[0]
+        return fields_from_compare(cmp, stay_days=stay)
+
+    cur = (currency or "USD").upper()
+    total = round(sum(float(cmp.ground_total) for _label, _stay, cmp in parts), 2)
+    total_days = max(1, sum(max(1, int(stay)) for _label, stay, _cmp in parts))
+    blended_daily = round(total / total_days, 2)
+    origin_daily = float(parts[0][2].daily_origin)
+    breakdown = " · ".join(
+        f"{label} {format_approx(cmp.daily_stop, cur)}/day × {max(1, int(stay))}"
+        for label, stay, cmp in parts
+    )
+    fields: dict[str, Any] = {
+        "ground_daily_stop": blended_daily,
+        "ground_daily_origin": origin_daily,
+        "ground_total": total,
+        "ground_display": (
+            f"+{format_approx(total, cur)} "
+            f"({format_approx(blended_daily, cur)} per Day for {total_days} Days)"
+        ),
+        "ground_compare_line": breakdown,
+        "ground_rank_delta": round(
+            sum(float(cmp.rank_delta or 0.0) for _l, _s, cmp in parts) / len(parts), 2
+        ),
+    }
+    # Budget verdict: the whole trip is only "under" when every stretch is.
+    statuses = [cmp.budget_status for _l, _s, cmp in parts if cmp.budget_status]
+    if statuses:
+        if "over" in statuses:
+            fields["ground_budget_status"] = "over"
+        elif "within" in statuses:
+            fields["ground_budget_status"] = "within"
+        else:
+            fields["ground_budget_status"] = "under"
+        budget_lines = [cmp.budget_line for _l, _s, cmp in parts if cmp.budget_line]
+        if budget_lines:
+            fields["ground_budget_line"] = budget_lines[0]
+    return fields
+
+
+async def ground_fields_for_stops(
+    settings: Settings,
+    *,
+    origin_iata: str,
+    stops: list[tuple[str, str | None, int]],  # (iata, city, stay_days)
+    currency: str,
+    vibe: str = "adventure",
+    live_grok: bool = False,
+) -> dict[str, Any]:
+    """Ground Spend fields for one or more destinations, combined.
+
+    ``live_grok`` defaults to False: Escape and Quest are latency-sensitive, and
+    the country-pair cache plus static fallbacks always yield a number.  Returns
+    {} rather than raising when costs cannot be estimated at all.
+    """
+    wanted = [
+        (str(iata).upper(), city, max(1, int(stay or 1)))
+        for iata, city, stay in stops
+        if iata and len(str(iata).strip()) == 3
+    ]
+    if not wanted or not origin_iata:
+        return {}
+    try:
+        batch = await estimate_batch_for_stops(
+            settings,
+            origin_iata=origin_iata,
+            stops=[(iata, None, city) for iata, city, _stay in wanted],
+            currency=currency,
+            vibe=vibe,
+            live_grok=live_grok,
+        )
+    except Exception:
+        return {}
+    if not batch:
+        return {}
+
+    parts: list[tuple[str, int, DailyCostCompare]] = []
+    for iata, city, stay in wanted:
+        cmp = compare_for_stop(batch, stop_iata=iata, stay_days=stay)
+        if cmp is not None:
+            parts.append((city or iata, stay, cmp))
+    if not parts:
+        return {}
+    return _combine_ground_fields(parts, currency=currency)
+
+
 def compare_for_stop(
     batch: dict[str, Any],
     *,

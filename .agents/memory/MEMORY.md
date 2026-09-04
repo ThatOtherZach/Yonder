@@ -28,3 +28,4 @@
 - [Saved composition snapshots](saved-composition-snapshots.md) — composing a bookmarked Quest must load the browser's override, while public canonical identity stays separate.
 - [Escape card macros](escape-card-macros.md) — Escape renders via the escape macro on Explore/share but the Detour macro on Saved; change both, gate behind one saved-escape flag.
 - [Fare retry parameters](fare-retry-parameters.md) — Check Fares retries must preserve each leg's cabin and traveler count through Saved composition.
+- [Shared Ground Spend block](ground-spend-block.md) — one macro for all 3 card types; project ground fields to the level the receiving card reads, or the block silently vanishes.

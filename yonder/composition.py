@@ -188,12 +188,22 @@ def _leg(fare: SelectedFare) -> PricedLeg:
     )
 
 
+# Fare kinds that are internal scaffolding, never a price a user may see.
+_SYNTHETIC_PRICE_KINDS = {"mock", "sandbox"}
+
+
 def _usable_price(leg: PricedLeg) -> bool:
-    return bool(
-        leg.offer
-        and not leg.offer.fare_missing
-        and leg.offer.price is not None
-    )
+    """True only for a real fare we may show and add up.
+
+    Legacy Saved and Share rows predate mock-fare normalization, so a mock
+    offer can still arrive with ``fare_missing`` unset.  Composing one would
+    put a demo price in front of a user, so the kind is checked here rather
+    than trusting the flag alone.
+    """
+    if not leg.offer or leg.offer.price is None or leg.offer.fare_missing:
+        return False
+    kind = str(leg.offer.price_kind or "").strip().lower()
+    return kind not in _SYNTHETIC_PRICE_KINDS
 
 
 def _same_currency(legs: list[PricedLeg], currency: str) -> bool:
