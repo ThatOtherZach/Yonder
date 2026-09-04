@@ -180,6 +180,8 @@ def _single_leg_payload() -> dict:
             "theme_primary": "#e8a020",
             "stop_iata": "DXB",
             "stop_city": "Dubai",
+            "stay_days": 5,
+            "vibe_tags": ["adventure"],
             "total_price": 900.0,
             "currency": "USD",
             "legs": [
@@ -393,6 +395,23 @@ class TestDetourSavedButtonLabels:
         assert "Airline site" not in html
         assert "site ↗" not in html
         assert f'href="{_AIRLINE_URL}"' not in html
+
+    def test_metadata_follows_field_note_and_precedes_actions(self, client):
+        """Saved Detour metadata sits in the lower content section."""
+        html = self._html(client, _single_leg_payload())
+
+        note_at = html.find("field-note-slot")
+        fares_at = html.find("Fares age")
+        saved_at = html.find('class="k">Saved')
+        stop_at = html.find('class="k">Stop')
+        vibe_at = html.find('class="k">Vibe')
+        actions_at = html.find('class="bp-actions"')
+
+        assert min(note_at, fares_at, saved_at, stop_at, vibe_at, actions_at) != -1
+        assert note_at < fares_at < saved_at < stop_at < vibe_at < actions_at, (
+            "Saved Detour metadata must follow the field note and retain the "
+            "Fares age, Saved, Stop, Vibe order before the action row"
+        )
 
 
 # ===========================================================================
